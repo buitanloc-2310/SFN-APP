@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env
+.env.*
+*.log
+.DS_Store
+FIRST_LOGIN_SUPER_ADMIN.txt
