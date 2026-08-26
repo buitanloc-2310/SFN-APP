@@ -85,3 +85,6 @@ Các thay đổi vận hành thông thường phải thực hiện trong **Quả
 - privacy requests.
 
 Source chỉ cần deploy lại khi thay đổi **logic phần mềm**, không phải khi sửa nội dung hằng ngày.
+<!-- Trigger Cloudflare deploy -->
+
+
