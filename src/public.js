@@ -223,18 +223,137 @@ export async function publicRoute(request,env,url){
     await audit(env,request,user,"Tiếp nhận hồ sơ","submission",code,{form_id:idForm});
     return json({ok:true,code,status:"Đã tiếp nhận"});
   }
-
   if(p==="/api/lookup/submission"&&request.method==="GET"){
-    const code=String(url.searchParams.get("code")||"").trim(),email=String(url.searchParams.get("email")||"").trim().toLowerCase();
-    if(!code||!email) return json({error:"MISSING_FIELDS"},400);
-    const row=await env.DB.prepare("SELECT code,form_id,status,created_at,updated_at FROM submissions WHERE code=? AND lower(email)=lower(?)").bind(code,email).first();
-    return row?json({item:row}):json({error:"NOT_FOUND"},404);
+    const code=String(url.searchParams.get("code")||"").trim();
+    const email=String(url.searchParams.get("email")||"").trim().toLowerCase();
+
+    if(!code||!email){
+      return json({
+        error:"MISSING_FIELDS",
+        message:"Vui lòng nhập đầy đủ mã hồ sơ và email đã đăng ký."
+      },400);
+    }
+
+    const row=await env.DB.prepare(`
+      SELECT
+        s.code,
+        s.form_id,
+        s.full_name,
+        s.email,
+        s.status,
+        s.created_at,
+        s.updated_at,
+        f.name AS form_name,
+        f.audience
+      FROM submissions s
+      LEFT JOIN forms f ON f.id=s.form_id
+      WHERE s.code=?
+        AND lower(s.email)=lower(?)
+      LIMIT 1
+    `).bind(code,email).first();
+
+    if(!row){
+      return json({
+        error:"NOT_FOUND",
+        message:"Không tìm thấy hồ sơ phù hợp với mã và email đã nhập."
+      },404);
+    }
+
+    return json({
+      item:{
+        code:row.code,
+        full_name:row.full_name||"",
+        email:row.email||"",
+        form_id:row.form_id||"",
+        form_name:row.form_name||"",
+        audience:row.audience||"",
+        status:row.status||"",
+        submitted_at:row.created_at||"",
+        updated_at:row.updated_at||""
+      }
+    });
   }
 
   if(p==="/api/lookup/certificate"&&request.method==="GET"){
     const code=String(url.searchParams.get("code")||"").trim();
-    const row=await env.DB.prepare("SELECT code,cert_type,full_name,content,status,issued_at,metadata_json FROM certificates WHERE code=? AND status IN ('issued','revoked','reissued')").bind(code).first();
-    return row?json({item:row}):json({error:"NOT_FOUND"},404);
+
+    if(!code){
+      return json({
+        error:"MISSING_FIELDS",
+        message:"Vui lòng nhập mã GCN/GXN cần xác thực."
+      },400);
+    }
+
+    const row=await env.DB.prepare(`
+      SELECT
+        code,
+        cert_type,
+        full_name,
+        content,
+        status,
+        issued_at,
+        metadata_json
+      FROM certificates
+      WHERE code=?
+        AND status IN ('issued','revoked','reissued')
+      LIMIT 1
+    `).bind(code).first();
+
+    if(!row){
+      return json({
+        error:"NOT_FOUND",
+        message:"Không tìm thấy GCN/GXN tương ứng với mã đã nhập."
+      },404);
+    }
+
+    let metadata={};
+
+    try{
+      metadata=row.metadata_json
+        ? JSON.parse(row.metadata_json)
+        : {};
+    }catch{
+      metadata={};
+    }
+
+    const statusText={
+      issued:"Còn hiệu lực",
+      revoked:"Đã thu hồi",
+      reissued:"Đã cấp lại"
+    }[row.status]||row.status;
+
+    return json({
+      item:{
+        code:row.code,
+        type:row.cert_type||"",
+        full_name:row.full_name||"",
+        content:row.content||"",
+        issued_at:row.issued_at||"",
+        status:row.status||"",
+        status_text:statusText,
+
+        unit_name:
+          metadata.unit_name||
+          metadata.issuer||
+          "Mạng lưới Giáo dục & Phát triển Cộng đồng Sky First",
+
+        role:
+          metadata.role||
+          metadata.position||
+          "",
+
+        program:
+          metadata.program||
+          metadata.activity||
+          metadata.event||
+          "",
+
+        file_url:
+          metadata.file_url||
+          metadata.url||
+          ""
+      }
+    });
   }
 
   return null;
