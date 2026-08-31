@@ -306,7 +306,10 @@ function renderLookup(){
           </p>
         </div>
       `;
-                ${E(
+        }catch(err){
+      result.innerHTML=`
+        <div class="notice bad" style="margin-top:18px">
+          ${E(
             err?.data?.message||
             "Không tìm thấy hồ sơ khớp với thông tin đã nhập."
           )}
