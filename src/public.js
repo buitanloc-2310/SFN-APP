@@ -295,7 +295,7 @@ export async function publicRoute(request,env,url){
         metadata_json
       FROM certificates
       WHERE code=?
-        AND status IN ('issued','revoked','reissued')
+       AND status IN ('issued','revoked')
       LIMIT 1
     `).bind(code).first();
 
@@ -316,11 +316,10 @@ export async function publicRoute(request,env,url){
       metadata={};
     }
 
-    const statusText={
-      issued:"Còn hiệu lực",
-      revoked:"Đã thu hồi",
-      reissued:"Đã cấp lại"
-    }[row.status]||row.status;
+const statusText={
+  issued:"Còn hiệu lực",
+  revoked:"Đã thu hồi"
+}[row.status]||row.status;
 
     return json({
       item:{
