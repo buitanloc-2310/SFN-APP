@@ -692,10 +692,14 @@ window.markAttendance=(classId,enrollmentId,status)=>api("/api/admin/attendance"
 window.checkinTool=()=>{const code=prompt("Mã check-in:");if(!code)return;api("/api/admin/event-checkin",{method:"POST",body:{checkin_code:code}}).then(()=>toast("Check-in thành công.")).catch(e=>toast(errorText(e),"bad"))}
 
 async function adminCertificates(main){
-  const d=await api("/api/admin/certificates");state.admin.certificates=d.items||[];
+  const d=await api("/api/admin/certificates");
+  state.admin.certificates=d.items||[];
+
   main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">GCN & GXN</h1><button class="primary" onclick="requestCertificate()">+ Đề nghị cấp</button></div>
   <div class="notice">Quy trình: <b>Ban Nhân sự đề nghị → Văn phòng kiểm tra → Tổng Thư ký Mạng lưới phê duyệt → Văn phòng cấp số, vào sổ, lưu và phát hành.</b></div>
   <div class="card table-scroll"><table><thead><tr><th>Mã</th><th>Người được cấp</th><th>Nội dung</th><th>Trạng thái</th><th></th></tr></thead><tbody>${state.admin.certificates.map(c=>`<tr><td><b>${E(c.code||"Chưa cấp số")}</b></td><td>${E(c.full_name)}<br>${E(c.email||"")}</td><td>${E(c.content)}</td><td><span class="status">${E(c.status)}</span></td><td>${c.status==="approved"?`<button class="primary" onclick="issueCert('${E(c.id)}')">Phát hành</button>`:""}${c.status==="issued"?` <button class="secondary" onclick="showCertQR('${E(c.code)}')">QR</button> <button class="danger" onclick="revokeCert('${E(c.id)}')">Thu hồi</button>`:""}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
 window.requestCertificate=()=>{
   modal(`
     <button class="ghost" onclick="closeModal()">✕ Đóng</button>
