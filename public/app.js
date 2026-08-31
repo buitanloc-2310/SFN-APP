@@ -172,16 +172,266 @@ async function renderUnits(){
 }
 async function renderNews(){
   const d=await api("/api/public/news");app.innerHTML=`<h1>Tin tức & Cập nhật</h1><div class="grid">${(d.items||[]).map(newsCard).join("")||"<div class='card'>Chưa có tin.</div>"}</div>`;
-}
 function renderLookup(){
-  app.innerHTML=`<div class="form-wrap"><h1>Tra cứu</h1><div class="grid2">
-  <div class="card"><h2>Tra cứu hồ sơ</h2><form id="lookupRecord"><div class="field"><label>Mã hồ sơ</label><input name="code" required placeholder="SFN-TNV-2026-0001"></div><div class="field"><label>Email đã đăng ký</label><input name="email" type="email" required></div><button class="primary">Tra cứu</button></form><div id="recordResult"></div></div>
-  <div class="card"><h2>Xác thực GCN/GXN</h2><form id="lookupCert"><div class="field"><label>Mã GCN/GXN</label><input name="code" required placeholder="001/GCN-SFN/2026"></div><button class="primary">Xác thực</button></form><div id="certResult"></div></div></div></div>`;
-  document.getElementById("lookupRecord").onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{const d=await api(`/api/lookup/submission?code=${encodeURIComponent(f.get("code"))}&email=${encodeURIComponent(f.get("email"))}`);document.getElementById("recordResult").innerHTML=`<div class="notice good"><b>${E(d.item.code)}</b><br>Loại: ${E(d.item.form_id)}<br>Trạng thái: <b>${E(d.item.status)}</b><br>Cập nhật: ${fmt(d.item.updated_at)}</div>`}catch{document.getElementById("recordResult").innerHTML="<div class='notice bad'>Không tìm thấy hồ sơ phù hợp.</div>"}};
-  document.getElementById("lookupCert").onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{const d=await api(`/api/lookup/certificate?code=${encodeURIComponent(f.get("code"))}`);const c=d.item;document.getElementById("certResult").innerHTML=`<div class="notice good"><b>${E(c.code)}</b><br>${E(c.cert_type)}<br>Người được cấp: <b>${E(c.full_name)}</b><br>${E(c.content)}<br>Trạng thái: ${E(c.status)}</div>`}catch{document.getElementById("certResult").innerHTML="<div class='notice bad'>Không tìm thấy mã GCN/GXN.</div>"}};
-  const auto=new URLSearchParams(location.search).get("cert_lookup");if(auto){document.querySelector('#lookupCert [name="code"]').value=auto;document.getElementById("lookupCert").requestSubmit();}
-}
+  const submissionStatusText=status=>({
+    "Đã tiếp nhận":"Đã tiếp nhận",
+    "Đang xem xét":"Đang xem xét",
+    "Cần bổ sung":"Cần bổ sung thông tin",
+    "Mời phỏng vấn":"Mời phỏng vấn",
+    "Đang đánh giá":"Đang đánh giá",
+    "Đã duyệt":"Đã duyệt",
+    "Không phù hợp":"Không phù hợp",
+    "Hoàn tất":"Hoàn tất"
+  }[status]||status||"—");
 
+  app.innerHTML=`
+    <div class="form-wrap">
+      <h1>Tra cứu & Xác thực</h1>
+      <p class="muted">
+        Tra cứu tình trạng hồ sơ hoặc xác thực GCN/GXN do Sky First phát hành.
+      </p>
+
+      <div class="grid2">
+
+        <div class="card">
+          <h2>Tra cứu hồ sơ</h2>
+          <p class="muted">
+            Nhập mã hồ sơ và email đã sử dụng khi đăng ký.
+          </p>
+
+          <form id="lookupRecord">
+            <div class="field">
+              <label>Mã hồ sơ</label>
+              <input
+                name="code"
+                required
+                autocomplete="off"
+                placeholder="SFN-TNV-2026-0001"
+              >
+            </div>
+
+            <div class="field">
+              <label>Email đã đăng ký</label>
+              <input
+                name="email"
+                type="email"
+                required
+                autocomplete="email"
+              >
+            </div>
+
+            <button class="primary">Tra cứu hồ sơ</button>
+          </form>
+
+          <div id="recordResult"></div>
+        </div>
+
+        <div class="card">
+          <h2>Xác thực GCN/GXN</h2>
+          <p class="muted">
+            Nhập mã được ghi trên Giấy chứng nhận hoặc Giấy xác nhận.
+          </p>
+
+          <form id="lookupCert">
+            <div class="field">
+              <label>Mã GCN/GXN</label>
+              <input
+                name="code"
+                required
+                autocomplete="off"
+                placeholder="001/GCN-SFN/2026"
+              >
+            </div>
+
+            <button class="primary">Xác thực</button>
+          </form>
+
+          <div id="certResult"></div>
+        </div>
+
+      </div>
+    </div>
+  `;
+
+  document.getElementById("lookupRecord").onsubmit=async e=>{
+    e.preventDefault();
+
+    const form=e.target;
+    const f=new FormData(form);
+    const result=document.getElementById("recordResult");
+    const button=form.querySelector("button");
+
+    button.disabled=true;
+    button.textContent="Đang tra cứu…";
+    result.innerHTML="";
+
+    try{
+      const d=await api(
+        `/api/lookup/submission?code=${encodeURIComponent(f.get("code"))}&email=${encodeURIComponent(f.get("email"))}`
+      );
+
+      const r=d.item||{};
+
+      result.innerHTML=`
+        <div class="notice good" style="margin-top:18px">
+          <div class="small muted">MÃ HỒ SƠ</div>
+          <h2 style="margin:4px 0 16px">${E(r.code||"—")}</h2>
+
+          ${r.full_name?`
+            <p>
+              <span class="muted">Người đăng ký</span><br>
+              <b>${E(r.full_name)}</b>
+            </p>
+          `:""}
+
+          <p>
+            <span class="muted">Biểu mẫu</span><br>
+            <b>${E(r.form_name||r.form_id||"—")}</b>
+          </p>
+
+          <p>
+            <span class="muted">Trạng thái hồ sơ</span><br>
+            <span class="status">${E(submissionStatusText(r.status))}</span>
+          </p>
+
+          <p>
+            <span class="muted">Thời điểm tiếp nhận</span><br>
+            ${E(fmt(r.submitted_at))}
+          </p>
+
+          <p>
+            <span class="muted">Cập nhật gần nhất</span><br>
+            ${E(fmt(r.updated_at))}
+          </p>
+        </div>
+      `;
+    }catch(err){
+      result.innerHTML=`
+        <div class="notice bad" style="margin-top:18px">
+          ${E(
+            err?.data?.message||
+            "Không tìm thấy hồ sơ khớp với thông tin đã nhập."
+          )}
+        </div>
+      `;
+    }finally{
+      button.disabled=false;
+      button.textContent="Tra cứu hồ sơ";
+    }
+  };
+
+  document.getElementById("lookupCert").onsubmit=async e=>{
+    e.preventDefault();
+
+    const form=e.target;
+    const f=new FormData(form);
+    const result=document.getElementById("certResult");
+    const button=form.querySelector("button");
+
+    button.disabled=true;
+    button.textContent="Đang xác thực…";
+    result.innerHTML="";
+
+    try{
+      const d=await api(
+        `/api/lookup/certificate?code=${encodeURIComponent(f.get("code"))}`
+      );
+
+      const c=d.item||{};
+
+      result.innerHTML=`
+        <div class="notice good" style="margin-top:18px">
+
+          <div class="small muted">MÃ GCN/GXN</div>
+          <h2 style="margin:4px 0 6px">${E(c.code||"—")}</h2>
+
+          <div style="margin-bottom:18px">
+            <span class="status">${E(c.status_text||c.status||"—")}</span>
+          </div>
+
+          <p>
+            <span class="muted">Loại văn bản</span><br>
+            <b>${E(c.type||"—")}</b>
+          </p>
+
+          <p>
+            <span class="muted">Người được cấp</span><br>
+            <b>${E(c.full_name||"—")}</b>
+          </p>
+
+          ${c.unit_name?`
+            <p>
+              <span class="muted">Đơn vị ghi nhận</span><br>
+              <b>${E(c.unit_name)}</b>
+            </p>
+          `:""}
+
+          ${c.program?`
+            <p>
+              <span class="muted">Chương trình / Hoạt động</span><br>
+              ${E(c.program)}
+            </p>
+          `:""}
+
+          ${c.role?`
+            <p>
+              <span class="muted">Vai trò / Nội dung tham gia</span><br>
+              ${E(c.role)}
+            </p>
+          `:""}
+
+          ${c.content?`
+            <p>
+              <span class="muted">Nội dung được ghi nhận</span><br>
+              ${E(c.content)}
+            </p>
+          `:""}
+
+          <p>
+            <span class="muted">Ngày cấp</span><br>
+            ${E(fmt(c.issued_at))}
+          </p>
+
+          ${c.file_url?`
+            <div class="actions">
+              <a
+                class="secondary"
+                href="${E(c.file_url)}"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Xem GCN/GXN
+              </a>
+            </div>
+          `:""}
+
+        </div>
+      `;
+    }catch(err){
+      result.innerHTML=`
+        <div class="notice bad" style="margin-top:18px">
+          ${E(
+            err?.data?.message||
+            "Không tìm thấy GCN/GXN với mã đã nhập."
+          )}
+        </div>
+      `;
+    }finally{
+      button.disabled=false;
+      button.textContent="Xác thực";
+    }
+  };
+
+  const auto=new URLSearchParams(location.search).get("cert_lookup");
+
+  if(auto){
+    const input=document.querySelector('#lookupCert [name="code"]');
+    if(input){
+      input.value=auto;
+      document.getElementById("lookupCert").requestSubmit();
+    }
+  }
+}
 function renderLogin(){
   app.innerHTML=`<h1>Đăng nhập Sky First</h1><p class="muted">Chọn khu vực phù hợp. Quyền Thành viên và Quản trị viên chỉ do SFN cấp.</p>
   <div class="role-grid">
@@ -446,8 +696,128 @@ async function adminCertificates(main){
   main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">GCN & GXN</h1><button class="primary" onclick="requestCertificate()">+ Đề nghị cấp</button></div>
   <div class="notice">Quy trình: <b>Ban Nhân sự đề nghị → Văn phòng kiểm tra → Tổng Thư ký Mạng lưới phê duyệt → Văn phòng cấp số, vào sổ, lưu và phát hành.</b></div>
   <div class="card table-scroll"><table><thead><tr><th>Mã</th><th>Người được cấp</th><th>Nội dung</th><th>Trạng thái</th><th></th></tr></thead><tbody>${state.admin.certificates.map(c=>`<tr><td><b>${E(c.code||"Chưa cấp số")}</b></td><td>${E(c.full_name)}<br>${E(c.email||"")}</td><td>${E(c.content)}</td><td><span class="status">${E(c.status)}</span></td><td>${c.status==="approved"?`<button class="primary" onclick="issueCert('${E(c.id)}')">Phát hành</button>`:""}${c.status==="issued"?` <button class="secondary" onclick="showCertQR('${E(c.code)}')">QR</button> <button class="danger" onclick="revokeCert('${E(c.id)}')">Thu hồi</button>`:""}</td></tr>`).join("")}</tbody></table></div>`;
-}
-window.requestCertificate=()=>{const full_name=prompt("Họ tên người được cấp:");if(!full_name)return;const email=prompt("Email (nếu có):")||"";const cert_type=prompt("Loại: Giấy chứng nhận / Giấy xác nhận","Giấy chứng nhận")||"Giấy chứng nhận";const content=prompt("Nội dung ghi nhận:");if(!content)return;api("/api/admin/certificates",{method:"POST",body:{full_name,email,cert_type,content}}).then(()=>{toast("Đã gửi Trung tâm phê duyệt.");adminCertificates(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"))}
+window.requestCertificate=()=>{
+  modal(`
+    <button class="ghost" onclick="closeModal()">✕ Đóng</button>
+
+    <h2>Đề nghị cấp GCN/GXN</h2>
+
+    <p class="muted">
+      Thông tin dưới đây là dữ liệu chính thức dùng cho quy trình
+      phê duyệt, phát hành và tra cứu GCN/GXN.
+    </p>
+
+    <form id="certificateRequestForm">
+
+      <div class="row2">
+        <div class="field">
+          <label>Họ và tên người được cấp *</label>
+          <input name="full_name" required>
+        </div>
+
+        <div class="field">
+          <label>Email</label>
+          <input name="email" type="email">
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label>Loại *</label>
+          <select name="cert_type" required>
+            <option value="Giấy chứng nhận">Giấy chứng nhận</option>
+            <option value="Giấy xác nhận">Giấy xác nhận</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Đơn vị ghi nhận *</label>
+          <input
+            name="unit_name"
+            required
+            placeholder="Ví dụ: Câu lạc bộ Tiếng Anh The Sky First"
+          >
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Chương trình / Hoạt động</label>
+        <input
+          name="program"
+          placeholder="Tên chương trình, hoạt động, sự kiện hoặc lớp học"
+        >
+      </div>
+
+      <div class="field">
+        <label>Vai trò / Tư cách tham gia</label>
+        <input
+          name="role"
+          placeholder="Ví dụ: Tình nguyện viên, Thành viên Ban Tổ chức..."
+        >
+      </div>
+
+      <div class="field">
+        <label>Nội dung ghi nhận *</label>
+        <textarea
+          name="content"
+          required
+          placeholder="Nội dung chính thức được xác nhận hoặc chứng nhận"
+        ></textarea>
+      </div>
+
+      <div class="actions">
+        <button class="primary" type="submit">
+          Gửi đề nghị cấp
+        </button>
+
+        <button class="secondary" type="button" onclick="closeModal()">
+          Hủy
+        </button>
+      </div>
+
+    </form>
+  `);
+
+  document.getElementById("certificateRequestForm").onsubmit=async e=>{
+    e.preventDefault();
+
+    const form=e.target;
+    const f=new FormData(form);
+    const button=form.querySelector('button[type="submit"]');
+
+    const payload={
+      full_name:String(f.get("full_name")||"").trim(),
+      email:String(f.get("email")||"").trim(),
+      cert_type:String(f.get("cert_type")||"").trim(),
+      content:String(f.get("content")||"").trim(),
+
+      metadata:{
+        unit_name:String(f.get("unit_name")||"").trim(),
+        program:String(f.get("program")||"").trim(),
+        role:String(f.get("role")||"").trim()
+      }
+    };
+
+    button.disabled=true;
+    button.textContent="Đang gửi…";
+
+    try{
+      await api("/api/admin/certificates",{
+        method:"POST",
+        body:payload
+      });
+
+      closeModal();
+      toast("Đã tạo đề nghị cấp GCN/GXN.");
+      adminCertificates(document.getElementById("adminMain"));
+
+    }catch(err){
+      toast(errorText(err),"bad");
+      button.disabled=false;
+      button.textContent="Gửi đề nghị cấp";
+    }
+  };
+};
 window.issueCert=idc=>api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{method:"PATCH",body:{action:"issue"}}).then(d=>{toast("Đã phát hành: "+d.code);adminCertificates(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"))
 window.showCertQR=code=>{const text=`${location.origin}/?cert_lookup=${encodeURIComponent(code)}#lookup`;modal(`<h2>QR xác thực — ${E(code)}</h2><p>QR chỉ chứa liên kết tra cứu công khai, không chứa dữ liệu hồ sơ riêng tư.</p><img alt="QR" style="max-width:280px;width:100%" src="https://quickchart.io/qr?size=300&text=${encodeURIComponent(text)}"><p><a href="#lookup" onclick="closeModal()">Mở trang tra cứu</a></p>`)}
 window.revokeCert=idc=>{const note=prompt("Lý do thu hồi:")||"";api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{method:"PATCH",body:{action:"revoke",note}}).then(()=>{toast("Đã thu hồi.");adminCertificates(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"))}
