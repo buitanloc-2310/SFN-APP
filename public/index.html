@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e56b2">
+<title>Sky First Network — Cổng Thành viên & Tình nguyện viên</title>
+<meta name="description" content="Cổng đăng ký, thành viên, tình nguyện viên, lớp học, sự kiện và quản trị của Sky First Network.">
+<meta property="og:title" content="Sky First Network">
+<meta property="og:description" content="Mạng lưới Giáo dục và Phát triển Cộng đồng Sky First">
+<meta property="og:image" content="/assets/sfn-wordmark.png">
+<link rel="icon" href="/assets/sfn-logo.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#home"><img src="/assets/sfn-logo.png" alt="Sky First"><div>SKY FIRST NETWORK<small data-vi="Mạng lưới Giáo dục và Phát triển Cộng đồng Sky First" data-en="Sky First Education & Community Development Network">Mạng lưới Giáo dục và Phát triển Cộng đồng Sky First</small></div></a>
+
+  <button class="menu-toggle" id="menuToggle" type="button" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
+
+  <nav class="nav" id="mainNav">
+    <a href="#home" data-vi="Trang chủ" data-en="Home">Trang chủ</a>
+
+    <div class="nav-item has-menu">
+      <button class="nav-trigger" type="button"><span data-vi="Đăng ký" data-en="Registration">Đăng ký</span><span class="chev">⌄</span></button>
+      <div class="dropdown">
+        <a href="#forms"><b data-vi="Tổng quan đăng ký" data-en="Registration overview">Tổng quan đăng ký</b><small data-vi="Biểu mẫu đang mở, điều kiện và quy trình tiếp nhận hồ sơ." data-en="Open forms, requirements and application workflow.">Biểu mẫu đang mở, điều kiện và quy trình tiếp nhận hồ sơ.</small></a>
+        <a href="#forms"><b data-vi="Thành viên & Core Team" data-en="Members & Core Team">Thành viên & Core Team</b><small data-vi="Đăng ký tham gia và theo dõi hồ sơ nhân sự." data-en="Join and track membership records.">Đăng ký tham gia và theo dõi hồ sơ nhân sự.</small></a>
+        <a href="#form/volunteer"><b data-vi="Tình nguyện viên" data-en="Volunteers">Tình nguyện viên</b><small data-vi="TNV chung, TNV dạy học và vị trí chuyên môn." data-en="General, teaching and specialist volunteer roles.">TNV chung, TNV dạy học và vị trí chuyên môn.</small></a>
+      </div>
+    </div>
+
+    <div class="nav-item has-menu">
+      <button class="nav-trigger" type="button"><span data-vi="Lớp học" data-en="Classes">Lớp học</span><span class="chev">⌄</span></button>
+      <div class="dropdown">
+        <a href="#classes"><b data-vi="Danh sách lớp học" data-en="Class directory">Danh sách lớp học</b><small data-vi="Theo dõi lớp, chương trình và tình trạng tuyển sinh." data-en="Browse classes, programs and enrollment status.">Theo dõi lớp, chương trình và tình trạng tuyển sinh.</small></a>
+        <a href="#form/class"><b data-vi="Đăng ký lớp học" data-en="Class registration">Đăng ký lớp học</b><small data-vi="Gửi hồ sơ học và nhận mã tra cứu." data-en="Submit an application and receive a tracking code.">Gửi hồ sơ học và nhận mã tra cứu.</small></a>
+        <a href="#lookup"><b data-vi="Tra cứu hồ sơ học tập" data-en="Track application">Tra cứu hồ sơ học tập</b><small data-vi="Kiểm tra tình trạng hồ sơ đã gửi." data-en="Check the status of a submitted application.">Kiểm tra tình trạng hồ sơ đã gửi.</small></a>
+      </div>
+    </div>
+
+    <div class="nav-item has-menu">
+      <button class="nav-trigger" type="button"><span data-vi="Hoạt động" data-en="Activities">Hoạt động</span><span class="chev">⌄</span></button>
+      <div class="dropdown">
+        <a href="#events"><b data-vi="Hoạt động & Sự kiện" data-en="Activities & Events">Hoạt động & Sự kiện</b><small data-vi="Chương trình giáo dục, cộng đồng và tình nguyện." data-en="Education, community and volunteer programs.">Chương trình giáo dục, cộng đồng và tình nguyện.</small></a>
+        <a href="#form/event"><b data-vi="Đăng ký hoạt động" data-en="Activity registration">Đăng ký hoạt động</b><small data-vi="Đăng ký các chương trình đang tiếp nhận hồ sơ." data-en="Apply to programs currently accepting registrations.">Đăng ký các chương trình đang tiếp nhận hồ sơ.</small></a>
+      </div>
+    </div>
+
+    <div class="nav-item has-menu">
+      <button class="nav-trigger" type="button"><span data-vi="Đơn vị" data-en="Units">Đơn vị</span><span class="chev">⌄</span></button>
+      <div class="dropdown">
+        <a href="#units"><b data-vi="Đơn vị trực thuộc" data-en="Affiliated units">Đơn vị trực thuộc</b><small data-vi="Thông tin đơn vị, phạm vi hoạt động và đầu mối phụ trách." data-en="Units, scope of work and responsible contacts.">Thông tin đơn vị, phạm vi hoạt động và đầu mối phụ trách.</small></a>
+      </div>
+    </div>
+
+    <a href="#news" data-vi="Tin tức" data-en="News">Tin tức</a>
+
+    <div class="nav-item has-menu">
+      <button class="nav-trigger" type="button"><span data-vi="Tra cứu" data-en="Lookup">Tra cứu</span><span class="chev">⌄</span></button>
+      <div class="dropdown dropdown-end">
+        <a href="#lookup"><b data-vi="Tra cứu hồ sơ" data-en="Application lookup">Tra cứu hồ sơ</b><small data-vi="Kiểm tra trạng thái hồ sơ bằng mã hồ sơ và email." data-en="Check an application by tracking code and email.">Kiểm tra trạng thái hồ sơ bằng mã hồ sơ và email.</small></a>
+        <a href="#lookup"><b data-vi="Xác thực GCN/GXN" data-en="Certificate verification">Xác thực GCN/GXN</b><small data-vi="Xác minh giấy chứng nhận và giấy xác nhận do SFN phát hành." data-en="Verify certificates and confirmation letters issued by SFN.">Xác minh giấy chứng nhận và giấy xác nhận do SFN phát hành.</small></a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="header-actions">
+    <button class="langbtn" id="langBtn" type="button" title="Language">EN</button>
+    <button class="iconbtn" id="themeBtn" title="Đổi giao diện">◐</button>
+    <button class="primary" id="accountBtn">Đăng nhập</button>
+  </div>
+</header>
+
+<main class="container" id="app"><div class="loading">Đang tải Sky First Network…</div></main>
+
+<div id="modalRoot"></div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <section class="footer-brand">
+      <img src="/assets/sfn-logo.png" alt="Sky First Network">
+      <h2>Sky First Network</h2>
+      <p data-vi="Mạng lưới Giáo dục và Phát triển Cộng đồng Sky First" data-en="Sky First Education & Community Development Network">Mạng lưới Giáo dục và Phát triển Cộng đồng Sky First</p>
+      <p class="footer-note" data-vi="Kết nối giáo dục, tri thức và phát triển cộng đồng trên một hệ thống thống nhất." data-en="Connecting education, knowledge and community development through one unified platform.">Kết nối giáo dục, tri thức và phát triển cộng đồng trên một hệ thống thống nhất.</p>
+    </section>
+    <section>
+      <h3 data-vi="Liên kết nhanh" data-en="Quick links">Liên kết nhanh</h3>
+      <a href="#forms" data-vi="Đăng ký" data-en="Registration">Đăng ký</a>
+      <a href="#classes" data-vi="Lớp học" data-en="Classes">Lớp học</a>
+      <a href="#events" data-vi="Hoạt động" data-en="Activities">Hoạt động</a>
+      <a href="#units" data-vi="Đơn vị" data-en="Units">Đơn vị</a>
+      <a href="#news" data-vi="Tin tức" data-en="News">Tin tức</a>
+    </section>
+    <section>
+      <h3 data-vi="Tra cứu & Hệ thống" data-en="Lookup & Systems">Tra cứu & Hệ thống</h3>
+      <a href="#lookup" data-vi="Tra cứu hồ sơ" data-en="Application lookup">Tra cứu hồ sơ</a>
+      <a href="#lookup" data-vi="Xác thực GCN/GXN" data-en="Certificate verification">Xác thực GCN/GXN</a>
+      <a href="https://ctt.skyfirst.io.vn" target="_blank" rel="noopener">ctt.skyfirst.io.vn</a>
+      <a href="https://academic.skyfirst.io.vn" target="_blank" rel="noopener">academic.skyfirst.io.vn</a>
+      <a href="https://tnv.skyfirst.io.vn" target="_blank" rel="noopener">tnv.skyfirst.io.vn</a>
+    </section>
+    <section class="footer-contact">
+      <h3 data-vi="Thông tin liên hệ" data-en="Contact information">Thông tin liên hệ</h3>
+      <a href="https://www.skyfirst.io.vn" target="_blank" rel="noopener"><b data-vi="Website chính thức" data-en="Official website">Website chính thức</b><small>www.skyfirst.io.vn</small></a>
+      <a href="mailto:skyfirst.ec@gmail.com"><b data-vi="Email liên hệ" data-en="Contact email">Email liên hệ</b><small>skyfirst.ec@gmail.com</small></a>
+      <a href="mailto:hotro.sfn@gmail.com"><b data-vi="Email hỗ trợ" data-en="Support email">Email hỗ trợ</b><small>hotro.sfn@gmail.com</small></a>
+      <a href="tel:+84924910210"><b data-vi="Điện thoại/Zalo" data-en="Phone/Zalo">Điện thoại/Zalo</b><small>0924 910 210</small></a>
+    </section>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Sky First Network (SFN)</span>
+    <span><a href="#home" data-vi="Bản quyền" data-en="Copyright">Bản quyền</a> · <a href="#home" data-vi="Quyền riêng tư" data-en="Privacy">Quyền riêng tư</a></span>
+  </div>
+</footer>
+<script type="module" src="/app.js"></script>
+<script src="/ui-enhancements.js" defer></script>
+</body>
+</html>
