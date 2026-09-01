@@ -6,7 +6,7 @@ import {hasPermission, highestRoleLevel, roleLevel} from "./permissions.js";
 import {sendTemplatedEmail} from "./email.js";
 
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
-const PASSWORD_ITERATIONS = 100000;
+const PASSWORD_ITERATIONS = 150000;
 
 async function loadRoles(env, userId) {
   const rs = await env.DB.prepare(`
