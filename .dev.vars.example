@@ -1,4 +1,0 @@
-# Local development only. Copy to .dev.vars and NEVER commit it.
-RESEND_API_KEY=
-GOOGLE_CLIENT_SECRET=
-TURNSTILE_SECRET_KEY=
