@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e56b2">
+<title>Sky First Network — Cổng Thông tin & Thành viên</title>
+<meta name="description" content="Cổng đăng ký, thành viên, tình nguyện viên, lớp học, sự kiện và quản trị của Sky First Network.">
+<meta property="og:title" content="Sky First Network">
+<meta property="og:description" content="Mạng lưới Giáo dục và Phát triển Cộng đồng Sky First">
+<meta property="og:image" content="/assets/sfn-wordmark.png">
+<link rel="icon" type="image/png" href="/assets/sfn-logo.png">
+<link rel="apple-touch-icon" href="/assets/sfn-logo.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" id="siteBrand" href="#home"><img src="/assets/sfn-logo.png" alt="Sky First"><div>SKY FIRST NETWORK<small>Mạng lưới Giáo dục và Phát triển Cộng đồng Sky First</small></div></a>
+
+  <button class="menu-toggle" id="menuToggle" type="button" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
+
+  <nav class="nav" id="mainNav">
+    <a href="#home">Trang chủ</a>
+
+    <div class="nav-item has-menu">
+      <button class="nav-trigger" type="button"><span>Đăng ký</span><span class="chev">⌄</span></button>
+      <div class="dropdown">
+        <a href="#forms"><b>Tổng quan đăng ký</b><small>Biểu mẫu đang mở, điều kiện và quy trình tiếp nhận hồ sơ.</small></a>
+        <a href="#forms"><b>Thành viên & Core Team</b><small>Đăng ký tham gia và theo dõi hồ sơ nhân sự.</small></a>
+        <a href="#form/volunteer"><b>Tình nguyện viên</b><small>TNV chung, TNV dạy học và vị trí chuyên môn.</small></a>
+      </div>
+    </div>
+
+    <div class="nav-item has-menu">
+      <button class="nav-trigger" type="button"><span>Lớp học</span><span class="chev">⌄</span></button>
+      <div class="dropdown">
+        <a href="#classes"><b>Danh sách lớp học</b><small>Theo dõi lớp, chương trình và tình trạng tuyển sinh.</small></a>
+        <a href="#form/class"><b>Đăng ký lớp học</b><small>Gửi hồ sơ học và nhận mã tra cứu.</small></a>
+        <a href="#lookup"><b>Tra cứu hồ sơ học tập</b><small>Kiểm tra tình trạng hồ sơ đã gửi.</small></a>
+      </div>
+    </div>
+
+    <div class="nav-item has-menu">
+      <button class="nav-trigger" type="button"><span>Hoạt động</span><span class="chev">⌄</span></button>
+      <div class="dropdown">
+        <a href="#events"><b>Hoạt động & Sự kiện</b><small>Chương trình giáo dục, cộng đồng và tình nguyện.</small></a>
+        <a href="#form/event"><b>Đăng ký hoạt động</b><small>Đăng ký các chương trình đang tiếp nhận hồ sơ.</small></a>
+      </div>
+    </div>
+
+    <div class="nav-item has-menu">
+      <button class="nav-trigger" type="button"><span>Đơn vị</span><span class="chev">⌄</span></button>
+      <div class="dropdown">
+        <a href="#units"><b>Đơn vị trực thuộc</b><small>Thông tin đơn vị, phạm vi hoạt động và đầu mối phụ trách.</small></a>
+      </div>
+    </div>
+
+    <a href="#news">Tin tức</a>
+
+    <div class="nav-item has-menu">
+      <button class="nav-trigger" type="button"><span>Tra cứu</span><span class="chev">⌄</span></button>
+      <div class="dropdown dropdown-end">
+        <a href="#lookup"><b>Tra cứu hồ sơ</b><small>Kiểm tra trạng thái hồ sơ bằng mã hồ sơ và email.</small></a>
+        <a href="#lookup"><b>Xác thực GCN/GXN</b><small>Xác minh giấy chứng nhận và giấy xác nhận do SFN phát hành.</small></a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="header-actions">
+    <button class="iconbtn" id="themeBtn" title="Đổi giao diện">◐</button>
+    <button class="primary" id="accountBtn">Đăng nhập</button>
+  </div>
+</header>
+
+<main class="container" id="app"><div class="loading">Đang tải Sky First Network…</div></main>
+
+<div id="modalRoot"></div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <section class="footer-brand">
+      <img src="/assets/sfn-logo.png" alt="Sky First Network">
+      <h2>Sky First Network</h2>
+      <p>Mạng lưới Giáo dục và Phát triển Cộng đồng Sky First</p>
+      <p class="footer-note" id="footerDescription">Kết nối giáo dục, tri thức và phát triển cộng đồng trên một hệ thống thống nhất.</p>
+    </section>
+    <section>
+      <h3>Liên kết nhanh</h3>
+      <a href="#forms">Đăng ký</a>
+      <a href="#classes">Lớp học</a>
+      <a href="#events">Hoạt động</a>
+      <a href="#units">Đơn vị</a>
+      <a href="#news">Tin tức</a>
+    </section>
+    <section>
+      <h3>Tra cứu & Hệ thống</h3>
+      <a href="#lookup">Tra cứu hồ sơ</a>
+      <a href="#lookup">Xác thực GCN/GXN</a>
+      <a href="https://skyfirst.io.vn" target="_blank" rel="noopener"><b>Cổng chính Sky First Network</b><small>skyfirst.io.vn</small></a>
+      <a href="https://tnv.skyfirst.io.vn" target="_blank" rel="noopener"><b>Cổng Tình nguyện viên</b><small>tnv.skyfirst.io.vn</small></a>
+      <a href="https://ctt.sfec.skyfirst.io.vn" target="_blank" rel="noopener"><b>Cổng SFEC</b><small>ctt.sfec.skyfirst.io.vn</small></a>
+    </section>
+    <section class="footer-contact">
+      <h3>Thông tin liên hệ</h3>
+      <a href="https://www.skyfirst.io.vn" target="_blank" rel="noopener"><b>Website chính thức</b><small>www.skyfirst.io.vn</small></a>
+      <a id="footerEmailLink" href="mailto:skyfirst.ec@gmail.com"><b>Email liên hệ</b><small id="footerEmailText">skyfirst.ec@gmail.com</small></a>
+      <a id="footerSupportLink" href="mailto:hotro.sfn@gmail.com"><b>Email hỗ trợ</b><small id="footerSupportText">hotro.sfn@gmail.com</small></a>
+      <a href="tel:+84924910210"><b>Điện thoại/Zalo</b><small>0924 910 210</small></a>
+    </section>
+  </div>
+  <div class="footer-bottom">
+    <span id="footerCopyright">© 2026 Sky First Network (SFN)</span>
+    <span><a href="https://skyfirst.io.vn" target="_blank" rel="noopener">Cổng chính</a> · <a href="#home">Quyền riêng tư</a> · <a href="mailto:hotro.sfn@gmail.com">Hỗ trợ</a></span>
+  </div>
+</footer>
+<script type="module" src="/app.js"></script>
+<script src="/ui-enhancements.js" defer></script>
+</body>
+</html>
