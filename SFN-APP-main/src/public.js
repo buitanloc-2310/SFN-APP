@@ -239,7 +239,19 @@ export async function publicRoute(request,env,url){
       else labeledAnswers[f.label]=answers[f.key]??"";
     }
     const emailParts=answersToEmail(labeledAnswers);
-    const vars={code,form_name:row.name,full_name:fullName,email,...emailParts};
+    const submittedAt=new Intl.DateTimeFormat("vi-VN",{
+      timeZone:"Asia/Ho_Chi_Minh",hour:"2-digit",minute:"2-digit",
+      day:"2-digit",month:"2-digit",year:"numeric"
+    }).format(new Date());
+    const vars={
+      code,
+      form_name:row.name,
+      full_name:fullName,
+      email,
+      submitted_at:submittedAt,
+      status:"ĐÃ TIẾP NHẬN",
+      ...emailParts
+    };
     const receiver=row.recipient_email||await getSetting(env,"receiver_email","skyfirst.ec@gmail.com");
     await sendTemplatedEmail(env,"submission_internal",receiver,vars);
     if(email) await sendTemplatedEmail(env,"submission_confirmation",email,vars);
