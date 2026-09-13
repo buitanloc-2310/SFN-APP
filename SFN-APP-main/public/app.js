@@ -235,7 +235,7 @@ async function renderForm(idForm){
       const btn=form.querySelector('button[type="submit"]');btn.disabled=true;btn.textContent="Đang gửi…";
       try{
         const r=await api(`/api/forms/${encodeURIComponent(idForm)}/submit`,{method:"POST",body:fd});
-        form.innerHTML=`<div class="notice good"><h2>Hồ sơ đã được tiếp nhận</h2><p><b>Mã hồ sơ: ${E(r.code)}</b></p><p>Hãy lưu mã này để tra cứu. Hệ thống cũng gửi email xác nhận nếu email gửi đi đã được cấu hình.</p><div class="actions"><a class="primary" href="#lookup">Tra cứu hồ sơ</a><a class="secondary" href="#home">Trang chủ</a></div></div>`;
+        form.innerHTML=`<div class="notice good"><h2>Thông tin đăng ký đã được tiếp nhận</h2><p><b>Mã đăng ký: ${E(r.code)}</b></p><p>${r.email_sent?"Thông tin đăng ký của bạn đã được gửi đến địa chỉ email đăng ký.":"Thông tin đăng ký đã được lưu thành công. Email xác nhận đang được hệ thống xử lý."}</p><div class="actions"><a class="primary" href="#lookup">Tra cứu</a><a class="secondary" href="#home">Trang chủ</a></div></div>`;
       }catch(err){toast(errorText(err),"bad");btn.disabled=false;btn.textContent="Gửi hồ sơ"}
     });
   }catch(err){app.innerHTML=`<div class="notice bad">${E(errorText(err))}</div>`}
@@ -1302,154 +1302,97 @@ async function adminForms(main){
   const d=await api("/api/admin/forms");
   state.admin.forms=d.items||[];
 
-  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Form Builder</h1><button class="primary" onclick="createForm()">+ Tạo biểu mẫu</button></div><div class="grid">${state.admin.forms.map(f=>`<div class="card"><span class="pill">${E(f.prefix)}</span><h3>${E(f.name)}</h3><p class="muted">${E(f.description)}</p><p>Phiên bản: ${f.version} • ${f.enabled?"Đang bật":"Đang tắt"}</p><button class="secondary" onclick="editForm('${E(f.id)}')">Chỉnh biểu mẫu</button></div>`).join("")}</div>`;
+  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Form Builder</h1><button class="primary" onclick="createForm()">+ Tạo biểu mẫu</button></div>
+  <p class="muted">Tạo, chỉnh sửa, nhân bản và bật/tắt biểu mẫu ngay trong Admin. Mặc định mọi biểu mẫu bắt buộc ảnh cá nhân; riêng Lớp học / Học viên mới không bắt buộc.</p>
+  <div class="grid">${state.admin.forms.map(f=>`<div class="card"><span class="pill">${E(f.prefix)}</span><h3>${E(f.name)}</h3><p class="muted">${E(f.description)}</p><p>Phiên bản: ${f.version} • ${f.enabled?"Đang bật":"Đang tắt"}</p><p class="small muted">Ảnh cá nhân: ${f.config?.profile_photo_required===false?"Không bắt buộc":"Bắt buộc"}</p><div class="actions"><button class="secondary" onclick="editForm('${E(f.id)}')">Chỉnh sửa</button><button class="secondary" onclick="cloneForm('${E(f.id)}')">Sao chép</button></div></div>`).join("")}</div>`;
 }
 
 window.editForm=idForm=>{
   const f=state.admin.forms.find(x=>x.id===idForm);
   if(!f)return;
   state.formBuilder=JSON.parse(JSON.stringify(f));
+  state.formBuilder.config.form_type=state.formBuilder.config.form_type||(f.id==="class"?"class":"general");
+  if(typeof state.formBuilder.config.profile_photo_required!=="boolean") state.formBuilder.config.profile_photo_required=state.formBuilder.config.form_type!=="class";
   renderFormBuilder();
 };
 
 function renderFormBuilder(){
   const f=state.formBuilder,c=f.config;
-
   modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Chỉnh biểu mẫu — ${E(f.name)}</h2>
    <div class="row2"><div class="field"><label>Tên biểu mẫu</label><input id="fbName" value="${E(f.name)}"></div><div class="field"><label>Mã tiền tố</label><input id="fbPrefix" value="${E(f.prefix)}"></div></div>
    <div class="field"><label>Mô tả</label><textarea id="fbDesc">${E(f.description||"")}</textarea></div>
-   <div id="builderSections">${(c.sections||[]).map((s,si)=>`<div class="builder-section"><div class="toolbar"><b>${E(s.title)}</b><button class="secondary" onclick="addBuilderField(${si})">+ Câu hỏi</button><button class="danger" onclick="deleteBuilderSection(${si})">Xóa phần</button></div>${(s.fields||[]).map((x,fi)=>`<div class="builder-field"><span><b>${E(x.label)}</b><br><span class="small muted">${E(x.key)}</span></span><span>${E(x.type)}</span><span>${x.required?"Bắt buộc":""}</span><span><button class="ghost" onclick="moveField(${si},${fi},-1)">↑</button><button class="ghost" onclick="moveField(${si},${fi},1)">↓</button><button class="danger" onclick="deleteBuilderField(${si},${fi})">×</button></span></div>`).join("")}</div>`).join("")}</div>
-   <div class="actions"><button class="secondary" onclick="addBuilderSection()">+ Thêm phần</button><button class="primary" onclick="saveFormBuilder()">Lưu phiên bản mới</button></div>`);
+   <div class="row2"><div class="field"><label>Loại biểu mẫu</label><select id="fbType"><option value="general" ${c.form_type!=="class"&&c.form_type!=="student"?"selected":""}>Đăng ký chung</option><option value="class" ${c.form_type==="class"?"selected":""}>Lớp học</option><option value="student" ${c.form_type==="student"?"selected":""}>Học viên mới</option></select></div><div class="field"><label>Trạng thái</label><select id="fbEnabled"><option value="1" ${f.enabled?"selected":""}>Đang bật</option><option value="0" ${!f.enabled?"selected":""}>Đang tắt</option></select></div></div>
+   <div class="check"><input id="fbPhotoRequired" type="checkbox" ${c.profile_photo_required!==false?"checked":""}><label>Bắt buộc ảnh cá nhân</label></div><p class="small muted">Lớp học / Học viên mới có thể bỏ yêu cầu ảnh. Các đăng ký khác nên giữ bắt buộc.</p>
+   <div id="builderSections">${(c.sections||[]).map((sec,si)=>`<div class="builder-section"><div class="toolbar"><b>${E(sec.title)}</b><button class="secondary" onclick="addBuilderField(${si})">+ Câu hỏi</button><button class="danger" onclick="deleteBuilderSection(${si})">Xóa phần</button></div>${(sec.fields||[]).map((x,fi)=>`<div class="builder-field"><span><b>${E(x.label)}</b><br><span class="small muted">${E(x.key)}</span></span><span>${E(x.type)}</span><span>${x.required?"Bắt buộc":"Không bắt buộc"}</span><span><button class="ghost" onclick="moveField(${si},${fi},-1)">↑</button><button class="ghost" onclick="moveField(${si},${fi},1)">↓</button><button class="secondary" onclick="editBuilderField(${si},${fi})">Sửa</button><button class="danger" onclick="deleteBuilderField(${si},${fi})">×</button></span></div>`).join("")}</div>`).join("")}</div>
+   <div class="actions"><button class="secondary" onclick="addBuilderSection()">+ Thêm phần</button><button class="secondary" onclick="previewFormBuilder()">Xem trước</button><button class="primary" onclick="saveFormBuilder()">Lưu phiên bản mới</button></div>`);
+  document.getElementById("fbType").onchange=e=>{
+    const type=e.target.value;
+    if(type==="class"||type==="student") document.getElementById("fbPhotoRequired").checked=false;
+    else document.getElementById("fbPhotoRequired").checked=true;
+  };
 }
 
 window.addBuilderSection=()=>{
-  const title=prompt("Tên phần:");
-  if(!title)return;
-  state.formBuilder.config.sections.push({title,fields:[]});
-  renderFormBuilder();
+  const title=prompt("Tên phần:"); if(!title)return;
+  state.formBuilder.config.sections.push({title,fields:[]}); renderFormBuilder();
 };
-
-window.deleteBuilderSection=i=>{
-  if(confirm("Xóa phần này?")){
-    state.formBuilder.config.sections.splice(i,1);
-    renderFormBuilder();
-  }
-};
-
+window.deleteBuilderSection=i=>{if(confirm("Xóa phần này?")){state.formBuilder.config.sections.splice(i,1);renderFormBuilder();}};
 window.addBuilderField=si=>{
-  const label=prompt("Nhãn câu hỏi:");
-  if(!label)return;
-
-  const key=(
-    prompt("Mã kỹ thuật (không dấu, không khoảng trắng):")||
-    label.toLowerCase().replace(/\s+/g,"_").replace(/[^\w]/g,"")
-  ).slice(0,50);
-
-  const type=prompt(
-    "Loại: text / email / date / textarea / select / checkbox / file",
-    "text"
-  )||"text";
-
-  const req=confirm("Bắt buộc trả lời?");
-  let options=[];
-
-  if(type==="select"){
-    options=(prompt("Các lựa chọn, cách nhau bằng |","")||"")
-      .split("|")
-      .map(x=>x.trim())
-      .filter(Boolean);
-  }
-
-  state.formBuilder.config.sections[si].fields.push({
-    key,label,type,required:req,options
-  });
-
-  renderFormBuilder();
+  const label=prompt("Nhãn câu hỏi:"); if(!label)return;
+  const key=(prompt("Mã kỹ thuật (không dấu, không khoảng trắng):")||label.toLowerCase().replace(/\s+/g,"_").replace(/[^\w]/g,"")).slice(0,50);
+  const type=prompt("Loại: text / email / date / textarea / select / checkbox / file","text")||"text";
+  const req=confirm("Bắt buộc trả lời?"); let options=[];
+  if(type==="select")options=(prompt("Các lựa chọn, cách nhau bằng |","")||"").split("|").map(x=>x.trim()).filter(Boolean);
+  state.formBuilder.config.sections[si].fields.push({key,label,type,required:req,options}); renderFormBuilder();
 };
-
-window.deleteBuilderField=(si,fi)=>{
-  state.formBuilder.config.sections[si].fields.splice(fi,1);
-  renderFormBuilder();
+window.editBuilderField=(si,fi)=>{
+  const x=state.formBuilder.config.sections[si].fields[fi]; if(!x)return;
+  const label=prompt("Nhãn câu hỏi:",x.label); if(label===null)return;
+  const type=prompt("Loại: text / email / date / textarea / select / checkbox / file",x.type||"text")||x.type;
+  const required=confirm("Đặt trường này là bắt buộc?\nOK = Bắt buộc, Cancel = Không bắt buộc");
+  let options=x.options||[];
+  if(type==="select") options=(prompt("Các lựa chọn, cách nhau bằng |",options.join(" | "))||"").split("|").map(v=>v.trim()).filter(Boolean);
+  Object.assign(x,{label,type,required,options}); renderFormBuilder();
 };
+window.deleteBuilderField=(si,fi)=>{state.formBuilder.config.sections[si].fields.splice(fi,1);renderFormBuilder();};
+window.moveField=(si,fi,dir)=>{const a=state.formBuilder.config.sections[si].fields,j=fi+dir;if(j<0||j>=a.length)return;[a[fi],a[j]]=[a[j],a[fi]];renderFormBuilder();};
 
-window.moveField=(si,fi,dir)=>{
-  const a=state.formBuilder.config.sections[si].fields;
-  const j=fi+dir;
-  if(j<0||j>=a.length)return;
-  [a[fi],a[j]]=[a[j],a[fi]];
-  renderFormBuilder();
+window.previewFormBuilder=()=>{
+  const c=state.formBuilder.config;
+  const html=(c.sections||[]).map(sec=>`<section><h3>${E(sec.title)}</h3>${(sec.fields||[]).map(x=>`<div class="field"><label>${E(x.label)}${x.required?" *":""}</label><div class="small muted">${E(x.type)} • ${E(x.key)}</div></div>`).join("")}</section>`).join("");
+  modal(`<button class="ghost" onclick="renderFormBuilder()">← Quay lại chỉnh sửa</button><h2>Xem trước — ${E(state.formBuilder.name)}</h2><div class="card">${html}</div>`);
 };
 
 window.saveFormBuilder=async()=>{
   state.formBuilder.name=document.getElementById("fbName").value;
   state.formBuilder.prefix=document.getElementById("fbPrefix").value;
   state.formBuilder.description=document.getElementById("fbDesc").value;
-
+  state.formBuilder.enabled=document.getElementById("fbEnabled").value==="1";
+  state.formBuilder.config.form_type=document.getElementById("fbType").value;
+  state.formBuilder.config.profile_photo_required=document.getElementById("fbPhotoRequired").checked;
   try{
-    await api(`/api/admin/forms/${encodeURIComponent(state.formBuilder.id)}`,{
-      method:"PUT",
-      body:{
-        name:state.formBuilder.name,
-        prefix:state.formBuilder.prefix,
-        description:state.formBuilder.description,
-        audience:state.formBuilder.audience,
-        min_age:state.formBuilder.min_age,
-        enabled:!!state.formBuilder.enabled,
-        recipient_email:state.formBuilder.recipient_email,
-        config:state.formBuilder.config
-      }
-    });
-
-    closeModal();
-    toast("Đã lưu phiên bản biểu mẫu.");
-    adminForms(document.getElementById("adminMain"));
-  }catch(e){
-    toast(errorText(e),"bad");
-  }
+    await api(`/api/admin/forms/${encodeURIComponent(state.formBuilder.id)}`,{method:"PUT",body:{name:state.formBuilder.name,prefix:state.formBuilder.prefix,description:state.formBuilder.description,audience:state.formBuilder.audience,min_age:state.formBuilder.min_age,enabled:!!state.formBuilder.enabled,recipient_email:state.formBuilder.recipient_email,config:state.formBuilder.config}});
+    closeModal();toast("Đã lưu phiên bản biểu mẫu.");adminForms(document.getElementById("adminMain"));
+  }catch(e){toast(errorText(e),"bad")}
 };
 
 window.createForm=()=>{
-  const name=prompt("Tên biểu mẫu:");
-  if(!name)return;
+  const name=prompt("Tên biểu mẫu:"); if(!name)return;
+  const idForm=prompt("ID biểu mẫu (vd: volunteer_2026):"); if(!idForm)return;
+  const prefix=prompt("Tiền tố mã đăng ký (vd: SFN-TNV):","SFN-FORM"); if(!prefix)return;
+  const kind=(prompt("Loại biểu mẫu: general / class / student","general")||"general").toLowerCase();
+  const photoRequired=!(kind==="class"||kind==="student");
+  const cfg={id:idForm,name,prefix,description:"",audience:"public",form_type:kind,profile_photo_required:photoRequired,term_codes:["PRIVACY/SFN"],sections:[{title:"Thông tin",fields:[{key:"full_name",label:"Họ và tên",type:"text",required:true},{key:"email",label:"Email",type:"email",required:true}]}]};
+  api("/api/admin/forms",{method:"POST",body:{id:idForm,name,prefix,description:"",audience:"public",config:cfg}}).then(()=>{toast("Đã tạo biểu mẫu.");adminForms(document.getElementById("adminMain"));}).catch(e=>toast(errorText(e),"bad"));
+};
 
-  const idForm=prompt("ID biểu mẫu (vd: scholarship):");
-  if(!idForm)return;
-
-  const prefix=prompt("Tiền tố mã hồ sơ (vd: SFN-HB):","SFN-FORM");
-  if(!prefix)return;
-
-  const cfg={
-    id:idForm,
-    name,
-    prefix,
-    description:"",
-    audience:"public",
-    term_codes:["PRIVACY/SFN"],
-    sections:[
-      {
-        title:"Thông tin",
-        fields:[
-          {key:"full_name",label:"Họ và tên",type:"text",required:true},
-          {key:"email",label:"Email",type:"email",required:true}
-        ]
-      }
-    ]
-  };
-
-  api("/api/admin/forms",{
-    method:"POST",
-    body:{
-      id:idForm,
-      name,
-      prefix,
-      description:"",
-      audience:"public",
-      config:cfg
-    }
-  }).then(()=>{
-    toast("Đã tạo biểu mẫu.");
-    adminForms(document.getElementById("adminMain"));
-  }).catch(e=>toast(errorText(e),"bad"));
+window.cloneForm=idForm=>{
+  const src=state.admin.forms.find(x=>x.id===idForm); if(!src)return;
+  const newId=prompt("ID biểu mẫu mới:",`${src.id}_copy`); if(!newId)return;
+  const newName=prompt("Tên biểu mẫu mới:",`${src.name} — Bản sao`); if(!newName)return;
+  const newPrefix=prompt("Tiền tố mã đăng ký:",src.prefix); if(!newPrefix)return;
+  const cfg=JSON.parse(JSON.stringify(src.config)); cfg.id=newId; cfg.name=newName; cfg.prefix=newPrefix;
+  api("/api/admin/forms",{method:"POST",body:{id:newId,name:newName,prefix:newPrefix,description:src.description||"",audience:src.audience||"public",min_age:src.min_age,recipient_email:src.recipient_email,config:cfg}}).then(()=>{toast("Đã sao chép biểu mẫu.");adminForms(document.getElementById("adminMain"));}).catch(e=>toast(errorText(e),"bad"));
 };
 
 async function adminGeneric(main,type,title,fields){

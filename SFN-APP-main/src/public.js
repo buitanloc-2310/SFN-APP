@@ -38,6 +38,43 @@ async function nextCode(env,prefix){
   const row=await env.DB.prepare("UPDATE counters SET value=value+1 WHERE key=? RETURNING value").bind(key).first();
   return `${prefix}-${year}-${String(row?.value||1).padStart(4,"0")}`;
 }
+function isClassStudentForm(idForm,row,config={}){
+  const kind=String(config.form_type||"").toLowerCase();
+  const name=String(row?.name||config.name||"").toLowerCase();
+  return kind==="class" || kind==="student" || idForm==="class" || /lớp học|học viên/.test(name);
+}
+function normalizeFormConfig(idForm,row,rawConfig){
+  const config=JSON.parse(JSON.stringify(rawConfig||{}));
+  config.form_type=config.form_type||((idForm==="class")?"class":"general");
+  const photoRequired=config.profile_photo_required!==false && !isClassStudentForm(idForm,row,config);
+  config.profile_photo_required=photoRequired;
+  config.sections=Array.isArray(config.sections)?config.sections:[];
+  let photoField=null;
+  for(const section of config.sections){
+    for(const f of section.fields||[]){
+      if(f.key==="profile_photo" || f.key==="photo") photoField=f;
+    }
+  }
+  if(photoRequired){
+    if(photoField){
+      photoField.required=true;
+      photoField.type="file";
+      photoField.accept=["image/jpeg","image/png"];
+      photoField.is_profile_photo=true;
+    }else{
+      if(!config.sections.length) config.sections.push({title:"Thông tin cá nhân",fields:[]});
+      config.sections[0].fields=config.sections[0].fields||[];
+      config.sections[0].fields.unshift({
+        key:"profile_photo",label:"Ảnh cá nhân",type:"file",required:true,
+        accept:["image/jpeg","image/png"],is_profile_photo:true
+      });
+    }
+  }else if(photoField){
+    photoField.required=false;
+    photoField.is_profile_photo=true;
+  }
+  return config;
+}
 function validateForm(config,answers,fileKeys=new Set()){
   const errors=[];
   if(config.min_age){
@@ -52,7 +89,7 @@ function validateForm(config,answers,fileKeys=new Set()){
   }
   return errors;
 }
-async function storeFile(env,file,{ownerUserId=null,submissionCode=null,fieldKey=""}={}){
+async function storeFile(env,file,{ownerUserId=null,submissionCode=null,fieldKey="",emailVisible=false}={}){
   const maxMb=Number(await getSetting(env,"max_upload_mb",10));
   const max=maxMb*1024*1024;
   if(file.size>max) throw new Error(`FILE_TOO_LARGE:${maxMb}MB`);
@@ -64,9 +101,10 @@ async function storeFile(env,file,{ownerUserId=null,submissionCode=null,fieldKey
   if(file.type && !allowed.has(file.type)) throw new Error("FILE_TYPE_NOT_ALLOWED");
   const id=uid("file"),name=sanitizeFilename(file.name),key=`private/${new Date().getUTCFullYear()}/${id}/${name}`;
   await env.FILES.put(key,file.stream(),{httpMetadata:{contentType:file.type||"application/octet-stream"}});
-  await env.DB.prepare("INSERT INTO files(id,owner_user_id,submission_code,field_key,r2_key,filename,mime,size,visibility) VALUES(?,?,?,?,?,?,?,?, 'private')")
-    .bind(id,ownerUserId,submissionCode,fieldKey,key,name,file.type||"",file.size||0).run();
-  return id;
+  const emailToken=emailVisible?randomToken(32):null;
+  await env.DB.prepare("INSERT INTO files(id,owner_user_id,submission_code,field_key,r2_key,filename,mime,size,visibility,email_token) VALUES(?,?,?,?,?,?,?,?, 'private',?)")
+    .bind(id,ownerUserId,submissionCode,fieldKey,key,name,file.type||"",file.size||0,emailToken).run();
+  return {id,email_token:emailToken};
 }
 async function termsSnapshot(env,codes=[]){
   const out=[];
@@ -140,7 +178,7 @@ export async function publicRoute(request,env,url){
     const idForm=decodeURIComponent(formMatch[1]);
     const row=await env.DB.prepare("SELECT id,name,prefix,description,audience,min_age,version,config_json FROM forms WHERE id=? AND enabled=1").bind(idForm).first();
     if(!row) return json({error:"FORM_NOT_FOUND"},404);
-    const config=JSON.parse(row.config_json);
+    const config=normalizeFormConfig(idForm,row,JSON.parse(row.config_json));
     const terms=[];
     for(const code of config.term_codes||[]){
       const t=await env.DB.prepare("SELECT code,name,version,body,status FROM terms WHERE code=? AND status='published'").bind(code).first();
@@ -158,7 +196,7 @@ export async function publicRoute(request,env,url){
 
     const row=await env.DB.prepare("SELECT * FROM forms WHERE id=? AND enabled=1").bind(idForm).first();
     if(!row) return json({error:"FORM_NOT_FOUND"},404);
-    const config=JSON.parse(row.config_json);
+    const config=normalizeFormConfig(idForm,row,JSON.parse(row.config_json));
 
     let payload={},formData=null;
     const ct=request.headers.get("content-type")||"";
@@ -199,8 +237,8 @@ export async function publicRoute(request,env,url){
         const file=formData.get(`file:${f.key}`);
         if(file && typeof file==="object" && "size" in file && file.size>0){
           try{
-            const fid=await storeFile(env,file,{ownerUserId:user?.id||null,submissionCode:code,fieldKey:f.key});
-            fileIds[f.key]=fid;
+            const stored=await storeFile(env,file,{ownerUserId:user?.id||null,submissionCode:code,fieldKey:f.key,emailVisible:!!f.is_profile_photo});
+            fileIds[f.key]=stored;
           }catch(err){
             await env.DB.prepare("DELETE FROM submissions WHERE code=?").bind(code).run();
             return json({error:String(err.message||err)},400);
@@ -208,7 +246,7 @@ export async function publicRoute(request,env,url){
         }
       }
       if(Object.keys(fileIds).length){
-        const merged={...answers,...Object.fromEntries(Object.entries(fileIds).map(([k,v])=>[k,{file_id:v}]))};
+        const merged={...answers,...Object.fromEntries(Object.entries(fileIds).map(([k,v])=>[k,{file_id:v.id}]))};
         await env.DB.prepare("UPDATE submissions SET answers_json=? WHERE code=?").bind(JSON.stringify(merged),code).run();
       }
     }
@@ -235,29 +273,33 @@ export async function publicRoute(request,env,url){
 
     const labeledAnswers={};
     for(const f of flattenFields(config,answers)){
-      if(f.type==="file"){ if(fileIds[f.key]) labeledAnswers[f.label]=`${env.APP_URL}/api/files/${fileIds[f.key]}`; }
+      if(f.type==="file"){ if(fileIds[f.key]) labeledAnswers[f.label]=`${env.APP_URL}/api/files/${fileIds[f.key].id}`; }
       else labeledAnswers[f.label]=answers[f.key]??"";
     }
     const emailParts=answersToEmail(labeledAnswers);
     const submittedAt=new Intl.DateTimeFormat("vi-VN",{
-      timeZone:"Asia/Ho_Chi_Minh",hour:"2-digit",minute:"2-digit",
-      day:"2-digit",month:"2-digit",year:"numeric"
+      timeZone:"Asia/Ho_Chi_Minh",hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"
     }).format(new Date());
+    const profileKey=Object.keys(fileIds).find(k=>{
+      const f=flattenFields(config,answers).find(x=>x.key===k);
+      return f?.is_profile_photo || k==="profile_photo" || k==="photo";
+    });
+    const profile=profileKey?fileIds[profileKey]:null;
+    const profileImageUrl=profile?.email_token?`${env.APP_URL}/api/email-files/${encodeURIComponent(profile.id)}?token=${encodeURIComponent(profile.email_token)}`:"";
+    const profileImageBlock=profileImageUrl?`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:20px;background:linear-gradient(120deg,#faf4ff,#fff7f2);border:1px solid #eadcf0;border-radius:18px;"><tr><td align="center" style="padding:20px"><div style="font-size:12px;font-weight:800;letter-spacing:1.1px;color:#765d7c;text-transform:uppercase;margin-bottom:12px">ẢNH CÁ NHÂN</div><img src="${escapeHtml(profileImageUrl)}" alt="Ảnh cá nhân" width="132" style="display:block;width:132px;height:164px;object-fit:cover;border-radius:14px;border:4px solid #fff;box-shadow:0 8px 22px rgba(89,40,101,.16)"></td></tr></table>`:"";
     const vars={
-      code,
-      form_name:row.name,
-      full_name:fullName,
-      email,
-      submitted_at:submittedAt,
-      status:"ĐÃ TIẾP NHẬN",
-      ...emailParts
+      code,form_name:row.name,full_name:fullName,email,...emailParts,
+      FULL_NAME:escapeHtml(fullName),EMAIL:escapeHtml(email),APPLICATION_ID:escapeHtml(code),
+      APPLICATION_TYPE:escapeHtml(row.name),SUBMITTED_AT:escapeHtml(submittedAt),STATUS:"ĐÃ TIẾP NHẬN",
+      PROFILE_IMAGE_BLOCK:profileImageBlock
     };
     const receiver=row.recipient_email||await getSetting(env,"receiver_email","skyfirst.ec@gmail.com");
     await sendTemplatedEmail(env,"submission_internal",receiver,vars);
-    if(email) await sendTemplatedEmail(env,"submission_confirmation",email,vars);
+    let confirmation={ok:false};
+    if(email) confirmation=await sendTemplatedEmail(env,"submission_confirmation",email,vars);
 
-    await audit(env,request,user,"Tiếp nhận hồ sơ","submission",code,{form_id:idForm});
-    return json({ok:true,code,status:"Đã tiếp nhận"});
+    await audit(env,request,user,"Tiếp nhận hồ sơ","submission",code,{form_id:idForm,email_sent:!!confirmation.ok});
+    return json({ok:true,code,status:"Đã tiếp nhận",email_sent:!!confirmation.ok});
   }
   if(p==="/api/lookup/submission"&&request.method==="GET"){
     const code=String(url.searchParams.get("code")||"").trim();

@@ -58,6 +58,24 @@ async function servePublicMedia(request,env,url){
   return new Response(obj.body,{headers:h});
 }
 
+async function serveEmailFile(request,env,url){
+  const m=url.pathname.match(/^\/api\/email-files\/([^/]+)$/);
+  if(!m||request.method!=="GET") return null;
+  if(!env.FILES) return json({error:"STORAGE_UNAVAILABLE"},503);
+  const id=decodeURIComponent(m[1]);
+  const token=String(url.searchParams.get("token")||"");
+  if(!token) return json({error:"FORBIDDEN"},403);
+  const meta=await env.DB.prepare("SELECT * FROM files WHERE id=? AND email_token=?").bind(id,token).first();
+  if(!meta) return json({error:"FILE_NOT_FOUND"},404);
+  const obj=await env.FILES.get(meta.r2_key);
+  if(!obj) return json({error:"OBJECT_NOT_FOUND"},404);
+  const headers=new Headers();
+  headers.set("content-type",meta.mime||obj.httpMetadata?.contentType||"image/jpeg");
+  headers.set("cache-control","private, max-age=604800");
+  headers.set("x-content-type-options","nosniff");
+  return new Response(obj.body,{headers});
+}
+
 async function serveFile(request,env,url){
   const m=url.pathname.match(/^\/api\/files\/([^/]+)$/);
   if(!m||request.method!=="GET") return null;
@@ -116,6 +134,7 @@ async function handle(request,env,ctx){
   });
 
   const mediaResp=await servePublicMedia(request,env,url); if(mediaResp) return mediaResp;
+  const emailFileResp=await serveEmailFile(request,env,url); if(emailFileResp) return emailFileResp;
   const fileResp=await serveFile(request,env,url); if(fileResp) return fileResp;
   const auth=await authRoute(request,env,url); if(auth) return auth;
   const pub=await publicRoute(request,env,url); if(pub) return pub;
