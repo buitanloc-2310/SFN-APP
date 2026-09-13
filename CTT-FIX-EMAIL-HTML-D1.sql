@@ -1,6 +1,3 @@
--- CTT Final Upgrade: profile photo in confirmation email + canonical HTML template
-ALTER TABLE files ADD COLUMN email_token TEXT;
-
 -- Sky First CTT: force the ONE canonical confirmation email template
 UPDATE email_templates
 SET
@@ -90,4 +87,3 @@ Mã hồ sơ dưới đây được sử dụng để tra cứu thông tin và t
   enabled=1,
   updated_at=CURRENT_TIMESTAMP
 WHERE key='submission_confirmation';
-

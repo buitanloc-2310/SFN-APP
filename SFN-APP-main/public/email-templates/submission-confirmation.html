@@ -24,7 +24,7 @@
 
 <tr>
 <td style="padding:36px 42px 12px;">
-<p style="margin:0 0 18px;font-size:16px;line-height:1.75;">Xin chào <strong style="color:#722b82;">{{full_name}}</strong>,</p>
+<p style="margin:0 0 18px;font-size:16px;line-height:1.75;">Xin chào <strong style="color:#722b82;">{{FULL_NAME}}</strong>,</p>
 <p style="margin:0 0 25px;font-size:16px;line-height:1.75;">
 Sky First Network xác nhận đã tiếp nhận thông tin của bạn trên <strong>Cổng Thông tin</strong>.
 Mã hồ sơ dưới đây được sử dụng để tra cứu thông tin và trạng thái xử lý.
@@ -33,18 +33,20 @@ Mã hồ sơ dưới đây được sử dụng để tra cứu thông tin và t
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:linear-gradient(120deg,#f7efff,#fff1f1,#fff6eb);border:1px solid #ead9f0;border-radius:20px;">
 <tr><td align="center" style="padding:25px 18px;">
 <div style="font-size:12px;color:#765d7c;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;">MÃ HỒ SƠ</div>
-<div style="margin-top:9px;font-size:26px;font-weight:800;color:#762b82;letter-spacing:.7px;">{{code}}</div>
+<div style="margin-top:9px;font-size:26px;font-weight:800;color:#762b82;letter-spacing:.7px;">{{APPLICATION_ID}}</div>
 </td></tr>
 </table>
+
+{{PROFILE_IMAGE_BLOCK}}
 
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:20px;border:1px solid #e1e8ef;border-radius:18px;background:#fff;">
 <tr><td style="padding:22px 24px;">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-<tr><td style="padding:9px 0;color:#687d90;font-size:14px;">Họ và tên</td><td align="right" style="padding:9px 0;font-size:14px;font-weight:700;">{{full_name}}</td></tr>
-<tr><td style="padding:9px 0;color:#687d90;font-size:14px;">Email</td><td align="right" style="padding:9px 0;font-size:14px;font-weight:700;">{{email}}</td></tr>
-<tr><td style="padding:9px 0;color:#687d90;font-size:14px;">Loại hồ sơ</td><td align="right" style="padding:9px 0;font-size:14px;font-weight:700;">{{form_name}}</td></tr>
-<tr><td style="padding:9px 0;color:#687d90;font-size:14px;">Ngày tiếp nhận</td><td align="right" style="padding:9px 0;font-size:14px;font-weight:700;">{{submitted_at}}</td></tr>
-<tr><td style="padding:9px 0;color:#687d90;font-size:14px;">Trạng thái</td><td align="right" style="padding:9px 0;"><span style="display:inline-block;padding:8px 13px;border-radius:999px;background:#f2e8ff;color:#672b8b;font-size:12px;font-weight:800;">{{status}}</span></td></tr>
+<tr><td style="padding:9px 0;color:#687d90;font-size:14px;">Họ và tên</td><td align="right" style="padding:9px 0;font-size:14px;font-weight:700;">{{FULL_NAME}}</td></tr>
+<tr><td style="padding:9px 0;color:#687d90;font-size:14px;">Email</td><td align="right" style="padding:9px 0;font-size:14px;font-weight:700;">{{EMAIL}}</td></tr>
+<tr><td style="padding:9px 0;color:#687d90;font-size:14px;">Loại hồ sơ</td><td align="right" style="padding:9px 0;font-size:14px;font-weight:700;">{{APPLICATION_TYPE}}</td></tr>
+<tr><td style="padding:9px 0;color:#687d90;font-size:14px;">Ngày tiếp nhận</td><td align="right" style="padding:9px 0;font-size:14px;font-weight:700;">{{SUBMITTED_AT}}</td></tr>
+<tr><td style="padding:9px 0;color:#687d90;font-size:14px;">Trạng thái</td><td align="right" style="padding:9px 0;"><span style="display:inline-block;padding:8px 13px;border-radius:999px;background:#f2e8ff;color:#672b8b;font-size:12px;font-weight:800;">{{STATUS}}</span></td></tr>
 </table>
 </td></tr>
 </table>
@@ -53,65 +55,6 @@ Mã hồ sơ dưới đây được sử dụng để tra cứu thông tin và t
 <a href="https://ctt.skyfirst.io.vn/#lookup" style="display:inline-block;padding:15px 31px;border-radius:13px;background:linear-gradient(100deg,#762b82,#c23872,#f4511e);color:#fff;text-decoration:none;font-size:14px;font-weight:800;letter-spacing:.3px;box-shadow:0 9px 22px rgba(174,52,91,.22);">TRA CỨU HỒ SƠ</a>
 </div>
 <p style="margin:0;text-align:center;color:#738597;font-size:13px;line-height:1.65;">Truy cập Cổng Thông tin Sky First để kiểm tra hồ sơ của bạn.</p>
-</td>
-</tr>
-
-
-<tr>
-<td style="padding:8px 42px 34px;">
-  <div style="border-top:1px solid #e6edf4;padding-top:26px;">
-    <div style="font-size:12px;font-weight:800;letter-spacing:1.5px;color:#5f7487;text-transform:uppercase;margin-bottom:8px;">
-      HỆ SINH THÁI TRỰC TUYẾN SKY FIRST
-    </div>
-    <div style="font-size:14px;line-height:1.65;color:#687d90;margin-bottom:18px;">
-      Các không gian trực tuyến được tách theo từng nhu cầu để bạn dễ tìm đúng nơi cần truy cập.
-    </div>
-
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-           style="background:linear-gradient(110deg,#8b2ca3,#c63d73,#f4511e);border-radius:18px;margin-bottom:14px;">
-      <tr>
-        <td style="padding:22px 24px;color:#fff;">
-          <div style="font-size:19px;font-weight:800;margin-bottom:8px;">🌐 &nbsp;Trang thông tin điện tử</div>
-          <div style="font-size:13px;line-height:1.6;margin-bottom:8px;">Thông tin chung, hoạt động và những nội dung công khai của Sky First.</div>
-          <a href="https://skyfirst.io.vn" style="font-size:13px;font-weight:800;color:#fff;text-decoration:none;">skyfirst.io.vn</a>
-        </td>
-      </tr>
-    </table>
-
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-      <tr>
-        <td width="49%" valign="top" style="padding:18px;border:1px solid #dbe7f0;border-radius:17px;">
-          <div style="font-size:20px;margin-bottom:8px;">🧭</div>
-          <div style="font-size:16px;font-weight:800;color:#552064;margin-bottom:7px;">Cổng Thông tin</div>
-          <div style="font-size:13px;line-height:1.55;color:#687d90;margin-bottom:8px;">Điểm truy cập nhanh tới các nội dung và chức năng thông tin theo nhu cầu.</div>
-          <a href="https://ctt.skyfirst.io.vn" style="font-size:12px;font-weight:800;color:#f4511e;text-decoration:none;">ctt.skyfirst.io.vn</a>
-        </td>
-        <td width="2%">&nbsp;</td>
-        <td width="49%" valign="top" style="padding:18px;border:1px solid #dbe7f0;border-radius:17px;">
-          <div style="font-size:20px;margin-bottom:8px;">👤</div>
-          <div style="font-size:16px;font-weight:800;color:#552064;margin-bottom:7px;">Cổng Thành viên</div>
-          <div style="font-size:13px;line-height:1.55;color:#687d90;margin-bottom:8px;">Không gian dành cho thành viên và các nội dung phục vụ phối hợp nội bộ.</div>
-          <a href="https://member.skyfirst.io.vn" style="font-size:12px;font-weight:800;color:#f4511e;text-decoration:none;">member.skyfirst.io.vn</a>
-        </td>
-      </tr>
-      <tr><td colspan="3" style="height:12px;"></td></tr>
-      <tr>
-        <td width="49%" valign="top" style="padding:18px;border:1px solid #dbe7f0;border-radius:17px;">
-          <div style="font-size:20px;margin-bottom:8px;">🤝</div>
-          <div style="font-size:16px;font-weight:800;color:#552064;margin-bottom:7px;">Cổng Tình nguyện viên</div>
-          <div style="font-size:13px;line-height:1.55;color:#687d90;margin-bottom:8px;">Thông tin, hướng dẫn và nội dung dành cho hoạt động tình nguyện viên.</div>
-          <a href="https://tnv.skyfirst.io.vn" style="font-size:12px;font-weight:800;color:#f4511e;text-decoration:none;">tnv.skyfirst.io.vn</a>
-        </td>
-        <td width="2%">&nbsp;</td>
-        <td width="49%" valign="top" style="padding:18px;border:1px solid #dbe7f0;border-radius:17px;">
-          <div style="font-size:20px;margin-bottom:8px;">🎮</div>
-          <div style="font-size:16px;font-weight:800;color:#552064;margin-bottom:7px;">Cổng Game</div>
-          <div style="font-size:13px;line-height:1.55;color:#687d90;margin-bottom:8px;">Không gian tương tác kết hợp kiến thức, phản xạ và thử thách.</div>
-          <a href="https://game.skyfirst.io.vn" style="font-size:12px;font-weight:800;color:#f4511e;text-decoration:none;">game.skyfirst.io.vn</a>
-        </td>
-      </tr>
-    </table>
-  </div>
 </td>
 </tr>
 
