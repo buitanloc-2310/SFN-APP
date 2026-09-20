@@ -38,7 +38,7 @@ INSERT OR IGNORE INTO modules(key,name,category,enabled,sort_order,description) 
 INSERT OR IGNORE INTO settings(key,value_json) VALUES('app_name','"Mạng lưới Giáo dục và Phát triển Cộng đồng Sky First"');
 INSERT OR IGNORE INTO settings(key,value_json) VALUES('app_short_name','"Sky First Network"');
 INSERT OR IGNORE INTO settings(key,value_json) VALUES('app_url','"https://ctt.skyfirst.io.vn"');
-INSERT OR IGNORE INTO settings(key,value_json) VALUES('website','"https://www.skyfirst.io.vn"');
+INSERT OR IGNORE INTO settings(key,value_json) VALUES('website','"https://skyfirst.io.vn"');
 INSERT OR IGNORE INTO settings(key,value_json) VALUES('receiver_email','"skyfirst.ec@gmail.com"');
 INSERT OR IGNORE INTO settings(key,value_json) VALUES('super_admin_email','"skyfirst.ec@gmail.com"');
 INSERT OR IGNORE INTO settings(key,value_json) VALUES('hotline','"0924 910 210"');
@@ -268,7 +268,7 @@ Tùy tính chất và mức độ, trường hợp vi phạm có thể được:
 📧 Email: skyfirst.ec\@gmail.com
 📧 Hỗ trợ: hotro\@skyfirst.io.vn
 ☎️ Hotline/Zalo: **0924 910 210**
-🌐 Website:[ ](http://www.skyfirst.io.vn)[**www.skyfirst.io.vn**](http://www.skyfirst.io.vn) ','published');
+🌐 Website:[ ](http://skyfirst.io.vn)[**skyfirst.io.vn**](http://skyfirst.io.vn) ','published');
 INSERT OR IGNORE INTO terms(code,name,version,scope,body,status) VALUES('DK-02/2026/SFN','Điều khoản Đăng ký và Tham gia Tình nguyện viên','22/08/2026','Tình nguyện viên','# ĐIỀU KHOẢN ĐĂNG KÝ VÀ THAM GIA TÌNH NGUYỆN VIÊN
 ## SKY FIRST NETWORK (SFN)
 **Mã tài liệu:** DK-02/2026/SFN

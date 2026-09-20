@@ -9,7 +9,7 @@ Không phải bản Preview / Enhanced V2 / Demo.
 ## Nhận diện chính thức
 - Mạng lưới Giáo dục và Phát triển Cộng đồng Sky First
 - Sky First Network (SFN)
-- Website: https://www.skyfirst.io.vn
+- Website: https://skyfirst.io.vn
 - Cổng hệ thống: https://volunteer.skyfirst.io.vn
 - Email nhận toàn bộ hồ sơ: skyfirst.ec@gmail.com
 - Hotline/Zalo: 0924 910 210
