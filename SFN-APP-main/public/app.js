@@ -72,15 +72,21 @@ setTheme(localStorage.getItem("sfn_theme")||"light");
 accountBtn.onclick=()=>{if(state.user) location.hash=isAdmin(state.user)?"admin/dashboard":"portal"; else location.hash="login"};
 
 function hero(){
-  return `<section class="hero" style="background-image:linear-gradient(115deg,rgba(5,42,94,.96),rgba(13,104,178,.88)),url('${E(state.config?.hero_cover_url||"/assets/sfn-cover.png")}')!important">
-    <div class="hero-copy"><span class="pill white">SKY FIRST NETWORK • SFN</span>
-      <h1>${E(state.config?.hero_title||"Kết nối giáo dục. Phát triển cộng đồng.")}</h1>
-      <p>${E(state.config?.hero_text||"Một cổng chung cho Thành viên, Core Team, Tình nguyện viên, Học sinh/Học viên, lớp học, hoạt động, hồ sơ, GCN/GXN và quản trị Sky First Network.")}</p>
-      <p><b>${E(state.config?.slogan||"Kết nối tri thức – Lan tỏa giá trị – Kiến tạo tương lai.")}</b></p>
-      <div class="actions"><a class="primary" href="#forms">Đăng ký tham gia</a><a class="secondary" style="background:transparent;border-color:#ffffff77;color:#fff" href="#login">Đăng nhập hệ thống</a></div>
+  return `<section class="hero portal-hero">
+    <div class="hero-copy"><span class="pill white">CỔNG THÔNG TIN • SKY FIRST NETWORK</span>
+      <h1>Khám phá và tham gia các hoạt động của Sky First.</h1>
+      <p>Theo dõi hoạt động, sự kiện, chương trình giáo dục và các cơ hội tham gia đang được mở trên toàn Mạng lưới.</p>
+      <div class="hero-search" role="search">
+        <span aria-hidden="true">⌕</span><input id="portalSearch" type="search" placeholder="Tìm hoạt động, sự kiện, lớp học..." aria-label="Tìm trên Cổng thông tin">
+        <button class="primary" type="button" onclick="portalSearchGo()">Tìm kiếm</button>
+      </div>
+      <div class="actions"><a class="primary hero-primary" href="#events">Xem hoạt động đang mở →</a><a class="secondary hero-secondary" href="#lookup">Tra cứu đăng ký</a></div>
+      <div class="hero-login">Đã có tài khoản? <a href="#login">Đăng nhập</a></div>
     </div>
   </section>`;
 }
+window.portalSearchGo=()=>{const q=(document.getElementById("portalSearch")?.value||"").trim();location.hash=q?`events?q=${encodeURIComponent(q)}`:"events"};
+
 async function renderHome(){
   app.innerHTML=hero()+`
   <section class="lookup-strip">
@@ -174,7 +180,7 @@ function newsCard(n){return `<article class="card"><span class="pill">${E((n.pub
 
 async function renderForms(){
   const forms=state.config?.forms||[];
-  app.innerHTML=`<h1>Đăng ký & Biểu mẫu</h1><p class="muted">Mỗi biểu mẫu có bộ câu hỏi, điều khoản, mã hồ sơ và quy trình xử lý riêng.</p>
+  app.innerHTML=`<div class="portal-page-head"><span class="eyebrow">ĐĂNG KÝ TRỰC TUYẾN</span><h1>Đăng ký & Biểu mẫu</h1><p class="muted">Chọn đúng chương trình để gửi đăng ký. Mỗi hồ sơ có mã tra cứu và quy trình xử lý riêng.</p></div>
   <div class="grid">${forms.map(f=>`<div class="card"><span class="pill">${E(f.prefix)}</span><h3>${E(f.name)}</h3><p class="muted">${E(f.description)}</p><p class="small">${f.min_age?`Yêu cầu: từ đủ ${f.min_age} tuổi`:""}</p><a class="primary" href="#form/${encodeURIComponent(f.id)}">Mở biểu mẫu</a></div>`).join("")}</div>`;
 }
 function conditionOk(cond,answers){
@@ -248,16 +254,16 @@ async function mountTurnstile(){
 }
 
 async function renderClasses(){
-  const d=await api("/api/public/classes");app.innerHTML=`<h1>Lớp học & Chương trình giáo dục</h1>${d.degraded?`<div class="notice">Dữ liệu lớp học đang tạm thời chưa đồng bộ. Website vẫn hoạt động và bạn có thể quay lại sau.</div>`:""}<div class="grid">${(d.items||[]).map(c=>`<div class="card"><span class="pill">${E(c.unit_code)}</span><h3>${E(c.title)}</h3><p>${E(c.level||"")}</p><span class="status">${E(c.status)}</span><div class="actions"><a class="primary" href="#form/class">Đăng ký</a></div></div>`).join("")||"<div class='card'>Chưa có lớp học được công bố.</div>"}</div>`;
+  const d=await api("/api/public/classes");app.innerHTML=`<div class="portal-page-head"><span class="eyebrow">CHƯƠNG TRÌNH GIÁO DỤC</span><h1>Lớp học & Chương trình giáo dục</h1><p class="muted">Khám phá các lớp đang được công bố và đăng ký trực tiếp trên Cổng thông tin.</p></div>${d.degraded?`<div class="notice">Dữ liệu lớp học đang tạm thời chưa đồng bộ. Website vẫn hoạt động và bạn có thể quay lại sau.</div>`:""}<div class="grid">${(d.items||[]).map(c=>`<div class="card"><span class="pill">${E(c.unit_code)}</span><h3>${E(c.title)}</h3><p>${E(c.level||"")}</p><span class="status">${E(c.status)}</span><div class="actions"><a class="primary" href="#form/class">Đăng ký</a></div></div>`).join("")||"<div class='card'>Chưa có lớp học được công bố.</div>"}</div>`;
 }
 async function renderEvents(){
-  const d=await api("/api/public/events");app.innerHTML=`<h1>Hoạt động & Sự kiện</h1>${d.degraded?`<div class="notice">Dữ liệu sự kiện đang tạm thời chưa đồng bộ. Các khu vực công khai khác vẫn sử dụng bình thường.</div>`:""}<div class="grid">${(d.items||[]).map(x=>`<div class="card"><span class="pill">${E(x.unit_code)}</span><h3>${E(x.title)}</h3><p class="muted">${fmt(x.start_at)}</p><span class="status">${E(x.status)}</span><div class="actions"><a class="primary" href="#form/event">Đăng ký</a></div></div>`).join("")||"<div class='card'>Chưa có sự kiện được công bố.</div>"}</div>`;
+  const d=await api("/api/public/events");app.innerHTML=`<div class="portal-page-head"><span class="eyebrow">KHÁM PHÁ & THAM GIA</span><h1>Hoạt động & Sự kiện</h1><p class="muted">Theo dõi các chương trình đang mở, thời gian tổ chức và gửi đăng ký tham gia.</p></div>${d.degraded?`<div class="notice">Dữ liệu sự kiện đang tạm thời chưa đồng bộ. Các khu vực công khai khác vẫn sử dụng bình thường.</div>`:""}<div class="grid">${(d.items||[]).map(x=>`<div class="card"><span class="pill">${E(x.unit_code)}</span><h3>${E(x.title)}</h3><p class="muted">${fmt(x.start_at)}</p><span class="status">${E(x.status)}</span><div class="actions"><a class="primary" href="#form/event">Đăng ký</a></div></div>`).join("")||"<div class='card'>Chưa có sự kiện được công bố.</div>"}</div>`;
 }
 async function renderUnits(){
-  const d=await api("/api/public/units");app.innerHTML=`<h1>Đơn vị trực thuộc</h1>${d.degraded?`<div class="notice">Danh sách đơn vị đang tạm thời chưa đồng bộ.</div>`:""}<div class="grid">${(d.items||[]).map(u=>`<div class="card"><span class="pill">${E(u.code)}</span><h3>${E(u.name)}</h3><p>${E(u.unit_type||"")}</p><p class="muted">Phụ trách: ${E(u.manager_name||"—")}<br>${E(u.email||"")}</p><span class="status">${E(u.status)}</span></div>`).join("")||"<div class='card'>Chưa có đơn vị được công bố.</div>"}</div>`;
+  const d=await api("/api/public/units");app.innerHTML=`<div class="portal-page-head"><span class="eyebrow">MẠNG LƯỚI</span><h1>Đơn vị trực thuộc</h1><p class="muted">Thông tin các đơn vị được công bố trên Cổng thông tin Sky First Network.</p></div>${d.degraded?`<div class="notice">Danh sách đơn vị đang tạm thời chưa đồng bộ.</div>`:""}<div class="grid">${(d.items||[]).map(u=>`<div class="card"><span class="pill">${E(u.code)}</span><h3>${E(u.name)}</h3><p>${E(u.unit_type||"")}</p><p class="muted">Phụ trách: ${E(u.manager_name||"—")}<br>${E(u.email||"")}</p><span class="status">${E(u.status)}</span></div>`).join("")||"<div class='card'>Chưa có đơn vị được công bố.</div>"}</div>`;
 }
 async function renderNews(){
-  const d=await api("/api/public/news");app.innerHTML=`<h1>Tin tức & Cập nhật</h1>${d.degraded?`<div class="notice">Tin tức đang tạm thời chưa đồng bộ với cơ sở dữ liệu.</div>`:""}<div class="grid">${(d.items||[]).map(newsCard).join("")||"<div class='card'>Chưa có tin mới.</div>"}</div>`;
+  const d=await api("/api/public/news");app.innerHTML=`<div class="portal-page-head"><span class="eyebrow">THÔNG TIN MỚI</span><h1>Tin tức & Cập nhật</h1><p class="muted">Thông báo và cập nhật mới từ Sky First Network.</p></div>${d.degraded?`<div class="notice">Tin tức đang tạm thời chưa đồng bộ với cơ sở dữ liệu.</div>`:""}<div class="grid">${(d.items||[]).map(newsCard).join("")||"<div class='card'>Chưa có tin mới.</div>"}</div>`;
 }
 
 function renderLookup(){
