@@ -55,6 +55,11 @@ function applySiteConfig(){
   const fe=document.getElementById("footerEmailText"),fel=document.getElementById("footerEmailLink");if(fe&&c.footer_email)fe.textContent=c.footer_email;if(fel&&c.footer_email)fel.href="mailto:"+c.footer_email;
   const fs=document.getElementById("footerSupportText"),fsl=document.getElementById("footerSupportLink");if(fs&&c.footer_support_email)fs.textContent=c.footer_support_email;if(fsl&&c.footer_support_email)fsl.href="mailto:"+c.footer_support_email;
   const fc=document.getElementById("footerCopyright");if(fc&&c.footer_copyright)fc.textContent=c.footer_copyright;
+  const setLink=(id,textId,url,labelId,label)=>{const a=document.getElementById(id),t=document.getElementById(textId),l=labelId&&document.getElementById(labelId);if(a&&url)a.href=url;if(t&&url)t.textContent=url.replace(/^https?:\/\//,"").replace(/\/$/,"");if(l&&label)l.textContent=label};
+  setLink("portalMainLink","portalMainText",c.portal_main_url,"portalMainLabel",c.portal_main_label);
+  setLink("portalTnvLink","portalTnvText",c.portal_tnv_url);setLink("portalSfecLink","portalSfecText",c.portal_sfec_url);setLink("portalSlcLink","portalSlcText",c.portal_slc_url);setLink("portalMemberLink","portalMemberText",c.portal_member_url);
+  const pe=document.getElementById("footerPortalEmailText"),pel=document.getElementById("footerPortalEmailLink");if(pe&&c.footer_portal_email)pe.textContent=c.footer_portal_email;if(pel&&c.footer_portal_email)pel.href="mailto:"+c.footer_portal_email;
+  const ph=document.getElementById("footerHotlineText"),phl=document.getElementById("footerHotlineLink");if(ph&&c.hotline)ph.textContent=c.hotline;if(phl&&c.hotline)phl.href="tel:"+c.hotline.replace(/[^+\d]/g,"");
 }
 async function loadMe(){
   try{state.user=(await api("/api/auth/me")).user}catch{state.user=null}
@@ -72,21 +77,15 @@ setTheme(localStorage.getItem("sfn_theme")||"light");
 accountBtn.onclick=()=>{if(state.user) location.hash=isAdmin(state.user)?"admin/dashboard":"portal"; else location.hash="login"};
 
 function hero(){
-  return `<section class="hero portal-hero">
-    <div class="hero-copy"><span class="pill white">CỔNG THÔNG TIN • SKY FIRST NETWORK</span>
-      <h1>Khám phá và tham gia các hoạt động của Sky First.</h1>
-      <p>Theo dõi hoạt động, sự kiện, chương trình giáo dục và các cơ hội tham gia đang được mở trên toàn Mạng lưới.</p>
-      <div class="hero-search" role="search">
-        <span aria-hidden="true">⌕</span><input id="portalSearch" type="search" placeholder="Tìm hoạt động, sự kiện, lớp học..." aria-label="Tìm trên Cổng thông tin">
-        <button class="primary" type="button" onclick="portalSearchGo()">Tìm kiếm</button>
-      </div>
-      <div class="actions"><a class="primary hero-primary" href="#events">Xem hoạt động đang mở →</a><a class="secondary hero-secondary" href="#lookup">Tra cứu đăng ký</a></div>
-      <div class="hero-login">Đã có tài khoản? <a href="#login">Đăng nhập</a></div>
+  return `<section class="hero ctt-hero">
+    <div class="hero-copy"><span class="pill white">SKY FIRST NETWORK • SFN</span>
+      <h1>${E(state.config?.hero_title||"Cổng thông tin Sky First Network")}</h1>
+      <p class="hero-lead"><b>Khám phá và tham gia các hoạt động của Sky First.</b></p>
+      <p>${E(state.config?.hero_text||"Theo dõi hoạt động, sự kiện, chương trình giáo dục và các cơ hội tham gia đang được mở trên toàn Mạng lưới.")}</p>
+      <div class="actions"><a class="primary hero-white" href="#events">Khám phá hoạt động →</a><a class="secondary hero-outline" href="#lookup">Tra cứu đăng ký</a></div>
     </div>
   </section>`;
 }
-window.portalSearchGo=()=>{const q=(document.getElementById("portalSearch")?.value||"").trim();location.hash=q?`events?q=${encodeURIComponent(q)}`:"events"};
-
 async function renderHome(){
   app.innerHTML=hero()+`
   <section class="lookup-strip">
@@ -144,7 +143,7 @@ async function renderHome(){
     <div class="portal-grid portal-grid-3">
       ${portalCard("Sky First Network","Website chính và điểm bắt đầu của hệ sinh thái.","https://skyfirst.io.vn","Sky First")}
       ${portalCard("Tình nguyện viên","Đăng ký, hồ sơ và hoạt động tình nguyện.","https://tnv.skyfirst.io.vn","TNV")}
-      ${portalCard("SFEC","Không gian dành cho hoạt động và chương trình tiếng Anh.","https://ctt.sfec.skyfirst.io.vn","SFEC")}
+      ${portalCard("SFEC","Không gian dành cho hoạt động và chương trình tiếng Anh.","https://sfec.skyfirst.io.vn","SFEC")}
     </div>
   </section>
 
@@ -180,7 +179,7 @@ function newsCard(n){return `<article class="card"><span class="pill">${E((n.pub
 
 async function renderForms(){
   const forms=state.config?.forms||[];
-  app.innerHTML=`<div class="portal-page-head"><span class="eyebrow">ĐĂNG KÝ TRỰC TUYẾN</span><h1>Đăng ký & Biểu mẫu</h1><p class="muted">Chọn đúng chương trình để gửi đăng ký. Mỗi hồ sơ có mã tra cứu và quy trình xử lý riêng.</p></div>
+  app.innerHTML=`<h1>Đăng ký & Biểu mẫu</h1><p class="muted">Mỗi biểu mẫu có bộ câu hỏi, điều khoản, mã hồ sơ và quy trình xử lý riêng.</p>
   <div class="grid">${forms.map(f=>`<div class="card"><span class="pill">${E(f.prefix)}</span><h3>${E(f.name)}</h3><p class="muted">${E(f.description)}</p><p class="small">${f.min_age?`Yêu cầu: từ đủ ${f.min_age} tuổi`:""}</p><a class="primary" href="#form/${encodeURIComponent(f.id)}">Mở biểu mẫu</a></div>`).join("")}</div>`;
 }
 function conditionOk(cond,answers){
@@ -254,16 +253,16 @@ async function mountTurnstile(){
 }
 
 async function renderClasses(){
-  const d=await api("/api/public/classes");app.innerHTML=`<div class="portal-page-head"><span class="eyebrow">CHƯƠNG TRÌNH GIÁO DỤC</span><h1>Lớp học & Chương trình giáo dục</h1><p class="muted">Khám phá các lớp đang được công bố và đăng ký trực tiếp trên Cổng thông tin.</p></div>${d.degraded?`<div class="notice">Dữ liệu lớp học đang tạm thời chưa đồng bộ. Website vẫn hoạt động và bạn có thể quay lại sau.</div>`:""}<div class="grid">${(d.items||[]).map(c=>`<div class="card"><span class="pill">${E(c.unit_code)}</span><h3>${E(c.title)}</h3><p>${E(c.level||"")}</p><span class="status">${E(c.status)}</span><div class="actions"><a class="primary" href="#form/class">Đăng ký</a></div></div>`).join("")||"<div class='card'>Chưa có lớp học được công bố.</div>"}</div>`;
+  const d=await api("/api/public/classes");app.innerHTML=`<h1>Lớp học & Chương trình giáo dục</h1>${d.degraded?`<div class="notice">Dữ liệu lớp học đang tạm thời chưa đồng bộ. Website vẫn hoạt động và bạn có thể quay lại sau.</div>`:""}<div class="grid">${(d.items||[]).map(c=>`<div class="card"><span class="pill">${E(c.unit_code)}</span><h3>${E(c.title)}</h3><p>${E(c.level||"")}</p><span class="status">${E(c.status)}</span><div class="actions"><a class="primary" href="#form/class">Đăng ký</a></div></div>`).join("")||"<div class='card'>Chưa có lớp học được công bố.</div>"}</div>`;
 }
 async function renderEvents(){
-  const d=await api("/api/public/events");app.innerHTML=`<div class="portal-page-head"><span class="eyebrow">KHÁM PHÁ & THAM GIA</span><h1>Hoạt động & Sự kiện</h1><p class="muted">Theo dõi các chương trình đang mở, thời gian tổ chức và gửi đăng ký tham gia.</p></div>${d.degraded?`<div class="notice">Dữ liệu sự kiện đang tạm thời chưa đồng bộ. Các khu vực công khai khác vẫn sử dụng bình thường.</div>`:""}<div class="grid">${(d.items||[]).map(x=>`<div class="card"><span class="pill">${E(x.unit_code)}</span><h3>${E(x.title)}</h3><p class="muted">${fmt(x.start_at)}</p><span class="status">${E(x.status)}</span><div class="actions"><a class="primary" href="#form/event">Đăng ký</a></div></div>`).join("")||"<div class='card'>Chưa có sự kiện được công bố.</div>"}</div>`;
+  const d=await api("/api/public/events");app.innerHTML=`<h1>Hoạt động & Sự kiện</h1>${d.degraded?`<div class="notice">Dữ liệu sự kiện đang tạm thời chưa đồng bộ. Các khu vực công khai khác vẫn sử dụng bình thường.</div>`:""}<div class="grid">${(d.items||[]).map(x=>`<div class="card"><span class="pill">${E(x.unit_code)}</span><h3>${E(x.title)}</h3><p class="muted">${fmt(x.start_at)}</p><span class="status">${E(x.status)}</span><div class="actions"><a class="primary" href="#form/event">Đăng ký</a></div></div>`).join("")||"<div class='card'>Chưa có sự kiện được công bố.</div>"}</div>`;
 }
 async function renderUnits(){
-  const d=await api("/api/public/units");app.innerHTML=`<div class="portal-page-head"><span class="eyebrow">MẠNG LƯỚI</span><h1>Đơn vị trực thuộc</h1><p class="muted">Thông tin các đơn vị được công bố trên Cổng thông tin Sky First Network.</p></div>${d.degraded?`<div class="notice">Danh sách đơn vị đang tạm thời chưa đồng bộ.</div>`:""}<div class="grid">${(d.items||[]).map(u=>`<div class="card"><span class="pill">${E(u.code)}</span><h3>${E(u.name)}</h3><p>${E(u.unit_type||"")}</p><p class="muted">Phụ trách: ${E(u.manager_name||"—")}<br>${E(u.email||"")}</p><span class="status">${E(u.status)}</span></div>`).join("")||"<div class='card'>Chưa có đơn vị được công bố.</div>"}</div>`;
+  const d=await api("/api/public/units");app.innerHTML=`<h1>Đơn vị trực thuộc</h1>${d.degraded?`<div class="notice">Danh sách đơn vị đang tạm thời chưa đồng bộ.</div>`:""}<div class="grid">${(d.items||[]).map(u=>`<div class="card"><span class="pill">${E(u.code)}</span><h3>${E(u.name)}</h3><p>${E(u.unit_type||"")}</p><p class="muted">Phụ trách: ${E(u.manager_name||"—")}<br>${E(u.email||"")}</p><span class="status">${E(u.status)}</span></div>`).join("")||"<div class='card'>Chưa có đơn vị được công bố.</div>"}</div>`;
 }
 async function renderNews(){
-  const d=await api("/api/public/news");app.innerHTML=`<div class="portal-page-head"><span class="eyebrow">THÔNG TIN MỚI</span><h1>Tin tức & Cập nhật</h1><p class="muted">Thông báo và cập nhật mới từ Sky First Network.</p></div>${d.degraded?`<div class="notice">Tin tức đang tạm thời chưa đồng bộ với cơ sở dữ liệu.</div>`:""}<div class="grid">${(d.items||[]).map(newsCard).join("")||"<div class='card'>Chưa có tin mới.</div>"}</div>`;
+  const d=await api("/api/public/news");app.innerHTML=`<h1>Tin tức & Cập nhật</h1>${d.degraded?`<div class="notice">Tin tức đang tạm thời chưa đồng bộ với cơ sở dữ liệu.</div>`:""}<div class="grid">${(d.items||[]).map(newsCard).join("")||"<div class='card'>Chưa có tin mới.</div>"}</div>`;
 }
 
 function renderLookup(){
@@ -279,73 +278,18 @@ function renderLookup(){
   }[status]||status||"—");
 
   app.innerHTML=`
-    <div class="form-wrap">
-      <h1>Tra cứu & Xác thực</h1>
-      <p class="muted">
-        Tra cứu tình trạng hồ sơ hoặc xác thực GCN/GXN do Sky First phát hành.
-      </p>
-
-      <div class="grid2">
-
-        <div class="card">
-          <h2>Tra cứu hồ sơ</h2>
-          <p class="muted">
-            Nhập mã hồ sơ và email đã sử dụng khi đăng ký.
-          </p>
-
-          <form id="lookupRecord">
-            <div class="field">
-              <label>Mã hồ sơ</label>
-              <input
-                name="code"
-                required
-                autocomplete="off"
-                placeholder="SFN-TNV-2026-0001"
-              >
-            </div>
-
-            <div class="field">
-              <label>Email đã đăng ký</label>
-              <input
-                name="email"
-                type="email"
-                required
-                autocomplete="email"
-              >
-            </div>
-
-            <button class="primary">Tra cứu hồ sơ</button>
-          </form>
-
-          <div id="recordResult"></div>
+    <section class="verify-page">
+      <div class="verify-head"><div><span class="eyebrow">SKY FIRST NETWORK</span><h1>Tra cứu & Xác thực</h1><p>Tra cứu tình trạng hồ sơ hoặc xác thực GCN/GXN do Sky First phát hành.</p></div><div class="verify-seal" aria-hidden="true">✓</div></div>
+      <div class="verify-grid">
+        <div class="verify-card record-card"><div class="verify-card-head"><span class="verify-icon">⌕</span><div><h2>Tra cứu hồ sơ</h2><p>Kiểm tra tình trạng hồ sơ và thông tin đăng ký của bạn.</p></div><span class="trust-pill">Nhanh chóng · Chính xác</span></div>
+          <form id="lookupRecord"><div class="field"><label>Mã hồ sơ</label><input name="code" required autocomplete="off" placeholder="Nhập mã hồ sơ (VD: SFN-TNV-2026-0001)"></div><div class="field"><label>Email đã đăng ký</label><input name="email" type="email" required autocomplete="email" placeholder="Nhập email bạn đã sử dụng khi đăng ký"></div><button class="primary verify-btn">⌕ &nbsp; Tra cứu hồ sơ →</button></form><div id="recordResult"></div>
         </div>
-
-        <div class="card">
-          <h2>Xác thực GCN/GXN</h2>
-          <p class="muted">
-            Nhập mã được ghi trên Giấy chứng nhận hoặc Giấy xác nhận.
-          </p>
-
-          <form id="lookupCert">
-            <div class="field">
-              <label>Mã GCN/GXN</label>
-              <input
-                name="code"
-                required
-                autocomplete="off"
-                placeholder="001/GCN-SFN/2026"
-              >
-            </div>
-
-            <button class="primary">Xác thực</button>
-          </form>
-
-          <div id="certResult"></div>
+        <div class="verify-card cert-card"><div class="verify-card-head"><span class="verify-icon green">✓</span><div><h2>Xác thực GCN/GXN</h2><p>Kiểm tra tính hợp lệ của Giấy chứng nhận hoặc Giấy xác nhận.</p></div><span class="trust-pill green">Minh bạch · Chính thống</span></div>
+          <form id="lookupCert"><div class="field"><label>Mã GCN/GXN</label><input name="code" required autocomplete="off" placeholder="Nhập mã GCN/GXN (VD: 001/GCN-SFN/2026)"></div><button class="primary verify-btn verify-green">✓ &nbsp; Xác thực →</button></form><div id="certResult"></div>
         </div>
-
       </div>
-    </div>
-  `;
+      <div class="verify-benefits"><div><b>◷ &nbsp; Nhanh chóng</b><span>Tra cứu trong vài giây</span></div><div><b>♢ &nbsp; Chính xác</b><span>Dữ liệu được xác thực</span></div><div><b>▣ &nbsp; Bảo mật</b><span>Thông tin được bảo vệ</span></div><div><b>♡ &nbsp; Vì cộng đồng</b><span>Lan tỏa giá trị tích cực</span></div></div>
+    </section>`;
 
   document.getElementById("lookupRecord").onsubmit=async e=>{
     e.preventDefault();
@@ -1841,9 +1785,9 @@ window.saveHeaderSettings=()=>saveSettingItems({header_show_brand:document.getEl
 
 async function adminFooter(main){
   const m=await loadSettingsMap();
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">GIAO DIỆN</span><h1>Cuối trang / Footer</h1><p class="muted">Chỉnh mô tả, thông tin liên hệ và nội dung hiển thị ở cuối trang.</p></div></div><div class="card"><div class="field"><label>Mô tả ngắn</label><textarea id="ftDesc">${E(m.footer_description||"Kết nối giáo dục, tri thức và phát triển cộng đồng trên một hệ thống thống nhất.")}</textarea></div><div class="field"><label>Email liên hệ</label><input id="ftEmail" value="${E(m.footer_email||"skyfirst.ec@gmail.com")}"></div><div class="field"><label>Email hỗ trợ</label><input id="ftSupport" value="${E(m.footer_support_email||"hotro.sfn@gmail.com")}"></div><div class="field"><label>Dòng bản quyền</label><input id="ftCopyright" value="${E(m.footer_copyright||"© 2026 Sky First Network (SFN)")}"></div><button class="primary" onclick="saveFooterSettings()">Lưu Footer</button></div>`;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">GIAO DIỆN & LIÊN KẾT</span><h1>Cuối trang / Footer</h1><p class="muted">Chỉnh thông tin liên hệ và toàn bộ liên kết hệ sinh thái. Thay đổi được áp dụng công khai sau khi lưu.</p></div></div><div class="admin-grid2"><div class="card"><h2>Thông tin liên hệ</h2><div class="field"><label>Mô tả ngắn</label><textarea id="ftDesc">${E(m.footer_description||"")}</textarea></div><div class="field"><label>Email liên hệ</label><input id="ftEmail" value="${E(m.footer_email||"skyfirst.ec@gmail.com")}"></div><div class="field"><label>Email hỗ trợ</label><input id="ftSupport" value="${E(m.footer_support_email||"hotro@skyfirst.io.v")}"></div><div class="field"><label>Email Cổng Thông tin</label><input id="ftPortalEmail" value="${E(m.footer_portal_email||"ctt@skyfirst.io.vn")}"></div><div class="field"><label>Điện thoại / Zalo</label><input id="ftHotline" value="${E(m.hotline||"0924 910 210")}"></div><div class="field"><label>Dòng bản quyền</label><input id="ftCopyright" value="${E(m.footer_copyright||"© 2026 Sky First Network (SFN)")}"></div></div><div class="card"><h2>Tra cứu & Hệ thống</h2><div class="field"><label>Tên Trang thông tin điện tử</label><input id="ftMainLabel" value="${E(m.portal_main_label||"Trang thông tin điện tử Sky First Network")}"></div><div class="field"><label>Trang thông tin điện tử</label><input id="ftMain" value="${E(m.portal_main_url||"https://www.skyfirst.io.vn")}"></div><div class="field"><label>Cổng Tình nguyện viên</label><input id="ftTnv" value="${E(m.portal_tnv_url||"https://tnv.skyfirst.io.vn")}"></div><div class="field"><label>Cổng SFEC</label><input id="ftSfec" value="${E(m.portal_sfec_url||"https://sfec.skyfirst.io.vn")}"></div><div class="field"><label>Trung tâm Học tập số</label><input id="ftSlc" value="${E(m.portal_slc_url||"https://slc.skyfirst.io.vn")}"></div><div class="field"><label>Trang Thành viên</label><input id="ftMember" value="${E(m.portal_member_url||"https://member.skyfirst.io.vn")}"></div></div></div><button class="primary" onclick="saveFooterSettings()">Lưu toàn bộ Footer</button>`;
 }
-window.saveFooterSettings=()=>saveSettingItems({footer_description:document.getElementById("ftDesc").value,footer_email:document.getElementById("ftEmail").value,footer_support_email:document.getElementById("ftSupport").value,footer_copyright:document.getElementById("ftCopyright").value},"Đã lưu Footer.");
+window.saveFooterSettings=()=>saveSettingItems({footer_description:document.getElementById("ftDesc").value,footer_email:document.getElementById("ftEmail").value,footer_support_email:document.getElementById("ftSupport").value,footer_portal_email:document.getElementById("ftPortalEmail").value,hotline:document.getElementById("ftHotline").value,footer_copyright:document.getElementById("ftCopyright").value,portal_main_label:document.getElementById("ftMainLabel").value,portal_main_url:document.getElementById("ftMain").value,portal_tnv_url:document.getElementById("ftTnv").value,portal_sfec_url:document.getElementById("ftSfec").value,portal_slc_url:document.getElementById("ftSlc").value,portal_member_url:document.getElementById("ftMember").value},"Đã cập nhật Footer và liên kết hệ sinh thái.");
 
 async function adminMaintenance(main){
   const m=await loadSettingsMap();
