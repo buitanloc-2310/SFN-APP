@@ -29,7 +29,7 @@ async function generateCredentialCode(env,certType){
   const kind=credentialKind(certType);
   for(let attempt=0;attempt<64;attempt++){
     const bytes=new Uint32Array(1); crypto.getRandomValues(bytes);
-    const n=10000+(bytes[0]%90000);
+    const n=10000000+(bytes[0]%90000000);
     const code=`SFN-${kind}-${n}`;
     const exists=await env.DB.prepare("SELECT id FROM certificates WHERE code=? OR public_id=? LIMIT 1").bind(code,code).first();
     if(!exists) return code;
@@ -202,8 +202,14 @@ export async function adminRoute(request,env,url,ctx){
   if(p==="/api/admin/users"&&request.method==="GET"){
     const deny=requirePermission(user,"user.view");if(deny)return deny;
     const rs=await env.DB.prepare("SELECT id,email,full_name,status,email_verified,must_change_password,totp_enabled,created_at FROM users ORDER BY id DESC LIMIT 1000").all();
+    const actorIsOwner=(user.roles||[]).some(r=>r.role_id==="super_admin");
     const items=[];
-    for(const u of rs.results||[]) items.push({...u,roles:await listUserRoles(env,u.id)});
+    for(const u of rs.results||[]){
+      const roles=await listUserRoles(env,u.id);
+      const isOwner=roles.some(r=>r.role_id==="super_admin");
+      if(isOwner&&!actorIsOwner) continue;
+      items.push({...u,roles,is_owner:isOwner});
+    }
     return json({items});
   }
 

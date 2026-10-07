@@ -716,6 +716,8 @@ export async function authRoute(request, env, url) {
           password_hash=?,
           password_iterations=?,
           must_change_password=0,
+          status='active',
+          email_verified=1,
           updated_at=CURRENT_TIMESTAMP
         WHERE id=?
       `).bind(
@@ -1384,6 +1386,8 @@ export async function createInvitedAccount(
       ? body.roles
       : [];
 
+  const activationMode = body?.activation_mode === "self" ? "self" : "email";
+
   const actorLevel =
     highestRoleLevel(actor);
 
@@ -1474,8 +1478,8 @@ export async function createInvitedAccount(
     )
     VALUES(
       ?,?,?,?,?,
-      'active',
-      1,
+      ?,
+      ?,
       1
     )
   `)
@@ -1484,7 +1488,9 @@ export async function createInvitedAccount(
       fullName,
       salt,
       hash,
-      PASSWORD_ITERATIONS
+      PASSWORD_ITERATIONS,
+      activationMode === "self" ? "active" : "invited",
+      activationMode === "self" ? 1 : 0
     )
     .run();
 
@@ -1518,20 +1524,17 @@ export async function createInvitedAccount(
       .run();
   }
 
-  await sendTemplatedEmail(
-    env,
-    "account_invite",
-    email,
-    {
-      full_name:fullName,
-      email,
-      temp_password:temp
-    }
-  );
+  if (activationMode === "email") {
+    const token = randomToken(32);
+    const tokenHash = await sha256(token);
+    const tokenId = uid("activate");
+    const expires = new Date(Date.now() + 48*60*60*1000).toISOString();
+    await env.DB.prepare(`INSERT INTO auth_tokens(id,user_id,token_type,token_hash,portal,expires_at) VALUES(?,?,'password_reset',?,'admin',?)`)
+      .bind(tokenId,uidUser,tokenHash,expires).run();
+    const activationLink = `${env.APP_URL}/?reset=${encodeURIComponent(token)}`;
+    await sendTemplatedEmail(env,"account_invite",email,{full_name:fullName,email,activation_link:activationLink,temp_password:""});
+    return json({ok:true,user_id:uidUser,activation_sent:true,status:"invited"});
+  }
 
-  return json({
-    ok:true,
-    user_id:uidUser,
-    temp_password:temp
-  });
+  return json({ok:true,user_id:uidUser,temp_password:temp,activation_sent:false,status:"active"});
 }

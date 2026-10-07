@@ -842,13 +842,13 @@ window.revokeAllSessions=()=>api("/api/me/sessions/revoke-all",{
 .catch(e=>toast(errorText(e),"bad"));
 
 const adminMenu=[
- {group:"COMMAND CENTER",items:[["dashboard","Tổng quan vận hành"],["approvals","Phê duyệt"],["search","Tìm kiếm hệ thống"]]},
- {group:"CONTENT",items:[["news","Tin tức & CMS"],["site","Cấu hình Cổng"],["header","Header"],["footer","Footer"]]},
- {group:"PROGRAMS & ACTIVITIES",items:[["classes","Chương trình / Lớp"],["events","Hoạt động / Sự kiện"],["units","Đơn vị"],["tasks","Nhiệm vụ"]]},
- {group:"FORMS & CASES",items:[["forms","Form Experience Studio"],["submissions","Digital Case Center"],["recruitment","Tuyển dụng & Đánh giá"],["teaching","TNV Dạy học"]]},
- {group:"CREDENTIALS",items:[["certificates","GCN / GXN / BK Registry"],["approvals","Credential Review"]]},
- {group:"RESOURCES & MEDIA",items:[["documents","Resource Center"],["media","Media Cloud (R2)"],["files","File & Minh chứng"]]},
- {group:"SUPPORT & SYSTEM",items:[["tickets","Support"],["users","Administrator & RBAC"],["people","Hồ sơ nội bộ"],["email","Notifications / Email"],["terms","Consent & Terms"],["privacy","Privacy"],["modules","Modules"],["maintenance","Errors & Maintenance"],["audit","Audit Trail"],["backup","Backup & Restore"]]}
+ {group:"TỔNG QUAN",items:[["dashboard","Tổng quan"],["approvals","Chờ xử lý"],["search","Tìm kiếm"]]},
+ {group:"NỘI DUNG & GIAO DIỆN",items:[["site","Trang & Trang chủ"],["header","Menu & Điều hướng"],["news","Tin tức & Thông báo"],["footer","Chân trang"],["media","Thư viện hình ảnh"]]},
+ {group:"CHƯƠNG TRÌNH & HOẠT ĐỘNG",items:[["classes","Chương trình & Lớp học"],["events","Hoạt động & Sự kiện"],["units","Đơn vị"],["tasks","Nhiệm vụ"]]},
+ {group:"BIỂU MẪU & HỒ SƠ",items:[["forms","Biểu mẫu"],["submissions","Hồ sơ"],["recruitment","Tuyển dụng & Đánh giá"],["teaching","Tình nguyện viên dạy học"]]},
+ {group:"GIẤY ĐÃ PHÁT HÀNH",items:[["certificates","Giấy chứng nhận · Giấy xác nhận · Bảng khen"],["approvals","Chờ xét duyệt"]]},
+ {group:"TÀI NGUYÊN",items:[["documents","Tài liệu & Ấn phẩm"],["files","Tệp & Minh chứng"]]},
+ {group:"HỆ THỐNG",items:[["users","Quản trị viên & Phân quyền"],["email","Email & Thông báo"],["privacy","Quyền riêng tư"],["audit","Nhật ký hoạt động"],["backup","Sao lưu & Khôi phục"],["maintenance","Bảo trì & Tình trạng hệ thống"],["modules","Chức năng hệ thống"]]}
 ];
 
 async function renderAdmin(){
@@ -909,7 +909,7 @@ async function adminDashboard(main){
   main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">TRUNG TÂM QUẢN TRỊ</span><h1>Quản trị Sky First</h1><p class="muted">Theo dõi nhanh dữ liệu, trạng thái hệ thống và truy cập các tác vụ thường dùng.</p></div><span class="system-pill ${health.ok?"ok":"warn"}">${health.ok?"● Hệ thống đang hoạt động":"● Cần kiểm tra hệ thống"}</span></div>
   <div class="system-status-grid"><div class="status-card"><span>Ứng dụng</span><b>${health.ok?"Hoạt động":"Gián đoạn"}</b></div><div class="status-card"><span>D1</span><b>${health.database?"Đã kết nối":"Không khả dụng"}</b></div><div class="status-card"><span>R2</span><b>${health.storage?"Đã kết nối":"Không khả dụng"}</b></div><div class="status-card"><span>Dữ liệu Dashboard</span><b>${dataOk?"Đọc được":"Tạm lỗi"}</b></div></div>
   <div class="kpis"><div class="kpi"><b>${c.submissions}</b>Hồ sơ</div><div class="kpi"><b>${c.pending}</b>Cần xử lý</div><div class="kpi"><b>${c.people}</b>Nhân sự</div><div class="kpi"><b>${c.certificates}</b>GCN/GXN đã cấp</div><div class="kpi"><b>${c.approvals}</b>Chờ phê duyệt</div><div class="kpi"><b>${c.tickets}</b>Ticket mở</div><div class="kpi"><b>${c.tasks}</b>Nhiệm vụ</div></div>
-  <div class="admin-quick-grid"><button class="admin-quick" onclick="location.hash='admin/submissions'">${lineIcon("users")}<b>Xử lý hồ sơ</b><span>Tiếp nhận và cập nhật trạng thái</span></button><button class="admin-quick" onclick="location.hash='admin/certificates'">${lineIcon("badge")}<b>GCN & GXN</b><span>Đề nghị, phê duyệt và phát hành</span></button><button class="admin-quick" onclick="location.hash='admin/media'">${lineIcon("book")}<b>Ảnh & Media</b><span>Tải ảnh giao diện lên R2</span></button><button class="admin-quick" onclick="location.hash='admin/maintenance'">${lineIcon("shield")}<b>Website & Bảo trì</b><span>404, bảo trì và trạng thái công khai</span></button></div>
+  <div class="admin-quick-grid"><button class="admin-quick" onclick="location.hash='admin/submissions'">${lineIcon("users")}<b>Xử lý hồ sơ</b><span>Tiếp nhận và cập nhật trạng thái</span></button><button class="admin-quick" onclick="location.hash='admin/certificates'">${lineIcon("badge")}<b>Phát hành giấy</b><span>Giấy chứng nhận, Giấy xác nhận và Bảng khen</span></button><button class="admin-quick" onclick="location.hash='admin/media'">${lineIcon("book")}<b>Thêm tài nguyên</b><span>Tải ảnh và tệp sử dụng trên Cổng</span></button><button class="admin-quick" onclick="location.hash='admin/maintenance'">${lineIcon("shield")}<b>Chỉnh sửa Trang chủ</b><span>Nội dung, giao diện và trạng thái công khai</span></button></div>
   <div class="card" style="margin-top:16px"><h2>Quản trị an toàn</h2><p class="muted">Các module được tách theo chức năng. Ảnh giao diện lưu ở R2; cấu hình công khai có giá trị mặc định trong source; dữ liệu nghiệp vụ tiếp tục dùng D1 để không làm thay đổi dữ liệu cũ.</p></div>`;
 }
 
@@ -1028,12 +1028,12 @@ async function adminUsers(main){
   const d=await api("/api/admin/users");
   state.admin.users=d.items||[];
 
-  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Tài khoản & Phân quyền</h1><button class="primary" onclick="inviteUser()">+ Cấp tài khoản</button></div>
+  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Quản trị viên & Phân quyền</h1><button class="primary" onclick="inviteUser()">+ Tạo tài khoản quản trị viên</button></div>
   <div class="card table-scroll"><table><thead><tr><th>Người dùng</th><th>Vai trò</th><th>Xác minh</th><th>2FA</th><th>Trạng thái</th><th></th></tr></thead><tbody>${state.admin.users.map(u=>`<tr><td><b>${E(u.full_name||"")}</b><br>${E(u.email)}</td><td>${(u.roles||[]).map(r=>`<span class="badge-role">${E(r.role_id)}${r.scope_unit_code?` @ ${E(r.scope_unit_code)}`:""}</span>`).join("")}</td><td>${u.email_verified?"✓":"—"}</td><td>${u.totp_enabled?"✓":"—"}</td><td>${E(u.status)}</td><td><button class="secondary" onclick="editRoles(${u.id})">Quyền</button> <button class="ghost" onclick="resetUserPassword(${u.id},'${E(u.email)}')">Đặt lại MK</button> <button class="ghost" onclick="toggleUser(${u.id},'${E(u.status)}')">${u.status==="active"?"Khóa":"Mở khóa"}</button></td></tr>`).join("")}</tbody></table></div>`;
 }
 
 window.inviteUser=()=>{
-  modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Cấp tài khoản</h2><form id="inviteForm"><div class="field"><label>Họ và tên</label><input name="full_name" required></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Vai trò ban đầu</label><select name="role"><option>student</option><option>member</option><option>volunteer</option><option>handler</option><option>unit_admin</option><option>communications</option><option>external_events</option><option>hr</option><option>office</option><option>network_secretary</option><option>system_admin</option><option>super_admin</option></select></div><div class="field"><label>Phạm vi đơn vị (nếu có)</label><input name="scope_unit_code" placeholder="Ví dụ: SFEC"></div><button class="primary">Cấp tài khoản</button></form>`);
+  modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Tạo tài khoản quản trị viên</h2><form id="inviteForm"><div class="field"><label>Họ và tên</label><input name="full_name" required></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Vai trò ban đầu</label><select name="role"><option>student</option><option>member</option><option>volunteer</option><option>handler</option><option>unit_admin</option><option>communications</option><option>external_events</option><option>hr</option><option>office</option><option>network_secretary</option><option>system_admin</option><option>super_admin</option></select></div><div class="field"><label>Phạm vi đơn vị (nếu có)</label><input name="scope_unit_code" placeholder="Ví dụ: SFEC"></div><div class="field"><label>Cách kích hoạt</label><select name="activation_mode"><option value="email">Gửi email kích hoạt</option><option value="self">Tự kích hoạt</option></select></div><button class="primary">Tạo tài khoản</button></form>`);
 
   document.getElementById("inviteForm").onsubmit=async e=>{
     e.preventDefault();
@@ -1047,13 +1047,14 @@ window.inviteUser=()=>{
           full_name:f.get("full_name"),
           email:f.get("email"),
           roles:[f.get("role")],
-          scope_unit_code:f.get("scope_unit_code")
+          scope_unit_code:f.get("scope_unit_code"),
+          activation_mode:f.get("activation_mode")
         }
       });
 
       closeModal();
 
-      modal(`<h2>Đã cấp tài khoản</h2><div class="notice warn">Mật khẩu tạm thời chỉ hiển thị lần này.</div><p><b>${E(f.get("email"))}</b></p><pre class="card">${E(d.temp_password)}</pre><button class="primary" onclick="closeModal()">Đã lưu</button>`);
+      modal(`<h2>Đã tạo tài khoản</h2><p><b>${E(f.get("email"))}</b></p>${d.activation_sent?`<div class="notice good">Đã gửi email kích hoạt. Tài khoản đang ở trạng thái Chưa kích hoạt.</div>`:`<div class="notice warn">Tài khoản đã được tự kích hoạt. Mật khẩu tạm thời chỉ hiển thị lần này.</div><pre class="card">${E(d.temp_password||"")}</pre>`}<button class="primary" onclick="closeModal()">Hoàn tất</button>`);
     }catch(err){
       toast(errorText(err),"bad");
     }
@@ -1505,7 +1506,7 @@ async function adminCertificates(main){
   const d=await api("/api/admin/certificates");
   state.admin.certificates=d.items||[];
 
-  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">One Sky First Credential Registry</h1><button class="primary" onclick="requestCertificate()">+ Chuẩn bị credential</button></div>
+  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Giấy đã phát hành</h1><button class="primary" onclick="requestCertificate()">+ Phát hành giấy</button></div>
   <div class="notice"><b>Draft → Prepare → Review → Issue → Verify → Revoke/Supersede.</b> Mã mới chỉ được sinh khi Issue, dạng <code>SFN-GCN/GXN/BK-#####</code> ngẫu nhiên. Mã legacy giữ nguyên, không convert.</div>
   <div class="card table-scroll"><table><thead><tr><th>Mã</th><th>Người được ghi nhận</th><th>Nội dung</th><th>Trạng thái</th><th>Actions</th></tr></thead><tbody>${state.admin.certificates.map(c=>`<tr><td><b>${E(c.code||"Chưa phát hành")}</b></td><td>${E(c.full_name)}<br><span class="small muted">${E(c.cert_type||"")}</span></td><td>${E(c.content)}</td><td><span class="status">${E(c.status)}</span></td><td><button class="secondary" onclick="credentialHistory('${E(c.id)}')">History</button> ${c.status==="approved"?`<button class="primary" onclick="issueCert('${E(c.id)}')">Issue</button>`:""}${c.status==="issued"?` <button class="secondary" onclick="showCertQR('${E(c.code)}')">QR</button> <button class="secondary" onclick="supersedeCert('${E(c.id)}')">Supersede</button> <button class="danger" onclick="revokeCert('${E(c.id)}')">Revoke</button>`:""}</td></tr>`).join("")}</tbody></table></div>`;
 }
@@ -1665,10 +1666,10 @@ window.revokeCert=idc=>{
 
 window.supersedeCert=idc=>{
   const note=prompt("Lý do cần thay thế credential:");if(note===null)return;
-  api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{method:"PATCH",body:{action:"supersede",note}}).then(()=>{toast("Đã tạo bản replacement chờ phê duyệt. Credential cũ chỉ chuyển superseded khi bản mới được Issue.");adminCertificates(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"));
+  api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{method:"PATCH",body:{action:"supersede",note}}).then(()=>{toast("Đã tạo bản replacement chờ phê duyệt. Giấy cũ chỉ chuyển sang trạng thái đã được thay thế khi bản mới được phát hành.");adminCertificates(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"));
 };
 window.credentialHistory=async idc=>{
-  try{const d=await api(`/api/admin/certificates/${encodeURIComponent(idc)}/history`);modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Credential History</h2><p><b>${E(d.item.code||'Chưa phát hành')}</b> · ${E(d.item.full_name)} · ${E(d.item.status)}</p><div class="timeline-admin">${(d.history||[]).map(h=>`<div class="card"><b>${E(h.action)}</b><p>${E(h.note||'')}</p><small>${fmt(h.created_at)}${h.actor_id?` · Actor #${E(h.actor_id)}`:''}</small></div>`).join('')||'<p>Chưa có history.</p>'}</div>`)}catch(e){toast(errorText(e),'bad')}
+  try{const d=await api(`/api/admin/certificates/${encodeURIComponent(idc)}/history`);modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Lịch sử giấy đã phát hành</h2><p><b>${E(d.item.code||'Chưa phát hành')}</b> · ${E(d.item.full_name)} · ${E(d.item.status)}</p><div class="timeline-admin">${(d.history||[]).map(h=>`<div class="card"><b>${E(h.action)}</b><p>${E(h.note||'')}</p><small>${fmt(h.created_at)}${h.actor_id?` · Actor #${E(h.actor_id)}`:''}</small></div>`).join('')||'<p>Chưa có history.</p>'}</div>`)}catch(e){toast(errorText(e),'bad')}
 };
 
 async function adminTickets(main){
@@ -1813,7 +1814,7 @@ window.saveMaintenanceSettings=()=>saveSettingItems({maintenance_mode:document.g
 
 async function adminMedia(main){
   const d=await api("/api/admin/media");state.admin.media=d.items||[];
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">R2 MEDIA</span><h1>Thư viện ảnh</h1><p class="muted">Ảnh giao diện được lưu trực tiếp trên R2, không cần bản ghi D1.</p></div><button class="primary" onclick="uploadSiteImage()">+ Tải ảnh</button></div><div class="media-grid">${state.admin.media.map(x=>`<div class="media-card"><img src="${E(x.url)}" alt=""><div class="media-meta"><b>${E(x.key.split('/').pop())}</b><small>${Math.round((x.size||0)/1024)} KB</small><div class="actions"><button class="secondary" onclick="copyMediaUrl('${E(x.url)}')">Sao chép URL</button><button class="danger" onclick="deleteSiteImage('${E(x.key)}')">Xóa</button></div></div></div>`).join("")||`<div class="card muted">Chưa có ảnh tải lên.</div>`}</div>`;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">THƯ VIỆN HÌNH ẢNH</span><h1>Thư viện ảnh</h1><p class="muted">Ảnh giao diện được lưu trực tiếp trên R2, không cần bản ghi D1.</p></div><button class="primary" onclick="uploadSiteImage()">+ Tải ảnh</button></div><div class="media-grid">${state.admin.media.map(x=>`<div class="media-card"><img src="${E(x.url)}" alt=""><div class="media-meta"><b>${E(x.key.split('/').pop())}</b><small>${Math.round((x.size||0)/1024)} KB</small><div class="actions"><button class="secondary" onclick="copyMediaUrl('${E(x.url)}')">Sao chép URL</button><button class="danger" onclick="deleteSiteImage('${E(x.key)}')">Xóa</button></div></div></div>`).join("")||`<div class="card muted">Chưa có ảnh tải lên.</div>`}</div>`;
 }
 window.uploadSiteImage=()=>{modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Tải ảnh lên R2</h2><form id="siteImageForm"><div class="field"><label>Chọn ảnh</label><input name="file" type="file" accept="image/*" required></div><button class="primary">Tải lên</button></form>`);document.getElementById("siteImageForm").onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.target);try{const r=await api("/api/admin/media",{method:"POST",body:fd});closeModal();toast("Đã tải ảnh. URL: "+r.url);adminMedia(document.getElementById("adminMain"));}catch(err){toast(errorText(err),"bad")}}};
 window.copyMediaUrl=async url=>{try{await navigator.clipboard.writeText(location.origin+url);toast("Đã sao chép URL ảnh.")}catch{prompt("Sao chép URL:",location.origin+url)}};
