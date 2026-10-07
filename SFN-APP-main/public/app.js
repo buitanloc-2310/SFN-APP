@@ -12,8 +12,8 @@ const E=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt
 const J=x=>{try{return typeof x==="string"?JSON.parse(x):x}catch{return {}}};
 const fmt=d=>d?new Date(d).toLocaleString("vi-VN"):"—";
 const rolesOf=u=>(u?.roles||[]).map(r=>r.role_id);
-const isAdmin=u=>(u?.roles||[]).some(r=>Number(r.level)>=40||["super_admin","system_admin","network_secretary","office","hr","communications","external_events","unit_admin","handler"].includes(r.role_id));
-const isMember=u=>(u?.roles||[]).some(r=>["member","volunteer","handler","unit_admin","communications","external_events","hr","office","network_secretary","system_admin","super_admin"].includes(r.role_id));
+const isAdmin=u=>(u?.roles||[]).some(r=>Number(r.level)>=40||["owner","super_admin","system_admin","network_secretary","content_admin","office","hr","certificate_manager","reviewer","case_manager","communications","external_events","editor","unit_admin","handler"].includes(r.role_id));
+const isMember=u=>(u?.roles||[]).some(r=>["member","volunteer","handler","unit_admin","editor","communications","external_events","case_manager","reviewer","certificate_manager","hr","office","content_admin","network_secretary","system_admin","super_admin","owner"].includes(r.role_id));
 
 async function api(path,options={}){
   const o={credentials:"same-origin",...options,headers:{...(options.headers||{})}};
@@ -860,41 +860,43 @@ async function renderAdmin(){
 
   const section=location.hash.split("/")[1]||"dashboard";
 
-  app.innerHTML=`<div class="dashboard"><aside class="sidebar">${adminMenu.map(g=>`<div class="sidebar-group"><div class="sidebar-label">${E(g.group)}</div>${g.items.map(m=>`<button class="${section===m[0]?"active":""}" onclick="location.hash='admin/${m[0]}'">${E(m[1])}</button>`).join("")}</div>`).join("")}<button onclick="logout()">↩ Đăng xuất</button></aside><section id="adminMain"><div class="loading">Đang tải…</div></section></div>`;
+  app.innerHTML=`<div class="dashboard"><aside class="sidebar" id="adminSidebar">${adminMenu.map(g=>`<div class="sidebar-group"><div class="sidebar-label">${E(g.group)}</div>${g.items.map(m=>`<button type="button" class="${section===m[0]?"active":""}" data-admin-route="${E(m[0])}">${E(m[1])}</button>`).join("")}</div>`).join("")}<button type="button" id="adminLogout">↩ Đăng xuất</button></aside><section id="adminMain"><div class="loading">Đang tải…</div></section></div>`;
 
+  document.querySelectorAll("[data-admin-route]").forEach(btn=>btn.addEventListener("click",()=>{location.hash=`admin/${btn.dataset.adminRoute}`}));
+  document.getElementById("adminLogout")?.addEventListener("click",logout);
   const main=document.getElementById("adminMain");
 
   try{
-    if(section==="dashboard")return adminDashboard(main);
-    if(section==="approvals")return adminApprovals(main);
-    if(section==="submissions")return adminSubmissions(main);
-    if(section==="users")return adminUsers(main);
-    if(section==="people")return adminPeople(main);
-    if(section==="recruitment")return adminRecruitment(main);
-    if(section==="forms")return adminForms(main);
-    if(section==="terms")return adminTerms(main);
-    if(section==="teaching")return adminTeaching(main);
-    if(section==="classes")return adminGeneric(main,"classes","Lớp học",["unit_code","title","level","status","capacity"]);
-    if(section==="events")return adminGeneric(main,"events","Sự kiện",["unit_code","title","start_at","end_at","status","capacity"]);
-    if(section==="documents")return adminGeneric(main,"documents","Kho văn bản",["code","doc_type","title","visibility","status","issued_at"]);
-    if(section==="units")return adminGeneric(main,"units","Đơn vị trực thuộc",["code","name","unit_type","manager_name","email","status"]);
-    if(section==="news")return adminGeneric(main,"news","Tin tức & CMS",["title","slug","body","status","published_at"]);
-    if(section==="tasks")return adminGeneric(main,"tasks","Nhiệm vụ & Bàn giao",["title","description","assigned_to","unit_code","status","priority","due_at"]);
-    if(section==="certificates")return adminCertificates(main);
-    if(section==="tickets")return adminTickets(main);
-    if(section==="privacy")return adminPrivacy(main);
-    if(section==="files")return adminFiles(main);
-    if(section==="email")return adminEmail(main);
-    if(section==="site")return adminSite(main);
-    if(section==="header")return adminHeader(main);
-    if(section==="footer")return adminFooter(main);
-    if(section==="maintenance")return adminMaintenance(main);
-    if(section==="media")return adminMedia(main);
-    if(section==="modules")return adminModules(main);
-    if(section==="settings")return adminSettings(main);
-    if(section==="search")return adminSearch(main);
-    if(section==="audit")return adminAudit(main);
-    if(section==="backup")return adminBackup(main);
+    if(section==="dashboard")return await adminDashboard(main);
+    if(section==="approvals")return await adminApprovals(main);
+    if(section==="submissions")return await adminSubmissions(main);
+    if(section==="users")return await adminUsers(main);
+    if(section==="people")return await adminPeople(main);
+    if(section==="recruitment")return await adminRecruitment(main);
+    if(section==="forms")return await adminForms(main);
+    if(section==="terms")return await adminTerms(main);
+    if(section==="teaching")return await adminTeaching(main);
+    if(section==="classes")return await adminGeneric(main,"classes","Lớp học",["unit_code","title","level","status","capacity"]);
+    if(section==="events")return await adminGeneric(main,"events","Sự kiện",["unit_code","title","start_at","end_at","status","capacity"]);
+    if(section==="documents")return await adminGeneric(main,"documents","Kho văn bản",["code","doc_type","title","visibility","status","issued_at"]);
+    if(section==="units")return await adminGeneric(main,"units","Đơn vị trực thuộc",["code","name","unit_type","manager_name","email","status"]);
+    if(section==="news")return await adminGeneric(main,"news","Tin tức & CMS",["title","slug","body","status","published_at"]);
+    if(section==="tasks")return await adminGeneric(main,"tasks","Nhiệm vụ & Bàn giao",["title","description","assigned_to","unit_code","status","priority","due_at"]);
+    if(section==="certificates")return await adminCertificates(main);
+    if(section==="tickets")return await adminTickets(main);
+    if(section==="privacy")return await adminPrivacy(main);
+    if(section==="files")return await adminFiles(main);
+    if(section==="email")return await adminEmail(main);
+    if(section==="site")return await adminSite(main);
+    if(section==="header")return await adminHeader(main);
+    if(section==="footer")return await adminFooter(main);
+    if(section==="maintenance")return await adminMaintenance(main);
+    if(section==="media")return await adminMedia(main);
+    if(section==="modules")return await adminModules(main);
+    if(section==="settings")return await adminSettings(main);
+    if(section==="search")return await adminSearch(main);
+    if(section==="audit")return await adminAudit(main);
+    if(section==="backup")return await adminBackup(main);
   }catch(err){
     main.innerHTML=`<div class="notice bad">${E(errorText(err))}</div>`;
   }
@@ -1033,7 +1035,7 @@ async function adminUsers(main){
 }
 
 window.inviteUser=()=>{
-  modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Tạo tài khoản quản trị viên</h2><form id="inviteForm"><div class="field"><label>Họ và tên</label><input name="full_name" required></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Vai trò ban đầu</label><select name="role"><option>student</option><option>member</option><option>volunteer</option><option>handler</option><option>unit_admin</option><option>communications</option><option>external_events</option><option>hr</option><option>office</option><option>network_secretary</option><option>system_admin</option><option>super_admin</option></select></div><div class="field"><label>Phạm vi đơn vị (nếu có)</label><input name="scope_unit_code" placeholder="Ví dụ: SFEC"></div><div class="field"><label>Cách kích hoạt</label><select name="activation_mode"><option value="email">Gửi email kích hoạt</option><option value="self">Tự kích hoạt</option></select></div><button class="primary">Tạo tài khoản</button></form>`);
+  modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Tạo tài khoản quản trị viên</h2><form id="inviteForm"><div class="field"><label>Họ và tên</label><input name="full_name" required></div><div class="field"><label>Email</label><input name="email" type="email" required></div><div class="field"><label>Vai trò ban đầu</label><select name="role"><option value="editor">Biên tập viên</option><option value="handler">Nhân sự xử lý hồ sơ</option><option value="unit_admin">Quản trị viên đơn vị trực thuộc</option><option value="communications">Ban Truyền thông</option><option value="external_events">Ban Đối ngoại & Sự kiện</option><option value="case_manager">Quản lý hồ sơ</option><option value="reviewer">Người duyệt</option><option value="certificate_manager">Quản lý giấy đã phát hành</option><option value="hr">Ban Nhân sự</option><option value="office">Văn phòng</option><option value="content_admin">Quản trị nội dung</option><option value="network_secretary">Tổng Thư ký Mạng lưới</option><option value="system_admin">Quản trị viên hệ thống</option><option value="super_admin">Quản trị viên cấp cao</option></select></div><div class="field"><label>Phạm vi đơn vị (nếu có)</label><input name="scope_unit_code" placeholder="Ví dụ: SFEC"></div><div class="field"><label>Cách kích hoạt</label><select name="activation_mode"><option value="email">Gửi email kích hoạt</option><option value="self">Tự kích hoạt</option></select></div><button class="primary">Tạo tài khoản</button></form>`);
 
   document.getElementById("inviteForm").onsubmit=async e=>{
     e.preventDefault();
@@ -1943,7 +1945,12 @@ function errorText(err){
     PROTECTED_SUPER_ADMIN:"Tài khoản Super Admin gốc được bảo vệ.",
     ROOT_SUPER_ADMIN_CANNOT_BE_REMOVED:"Không thể gỡ quyền Super Admin gốc.",
     EMAIL_PROVIDER_NOT_CONFIGURED:"Dịch vụ email chưa được cấu hình.",
-    GOOGLE_OAUTH_NOT_CONFIGURED:"Đăng nhập Google chưa được cấu hình."
+    GOOGLE_OAUTH_NOT_CONFIGURED:"Đăng nhập Google chưa được cấu hình.",
+    INTERNAL_ERROR:"Hệ thống gặp lỗi khi xử lý yêu cầu. Vui lòng thử lại; nếu lỗi lặp lại, dùng mã tham chiếu trong phản hồi để kiểm tra nhật ký.",
+    OWNER_PROTECTED:"Tài khoản Chủ sở hữu hệ thống được bảo vệ.",
+    OWNER_ROLE_NOT_ASSIGNABLE_HERE:"Vai trò Chủ sở hữu hệ thống không thể cấp từ màn hình này.",
+    OWNER_CANNOT_BE_DISABLED:"Phải luôn duy trì ít nhất một Chủ sở hữu hệ thống đang hoạt động.",
+    FEATURE_TEMPORARILY_UNAVAILABLE:"Chức năng này tạm thời chưa tương thích với cấu trúc dữ liệu hiện tại."
   };
 
   return map[code]||code;

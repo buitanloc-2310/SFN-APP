@@ -98,14 +98,15 @@ async function cleanup(env){
     const expired=await env.DB.prepare("SELECT r2_key FROM upload_sessions WHERE expires_at<=CURRENT_TIMESTAMP AND state IN ('created','uploaded','rejected') LIMIT 500").all();
     if(env.FILES) for(const row of expired.results||[]){if(row.r2_key) await env.FILES.delete(row.r2_key)}
   }catch(err){console.error("UPLOAD_RETENTION_CLEANUP",err)}
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM sessions WHERE expires_at<=CURRENT_TIMESTAMP"),
-    env.DB.prepare("DELETE FROM auth_tokens WHERE expires_at<=CURRENT_TIMESTAMP OR used_at IS NOT NULL"),
-    env.DB.prepare("DELETE FROM rate_limits WHERE window_start < strftime('%s','now')-86400"),
-    env.DB.prepare("DELETE FROM form_drafts WHERE expires_at<=CURRENT_TIMESTAMP"),
-    env.DB.prepare("DELETE FROM upload_sessions WHERE expires_at<=CURRENT_TIMESTAMP"),
-    env.DB.prepare("DELETE FROM portal_events WHERE created_at < datetime('now','-180 days')")
-  ]);
+  const cleanupStatements=[
+    "DELETE FROM sessions WHERE expires_at<=CURRENT_TIMESTAMP",
+    "DELETE FROM auth_tokens WHERE expires_at<=CURRENT_TIMESTAMP OR used_at IS NOT NULL",
+    "DELETE FROM rate_limits WHERE window_start < strftime('%s','now')-86400",
+    "DELETE FROM form_drafts WHERE expires_at<=CURRENT_TIMESTAMP",
+    "DELETE FROM upload_sessions WHERE expires_at<=CURRENT_TIMESTAMP",
+    "DELETE FROM portal_events WHERE created_at < datetime('now','-180 days')"
+  ];
+  for(const sql of cleanupStatements){try{await env.DB.prepare(sql).run()}catch(err){console.warn("CLEANUP_SKIP",sql.split(" ")[2],String(err?.message||err))}}
   const retention=Number(await getSetting(env,"rejected_application_retention_days",365));
   if(Number.isFinite(retention)&&retention>0){
     await env.DB.prepare("UPDATE submissions SET status='Đã lưu trữ',updated_at=CURRENT_TIMESTAMP WHERE status='Không phù hợp' AND created_at < datetime('now', ?) ")
@@ -117,7 +118,7 @@ async function scheduledBackup(env){
   const tables=["settings","modules","forms","form_revisions","terms","people","units","classes","events","news","documents","certificates","certificate_history","case_events","approvals","tasks"];
   const snapshot={created_at:new Date().toISOString(),kind:"automatic",tables:{}};
   for(const t of tables){
-    const rs=await env.DB.prepare(`SELECT * FROM ${t}`).all();snapshot.tables[t]=rs.results||[];
+    try{const rs=await env.DB.prepare(`SELECT * FROM ${t}`).all();snapshot.tables[t]=rs.results||[]}catch(err){console.warn("AUTO_BACKUP_SKIP",t,String(err?.message||err))}
   }
   const raw=JSON.stringify(snapshot),id=`backup_auto_${crypto.randomUUID().replaceAll("-","")}`;
   const key=`backups/automatic/${new Date().toISOString().slice(0,10)}/${id}.json`;
@@ -181,15 +182,16 @@ export default {
   async fetch(request,env,ctx){
     try{return secure(await handle(request,env,ctx));}
     catch(err){
-      console.error(err);
+      const requestId=crypto.randomUUID();
       const url=new URL(request.url),accept=request.headers.get("accept")||"";
+      console.error("REQUEST_ERROR",{request_id:requestId,method:request.method,path:url.pathname,message:String(err?.message||err),stack:String(err?.stack||"").slice(0,4000)});
       if(request.method==="GET"&&!url.pathname.startsWith("/api/")&&accept.includes("text/html")){
         try{
           const page=await env.ASSETS.fetch(new Request(new URL("/error.html",url.origin),{headers:request.headers}));
           if(page.ok)return secure(new Response(page.body,{status:500,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}}));
         }catch{}
       }
-      return secure(json({error:"INTERNAL_ERROR",message:"Hệ thống gặp lỗi. Vui lòng thử lại sau."},500));
+      return secure(json({error:"INTERNAL_ERROR",message:"Hệ thống gặp lỗi. Vui lòng thử lại sau.",request_id:requestId},500,{"Cache-Control":"no-store"}));
     }
   },
 

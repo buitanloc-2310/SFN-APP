@@ -12,6 +12,16 @@ async function setting(env,key,fallback=null){
   const r=await env.DB.prepare("SELECT value_json FROM settings WHERE key=?").bind(key).first();
   if(!r) return fallback; try{return JSON.parse(r.value_json)}catch{return r.value_json}
 }
+const adminSchemaCache=new Map();
+async function adminTableColumns(env,table){
+  const key=`cols:${table}`;if(adminSchemaCache.has(key))return adminSchemaCache.get(key);
+  try{const rs=await env.DB.prepare(`PRAGMA table_info(${table})`).all();const cols=new Set((rs.results||[]).map(x=>String(x.name||"")));adminSchemaCache.set(key,cols);return cols}catch{return new Set()}
+}
+async function adminTableExists(env,table){
+  const key=`table:${table}`;if(adminSchemaCache.has(key))return adminSchemaCache.get(key);
+  try{const row=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").bind(table).first();const ok=!!row;adminSchemaCache.set(key,ok);return ok}catch{return false}
+}
+function isOwnerUser(user){return (user?.roles||[]).some(r=>r.role_id==="owner")}
 async function nextCounter(env,key){
   await env.DB.prepare("INSERT OR IGNORE INTO counters(key,value) VALUES(?,0)").bind(key).run();
   const r=await env.DB.prepare("UPDATE counters SET value=value+1 WHERE key=? RETURNING value").bind(key).first();
@@ -26,12 +36,18 @@ function credentialKind(certType=""){
 }
 
 async function generateCredentialCode(env,certType){
-  const kind=credentialKind(certType);
+  const kind=credentialKind(certType),cols=await adminTableColumns(env,"certificates");
+  const identifiers=["code","public_id","legacy_code"].filter(x=>cols.has(x));
+  const hasRegistry=await adminTableExists(env,"issued_document_codes");
   for(let attempt=0;attempt<64;attempt++){
     const bytes=new Uint32Array(1); crypto.getRandomValues(bytes);
-    const n=10000000+(bytes[0]%90000000);
-    const code=`SFN-${kind}-${n}`;
-    const exists=await env.DB.prepare("SELECT id FROM certificates WHERE code=? OR public_id=? LIMIT 1").bind(code,code).first();
+    const n=10000000+(bytes[0]%90000000),code=`SFN-${kind}-${n}`;
+    let exists=null;
+    if(identifiers.length){
+      const where=identifiers.map(x=>`${x}=?`).join(" OR ");
+      exists=await env.DB.prepare(`SELECT id FROM certificates WHERE ${where} LIMIT 1`).bind(...identifiers.map(()=>code)).first();
+    }
+    if(!exists&&hasRegistry){exists=await env.DB.prepare("SELECT document_id id FROM issued_document_codes WHERE lookup_code=? LIMIT 1").bind(code).first()}
     if(!exists) return code;
   }
   throw new Error("CREDENTIAL_ID_COLLISION_RETRY_EXHAUSTED");
@@ -48,8 +64,10 @@ async function userByEmail(env,email){
   return env.DB.prepare("SELECT id,email,full_name FROM users WHERE email=? COLLATE NOCASE").bind(email).first();
 }
 async function ensureRoleGrantAllowed(actor,roleId){
-  if((actor.roles||[]).some(r=>r.role_id==="super_admin")) return true;
-  return roleLevel(roleId)<highestRoleLevel(actor) && roleId!=="super_admin";
+  if(roleId==="owner") return false;
+  if(isOwnerUser(actor)) return true;
+  if((actor.roles||[]).some(r=>r.role_id==="super_admin")) return roleId!=="owner";
+  return roleLevel(roleId)<highestRoleLevel(actor) && !["owner","super_admin"].includes(roleId);
 }
 async function listUserRoles(env,userId){
   const rs=await env.DB.prepare("SELECT role_id,scope_unit_code,granted_at,expires_at FROM user_roles WHERE user_id=?").bind(userId).all();
@@ -202,11 +220,11 @@ export async function adminRoute(request,env,url,ctx){
   if(p==="/api/admin/users"&&request.method==="GET"){
     const deny=requirePermission(user,"user.view");if(deny)return deny;
     const rs=await env.DB.prepare("SELECT id,email,full_name,status,email_verified,must_change_password,totp_enabled,created_at FROM users ORDER BY id DESC LIMIT 1000").all();
-    const actorIsOwner=(user.roles||[]).some(r=>r.role_id==="super_admin");
+    const actorIsOwner=isOwnerUser(user);
     const items=[];
     for(const u of rs.results||[]){
       const roles=await listUserRoles(env,u.id);
-      const isOwner=roles.some(r=>r.role_id==="super_admin");
+      const isOwner=roles.some(r=>r.role_id==="owner");
       if(isOwner&&!actorIsOwner) continue;
       items.push({...u,roles,is_owner:isOwner});
     }
@@ -223,6 +241,9 @@ export async function adminRoute(request,env,url,ctx){
     const targetId=Number(rolesMatch[1]),body=await readJson(request)||{},roles=Array.isArray(body.roles)?body.roles:[];
     const target=await env.DB.prepare("SELECT id,email FROM users WHERE id=?").bind(targetId).first();
     if(!target)return json({error:"NOT_FOUND"},404);
+    const targetRoles=await listUserRoles(env,targetId);
+    if(targetRoles.some(r=>r.role_id==="owner")&&!isOwnerUser(user)) return json({error:"OWNER_PROTECTED"},403);
+    if(roles.some(r=>(r.role_id||r)==="owner")) return json({error:"OWNER_ROLE_NOT_ASSIGNABLE_HERE"},403);
     if(target.email.toLowerCase()==="skyfirst.ec@gmail.com" && !(user.roles||[]).some(r=>r.role_id==="super_admin"))
       return json({error:"PROTECTED_SUPER_ADMIN"},403);
     for(const r of roles) if(!(await ensureRoleGrantAllowed(user,r.role_id||r))) return json({error:"ROLE_TOO_HIGH",role:r.role_id||r},403);
@@ -248,6 +269,8 @@ export async function adminRoute(request,env,url,ctx){
     const deny=requirePermission(user,"user.manage");if(deny)return deny;
     const targetId=Number(userResetMatch[1]),target=await env.DB.prepare("SELECT id,email,full_name FROM users WHERE id=?").bind(targetId).first();
     if(!target)return json({error:"NOT_FOUND"},404);
+    const targetRoles=await listUserRoles(env,targetId);
+    if(targetRoles.some(r=>r.role_id==="owner")&&!isOwnerUser(user)) return json({error:"OWNER_PROTECTED"},403);
     if(target.email.toLowerCase()==="skyfirst.ec@gmail.com")return json({error:"ROOT_SUPER_ADMIN_PROTECTED"},403);
     const chars="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#%",rnd=new Uint8Array(16);crypto.getRandomValues(rnd);
     let temp="SFN!";for(const b of rnd)temp+=chars[b%chars.length];
@@ -267,6 +290,11 @@ export async function adminRoute(request,env,url,ctx){
     const targetId=Number(userStatusMatch[1]),body=await readJson(request)||{},status=String(body.status||"active");
     const target=await env.DB.prepare("SELECT email FROM users WHERE id=?").bind(targetId).first();
     if(!target)return json({error:"NOT_FOUND"},404);
+    const targetRoles=await listUserRoles(env,targetId);
+    if(targetRoles.some(r=>r.role_id==="owner")){
+      if(!isOwnerUser(user)) return json({error:"OWNER_PROTECTED"},403);
+      if(status!=="active") return json({error:"OWNER_CANNOT_BE_DISABLED"},409);
+    }
     if(target.email.toLowerCase()==="skyfirst.ec@gmail.com"&&status!=="active") return json({error:"ROOT_SUPER_ADMIN_PROTECTED"},403);
     await env.DB.batch([
       env.DB.prepare("UPDATE users SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(status,targetId),
@@ -505,7 +533,7 @@ export async function adminRoute(request,env,url,ctx){
     const deny=requirePermission(user,"certificate.view");if(deny)return deny;
     const idC=decodeURIComponent(certHistoryMatch[1]);
     const [cert,history]=await env.DB.batch([
-      env.DB.prepare("SELECT id,code,public_id,legacy_code,cert_type,full_name,status,issued_at,revoked_at,revocation_reason,supersedes_id,superseded_by_id FROM certificates WHERE id=?").bind(idC),
+      env.DB.prepare("SELECT * FROM certificates WHERE id=?").bind(idC),
       env.DB.prepare("SELECT action,note,actor_id,created_at FROM certificate_history WHERE certificate_id=? ORDER BY created_at DESC,id DESC").bind(idC)
     ]);
     const item=cert.results?.[0];if(!item)return json({error:"NOT_FOUND"},404);
@@ -525,8 +553,15 @@ export async function adminRoute(request,env,url,ctx){
         code,cert_type:current.cert_type,full_name:current.full_name,email:current.email||"",
         content:current.content,metadata:parseBodyJson(current,"metadata_json")
       };
-      await env.DB.prepare("UPDATE certificates SET code=?,public_id=?,status='issued',issued_by=?,issued_at=CURRENT_TIMESTAMP,immutable_snapshot_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-        .bind(code,code,user.id,JSON.stringify(immutableSnapshot),idC).run();
+      const certCols=await adminTableColumns(env,"certificates"),sets=["code=?","status='issued'","issued_by=?","issued_at=CURRENT_TIMESTAMP","updated_at=CURRENT_TIMESTAMP"],vals=[code,user.id];
+      if(certCols.has("public_id")){sets.splice(1,0,"public_id=?");vals.splice(1,0,code)}
+      if(certCols.has("immutable_snapshot_json")){sets.push("immutable_snapshot_json=?");vals.push(JSON.stringify(immutableSnapshot))}
+      vals.push(idC);
+      await env.DB.prepare(`UPDATE certificates SET ${sets.join(",")} WHERE id=?`).bind(...vals).run();
+      if(await adminTableExists(env,"issued_document_codes")){
+        try{await env.DB.prepare("INSERT OR IGNORE INTO issued_document_codes(document_id,document_type,lookup_code,random_digits,code_version,is_primary,is_active) VALUES(?,?,?,?, 'v3',1,1)")
+          .bind(idC,credentialKind(current.cert_type),code,code.split("-").pop()).run()}catch(err){console.error("CREDENTIAL_REGISTRY_SYNC",err)}
+      }
       await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Phát hành',?,?)").bind(idC,body.note||"",user.id).run();
       if(current.supersedes_id){
         await env.DB.prepare("UPDATE certificates SET status='superseded',superseded_by_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('issued','revoked')")
@@ -540,13 +575,19 @@ export async function adminRoute(request,env,url,ctx){
       const deny=requirePermission(user,"certificate.issue");if(deny)return deny;
       if(!["issued","superseded"].includes(current.status))return json({error:"NOT_ISSUED"},409);
       const reason=String(body.note||body.reason||"").trim();
-      await env.DB.prepare("UPDATE certificates SET status='revoked',revoked_at=CURRENT_TIMESTAMP,revocation_reason=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(reason,idC).run();
+      const certCols=await adminTableColumns(env,"certificates"),sets=["status='revoked'","updated_at=CURRENT_TIMESTAMP"],vals=[];
+      if(certCols.has("revoked_at")) sets.push("revoked_at=CURRENT_TIMESTAMP");
+      if(certCols.has("revocation_reason")){sets.push("revocation_reason=?");vals.push(reason)}
+      vals.push(idC);await env.DB.prepare(`UPDATE certificates SET ${sets.join(",")} WHERE id=?`).bind(...vals).run();
+      if(await adminTableExists(env,"issued_document_codes")){try{await env.DB.prepare("UPDATE issued_document_codes SET is_active=0 WHERE document_id=?").bind(idC).run()}catch{}}
       await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Thu hồi',?,?)").bind(idC,reason,user.id).run();
       await audit(env,request,user,"Thu hồi Credential","certificate",idC,{reason});return json({ok:true});
     }
     if(body.action==="supersede"){
       const deny=requirePermission(user,"certificate.issue");if(deny)return deny;
       if(current.status!=="issued")return json({error:"ONLY_ISSUED_CAN_BE_SUPERSEDED"},409);
+      const certCols=await adminTableColumns(env,"certificates");
+      if(!certCols.has("supersedes_id")) return json({error:"FEATURE_TEMPORARILY_UNAVAILABLE",message:"Chức năng thay thế giấy chưa tương thích với cấu trúc dữ liệu hiện tại."},503);
       const replacementId=uid("cert"),token=uid("verify");
       const meta={...parseBodyJson(current,"metadata_json"),replacement_reason:String(body.note||"").trim()};
       await env.DB.prepare("INSERT INTO certificates(id,cert_type,full_name,email,content,status,requested_by,verification_token,metadata_json,supersedes_id) VALUES(?,?,?,?,?,'pending_approval',?,?,?,?)")
@@ -631,6 +672,7 @@ export async function adminRoute(request,env,url,ctx){
     const tables=["settings","modules","terms","forms","form_revisions","units","submissions","case_events","people","people_history","teaching_scopes","internal_requests","unit_members","classes","class_enrollments","attendance","events","event_registrations","news","documents","certificates","certificate_history","approvals","interviews","evaluations","tickets","ticket_messages","notifications","email_templates","tasks","data_requests"];
     const snapshot={created_at:new Date().toISOString(),tables:{}};
     for(const t of tables){
+      if(!(await adminTableExists(env,t))) continue;
       const rs=await env.DB.prepare(`SELECT * FROM ${t}`).all();snapshot.tables[t]=rs.results||[];
     }
     const raw=JSON.stringify(snapshot),idB=uid("backup"),key=`backups/${new Date().toISOString().slice(0,10)}/${idB}.json`;
@@ -663,8 +705,14 @@ export async function adminRoute(request,env,url,ctx){
     const idF=uid("file"),safe=String(file.name||"file").replace(/[^\p{L}\p{N}._-]+/gu,"_").slice(0,120),key=`private/admin/${new Date().getUTCFullYear()}/${idF}/${safe}`;
     const bytes=await file.arrayBuffer(),hash=await sha256(bytes);
     await env.FILES.put(key,bytes,{httpMetadata:{contentType:file.type||"application/octet-stream"},customMetadata:{sha256:hash}});
-    await env.DB.prepare("INSERT INTO files(id,owner_user_id,r2_key,filename,mime,size,visibility,sha256) VALUES(?,?,?,?,?,?,?,?)")
-      .bind(idF,user.id,key,safe,file.type||"",file.size||0,fd.get("visibility")==="public"?"public":"private",hash).run();
+    const fileCols=await adminTableColumns(env,"files");
+    if(fileCols.has("sha256")){
+      await env.DB.prepare("INSERT INTO files(id,owner_user_id,r2_key,filename,mime,size,visibility,sha256) VALUES(?,?,?,?,?,?,?,?)")
+        .bind(idF,user.id,key,safe,file.type||"",file.size||0,fd.get("visibility")==="public"?"public":"private",hash).run();
+    }else{
+      await env.DB.prepare("INSERT INTO files(id,owner_user_id,r2_key,filename,mime,size,visibility) VALUES(?,?,?,?,?,?,?)")
+        .bind(idF,user.id,key,safe,file.type||"",file.size||0,fd.get("visibility")==="public"?"public":"private").run();
+    }
     await audit(env,request,user,"Upload file","file",idF,{filename:safe,size:file.size});
     return json({ok:true,id:idF,filename:safe});
   }
@@ -730,7 +778,7 @@ export async function adminRoute(request,env,url,ctx){
 
   const restoreMatch=p.match(/^\/api\/admin\/backups\/([^/]+)\/restore$/);
   if(restoreMatch&&request.method==="POST"){
-    if(!(user.roles||[]).some(r=>r.role_id==="super_admin"))return json({error:"SUPER_ADMIN_REQUIRED"},403);
+    if(!(user.roles||[]).some(r=>["owner","super_admin"].includes(r.role_id)))return json({error:"SUPER_ADMIN_REQUIRED"},403);
     const idB=decodeURIComponent(restoreMatch[1]);
     const b=await env.DB.prepare("SELECT * FROM backups WHERE id=?").bind(idB).first();if(!b)return json({error:"NOT_FOUND"},404);
     const obj=await env.FILES.get(b.r2_key);if(!obj)return json({error:"BACKUP_OBJECT_NOT_FOUND"},404);
@@ -743,14 +791,15 @@ export async function adminRoute(request,env,url,ctx){
     const allowed=new Set(insertOrder);
     // Xóa bảng con trước bảng cha để không vướng FOREIGN KEY.
     for(const table of [...insertOrder].reverse()){
-      if(!(table in (snap.tables||{})))continue;
+      if(!(table in (snap.tables||{}))||!(await adminTableExists(env,table)))continue;
       await env.DB.prepare(`DELETE FROM ${table}`).run();
     }
     // Khôi phục bảng cha trước bảng con.
     for(const table of insertOrder){
-      if(!allowed.has(table)||!(table in (snap.tables||{})))continue;
+      if(!allowed.has(table)||!(table in (snap.tables||{}))||!(await adminTableExists(env,table)))continue;
+      const liveCols=await adminTableColumns(env,table);
       for(const row of snap.tables[table]||[]){
-        const cols=Object.keys(row); if(!cols.length)continue;
+        const cols=Object.keys(row).filter(c=>liveCols.has(c)); if(!cols.length)continue;
         const sql=`INSERT INTO ${table}(${cols.join(",")}) VALUES(${cols.map(()=>"?").join(",")})`;
         await env.DB.prepare(sql).bind(...cols.map(c=>row[c])).run();
       }

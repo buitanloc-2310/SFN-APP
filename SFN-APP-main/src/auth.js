@@ -1392,12 +1392,13 @@ export async function createInvitedAccount(
     highestRoleLevel(actor);
 
   for (const r of roles) {
+    if (r === "owner") {
+      return json({error:"OWNER_ROLE_NOT_ASSIGNABLE_HERE"},403);
+    }
     if (
       r === "super_admin" &&
       !(actor.roles || []).some(
-        x =>
-          x.role_id ===
-          "super_admin"
+        x => ["owner","super_admin"].includes(x.role_id)
       )
     ) {
       return json(
@@ -1409,9 +1410,7 @@ export async function createInvitedAccount(
     if (
       roleLevel(r) >= actorLevel &&
       !(actor.roles || []).some(
-        x =>
-          x.role_id ===
-          "super_admin"
+        x => x.role_id === "owner" || x.role_id === "super_admin"
       )
     ) {
       return json(

@@ -223,31 +223,93 @@ function normalizeCredentialCode(v){
   return String(v||"").trim().toUpperCase().replace(/\s+/g,"");
 }
 
+const schemaCache=new Map();
+async function tableColumns(env,table){
+  const key=`cols:${table}`;
+  if(schemaCache.has(key)) return schemaCache.get(key);
+  try{
+    const rs=await env.DB.prepare(`PRAGMA table_info(${table})`).all();
+    const cols=new Set((rs.results||[]).map(x=>String(x.name||"")));
+    schemaCache.set(key,cols);return cols;
+  }catch{return new Set()}
+}
+async function tableExists(env,table){
+  const key=`table:${table}`;
+  if(schemaCache.has(key)) return schemaCache.get(key);
+  try{
+    const row=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").bind(table).first();
+    const ok=!!row;schemaCache.set(key,ok);return ok;
+  }catch{return false}
+}
+function normalizeCredentialStatus(value){
+  const raw=String(value||"").trim();
+  const s=raw.toLowerCase();
+  if(!s) return {status:"issued",text:"CÓ HIỆU LỰC",public:true};
+  if(s.includes("supersed")||s.includes("thay thế")||s.includes("thay the")) return {status:"superseded",text:"ĐÃ ĐƯỢC THAY THẾ",public:true};
+  if(s.includes("revoke")||s.includes("thu hồi")||s.includes("thu hoi")||s.includes("hủy")||s.includes("huy")) return {status:"revoked",text:"ĐÃ THU HỒI",public:true};
+  if(["issued","active","valid","có hiệu lực","co hieu luc","đã cấp","da cap","đã phát hành","da phat hanh","còn hiệu lực","con hieu luc"].includes(s)) return {status:"issued",text:"CÓ HIỆU LỰC",public:true};
+  if(s.includes("pending")||s.includes("draft")||s.includes("approved")||s.includes("chờ")||s.includes("cho ")||s.includes("nháp")||s.includes("nhap")) return {status:s,text:raw||"CHƯA PHÁT HÀNH",public:false};
+  return {status:raw||"issued",text:raw||"CÓ HIỆU LỰC",public:true};
+}
+
 async function lookupCredential(env,rawCode){
   const code=normalizeCredentialCode(rawCode);
-  if(!code) return null;
-  const row=await env.DB.prepare(`
-    SELECT id,code,public_id,legacy_code,cert_type,full_name,content,status,issued_at,revoked_at,revocation_reason,metadata_json,superseded_by_id
-    FROM certificates
-    WHERE (upper(code)=? OR upper(public_id)=? OR upper(legacy_code)=?)
-      AND status IN ('issued','revoked','superseded')
-    LIMIT 1
-  `).bind(code,code,code).first();
+  if(!code||!env.DB) return null;
+
+  let registry=null;
+  if(await tableExists(env,"issued_document_codes")){
+    try{
+      registry=await env.DB.prepare("SELECT * FROM issued_document_codes WHERE upper(replace(lookup_code,' ',''))=? OR random_digits=? ORDER BY is_primary DESC, created_at DESC LIMIT 1").bind(code,/^\d{8}$/.test(code)?code:"__NO_DIGITS__").first();
+    }catch(err){console.error("CREDENTIAL_REGISTRY_LOOKUP",err)}
+  }
+
+  let row=null;
+  if(await tableExists(env,"certificates")){
+    const cols=await tableColumns(env,"certificates");
+    const ids=["code","public_id","legacy_code"].filter(x=>cols.has(x));
+    if(ids.length){
+      const where=ids.map(x=>`upper(replace(${x},' ',''))=?`).join(" OR ");
+      try{row=await env.DB.prepare(`SELECT * FROM certificates WHERE ${where} LIMIT 1`).bind(...ids.map(()=>code)).first()}
+      catch(err){console.error("CREDENTIAL_DIRECT_LOOKUP",err)}
+    }
+    if(!row&&registry?.document_id&&cols.has("id")){
+      try{row=await env.DB.prepare("SELECT * FROM certificates WHERE id=? LIMIT 1").bind(registry.document_id).first()}
+      catch(err){console.error("CREDENTIAL_REGISTRY_RESOLVE",err)}
+    }
+  }
+
+  if(!row&&registry){
+    const active=Number(registry.is_active??1)!==0;
+    return {
+      code:registry.lookup_code||code,
+      legacy_code:"",
+      type:registry.document_type||"Giấy đã phát hành",
+      full_name:"",
+      content:"Mã giấy đã được ghi nhận trong hệ thống Sky First.",
+      issued_at:registry.created_at||"",
+      status:active?"issued":"revoked",
+      status_text:active?"CÓ HIỆU LỰC":"ĐÃ THU HỒI",
+      revoked_at:"",revocation_reason:"",unit_name:"Sky First Network",role:"",program:"",file_url:"",replacement_code:""
+    };
+  }
   if(!row) return null;
+
+  const normalized=normalizeCredentialStatus(row.status);
+  if(!normalized.public) return null;
   let metadata={}; try{metadata=JSON.parse(row.metadata_json||"{}")}catch{}
   let replacement=null;
   if(row.superseded_by_id){
-    replacement=await env.DB.prepare("SELECT code,public_id FROM certificates WHERE id=? AND status='issued'").bind(row.superseded_by_id).first();
+    try{replacement=await env.DB.prepare("SELECT * FROM certificates WHERE id=? LIMIT 1").bind(row.superseded_by_id).first()}catch{}
   }
-  const statusText={issued:"ĐÃ XÁC THỰC",revoked:"ĐÃ THU HỒI",superseded:"ĐÃ ĐƯỢC THAY THẾ"}[row.status]||row.status;
   return {
-    code:row.public_id||row.code||row.legacy_code,
+    code:row.public_id||row.code||row.legacy_code||registry?.lookup_code||code,
     legacy_code:row.legacy_code||(/^\d{3}-|\/(GCN|GXN|BK)-SFN\//i.test(row.code||"")?row.code:null),
-    type:row.cert_type||"",full_name:row.full_name||"",content:row.content||"",issued_at:row.issued_at||"",
-    status:row.status,status_text:statusText,revoked_at:row.revoked_at||"",revocation_reason:row.revocation_reason||"",
+    type:row.cert_type||registry?.document_type||"Giấy đã phát hành",
+    full_name:row.full_name||"",content:row.content||"",issued_at:row.issued_at||row.created_at||"",
+    status:normalized.status,status_text:normalized.text,revoked_at:row.revoked_at||"",revocation_reason:row.revocation_reason||"",
     unit_name:metadata.unit_name||metadata.issuer||"Sky First Network",
     role:metadata.role||metadata.position||"",program:metadata.program||metadata.activity||metadata.event||"",
-    file_url:metadata.file_url||metadata.url||"",replacement_code:replacement?.public_id||replacement?.code||""
+    file_url:metadata.file_url||metadata.url||"",replacement_code:replacement?.public_id||replacement?.code||replacement?.legacy_code||""
   };
 }
 
@@ -309,14 +371,14 @@ export async function publicRoute(request,env,url,ctx){
       env.DB.prepare("SELECT 'program' type,title,id ref,trim(COALESCE(level,'') || ' ' || COALESCE(status,'')) description,NULL date FROM classes WHERE title LIKE ? OR COALESCE(level,'') LIKE ? OR COALESCE(unit_code,'') LIKE ? ORDER BY created_at DESC LIMIT 12").bind(like,like,like)
     ]);
     const pages=[
-      {type:"page",title:"Cổng Thông tin Số",ref:"/",description:"Sky First Information Hub"},
-      {type:"page",title:"GCN & GXN Digital Center",ref:"/gcn",description:"Credential Registry & QR Verification"},
-      {type:"page",title:"Digital Case Center",ref:"/ho-so",description:"Tra cứu hồ sơ"},
-      {type:"page",title:"Sky First Form Center",ref:"/bieu-mau",description:"Biểu mẫu số"},
-      {type:"page",title:"Sky First Lookup Center",ref:"/tra-cuu",description:"Tra cứu tập trung"}
+      {type:"page",title:"Cổng Thông tin Số",ref:"/",description:"Thông tin và tiện ích số Sky First"},
+      {type:"page",title:"Tra cứu giấy đã phát hành",ref:"/gcn",description:"Giấy chứng nhận, Giấy xác nhận, Bảng khen và QR"},
+      {type:"page",title:"Tra cứu hồ sơ",ref:"/ho-so",description:"Theo dõi tình trạng xử lý hồ sơ"},
+      {type:"page",title:"Biểu mẫu trực tuyến",ref:"/bieu-mau",description:"Gửi thông tin và hồ sơ trực tuyến"},
+      {type:"page",title:"Tra cứu thông tin",ref:"/tra-cuu",description:"Tra cứu giấy đã phát hành và hồ sơ"}
     ].filter(x=>(x.title+' '+x.description).toLowerCase().includes(q.toLowerCase()));
     const items=[...pages,...(news.results||[]),...(events.results||[]),...(programs.results||[]),...(units.results||[]),...(forms.results||[]),...(docs.results||[])].slice(0,40);
-    if(/^(SFN-(GCN|GXN|BK)-\d{5}|\d{3}-(GCN|GXN|BK)-SFN\/\d{4})$/i.test(q)){
+    if(/^(SFN-(GCN|GXN|BK)-\d{5,8}|\d{8}|\d{3}-(GCN|GXN|BK)-SFN\/\d{4})$/i.test(q)){
       const c=await lookupCredential(env,q); if(c) items.unshift({type:"credential",title:c.code,ref:c.code,description:`${c.type} · ${c.status_text}`,date:c.issued_at});
     }
     return json({items,query:q},200,publicCacheHeaders(60));
@@ -402,8 +464,14 @@ export async function publicRoute(request,env,url,ctx){
     const fullName=String(answers.full_name||answers.org_name||answers.unit_name||"").trim();
     const email=String(answers.email||"").trim().toLowerCase();
 
-    await env.DB.prepare("INSERT INTO submissions(code,form_id,form_version,form_snapshot_json,user_id,full_name,email,answers_json,terms_snapshot_json,status,next_action) VALUES(?,?,?,?,?,?,?,?,?,'Đã tiếp nhận','Theo dõi trạng thái hồ sơ và bổ sung thông tin khi được yêu cầu')")
-      .bind(code,idForm,row.version,JSON.stringify(config),user?.id||null,fullName,email,JSON.stringify(answers),JSON.stringify(snap)).run();
+    const submissionCols=await tableColumns(env,"submissions");
+    if(submissionCols.has("next_action")){
+      await env.DB.prepare("INSERT INTO submissions(code,form_id,form_version,form_snapshot_json,user_id,full_name,email,answers_json,terms_snapshot_json,status,next_action) VALUES(?,?,?,?,?,?,?,?,?,'Đã tiếp nhận','Theo dõi trạng thái hồ sơ và bổ sung thông tin khi được yêu cầu')")
+        .bind(code,idForm,row.version,JSON.stringify(config),user?.id||null,fullName,email,JSON.stringify(answers),JSON.stringify(snap)).run();
+    }else{
+      await env.DB.prepare("INSERT INTO submissions(code,form_id,form_version,form_snapshot_json,user_id,full_name,email,answers_json,terms_snapshot_json,status) VALUES(?,?,?,?,?,?,?,?,?,'Đã tiếp nhận')")
+        .bind(code,idForm,row.version,JSON.stringify(config),user?.id||null,fullName,email,JSON.stringify(answers),JSON.stringify(snap)).run();
+    }
     try{
       await env.DB.prepare("INSERT INTO case_events(submission_code,event_type,public_label,public_note,status) VALUES(?,'received','TIẾP NHẬN','Hồ sơ đã được hệ thống ghi nhận.','Đã tiếp nhận')").bind(code).run();
     }catch{}
@@ -499,23 +567,16 @@ export async function publicRoute(request,env,url,ctx){
       },400);
     }
 
+    const subCols=await tableColumns(env,"submissions");
+    const nextActionExpr=subCols.has("next_action")?"s.next_action":"'' AS next_action";
+    const resultExpr=subCols.has("result_summary")?"s.result_summary":"'' AS result_summary";
     const row=await env.DB.prepare(`
       SELECT
-        s.code,
-        s.form_id,
-        s.full_name,
-        s.email,
-        s.status,
-        s.created_at,
-        s.updated_at,
-        s.next_action,
-        s.result_summary,
-        f.name AS form_name,
-        f.audience
+        s.code,s.form_id,s.full_name,s.email,s.status,s.created_at,s.updated_at,
+        ${nextActionExpr},${resultExpr},f.name AS form_name,f.audience
       FROM submissions s
       LEFT JOIN forms f ON f.id=s.form_id
-      WHERE s.code=?
-        AND lower(s.email)=lower(?)
+      WHERE s.code=? AND lower(s.email)=lower(?)
       LIMIT 1
     `).bind(code,email).first();
 
