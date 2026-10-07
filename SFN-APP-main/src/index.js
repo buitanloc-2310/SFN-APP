@@ -30,7 +30,7 @@ function secure(resp){
   h.set("strict-transport-security","max-age=31536000; includeSubDomains");
   h.set("content-security-policy",[
     "default-src 'self'",
-    "script-src 'self' https://challenges.cloudflare.com",
+    "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https://quickchart.io",
     "font-src 'self' data:",
