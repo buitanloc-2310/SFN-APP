@@ -1,148 +1,86 @@
-# TRIỂN KHAI SFN PRODUCTION MASTER LÊN CLOUDFLARE
+# DEPLOY — CỔNG THÔNG TIN SỐ SKY FIRST
 
-## A. Chuẩn bị
+Production target: `https://ctt.skyfirst.io.vn`
 
-Mở PowerShell/Terminal tại thư mục `SFN_Production_Master`.
+## 1. Cài dependencies và kiểm tra source
 
-```powershell
+```bash
 npm install
-npx wrangler login
+npm run validate
 ```
 
-## B. Tạo D1
+## 2. D1 + R2
 
-```powershell
+Bindings mặc định:
+
+- D1: `DB` → `sfn-app-db`
+- R2: `FILES` → `sfn-app-files`
+
+Nếu tạo hạ tầng mới:
+
+```bash
 npx wrangler d1 create sfn-app-db
-```
-
-Cloudflare sẽ trả về `database_id`. Mở `wrangler.jsonc` và thay:
-
-```text
-REPLACE_WITH_YOUR_D1_DATABASE_ID
-```
-
-bằng ID thật.
-
-## C. Tạo R2
-
-```powershell
 npx wrangler r2 bucket create sfn-app-files
 ```
 
-Bucket mặc định là private. File hồ sơ chỉ được tải qua Worker sau khi kiểm tra quyền.
+Điền `database_id` đúng môi trường vào `wrangler.jsonc`.
 
-## D. Tạo bảng + dữ liệu khởi tạo
+## 3. Migration
 
-```powershell
+```bash
 npm run db:migrate
 ```
 
-Migrations gồm:
+`0005_digital_information_infrastructure.sql` là migration additive cho Digital Information Infrastructure. Migration này giữ nguyên credential legacy, bổ sung case timeline, upload sessions, SHA-256 metadata, credential supersede/revoke snapshot, form revisions/drafts và portal analytics.
 
-- `0001_schema.sql`: toàn bộ database.
-- `0002_seed.sql`: vai trò, modules, settings, DK-01, DK-02, privacy, 9 form, SFEC, lớp mẫu, email template và Super Admin.
+Không sửa/convert mã GCN cũ đã phát hành chỉ để khớp format mới.
 
-## E. Email
+## 4. Secrets / integrations
 
-### Cách dễ dùng khi DNS chính không nhất thiết nằm ở Cloudflare: Resend/API provider
+Email provider nếu dùng Resend:
 
-1. Xác minh địa chỉ/domain gửi ở provider.
-2. Đặt secret:
-
-```powershell
+```bash
 npx wrangler secret put RESEND_API_KEY
 ```
 
-3. Trong `wrangler.jsonc`, `MAIL_FROM` hiện mặc định:
+Google OAuth chỉ dành cho **Administrator đã tồn tại**. Redirect URI:
 
-```text
-Sky First Network <noreply@skyfirst.io.vn>
-```
+`https://ctt.skyfirst.io.vn/api/auth/google/callback`
 
-Nếu sender đã xác minh là địa chỉ khác, sửa `MAIL_FROM` cho đúng.
-
-### Cloudflare Email Service
-
-Source cũng hỗ trợ `env.EMAIL.send(...)`. Nếu domain đã onboard Cloudflare Email Service, bạn có thể thêm `send_email` binding vào `wrangler.jsonc` theo Dashboard/docs Cloudflare.
-
-## F. Google OAuth — tùy chọn
-
-Nếu muốn nút **Tiếp tục với Google** hoạt động:
-
-- tạo OAuth Client trong Google Cloud;
-- Authorized redirect URI:
-
-```text
-https://volunteer.skyfirst.io.vn/api/auth/google/callback
-```
-
-- điền `GOOGLE_CLIENT_ID` trong `wrangler.jsonc`;
-- đặt Client Secret:
-
-```powershell
+```bash
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 ```
 
-Nếu chưa cấu hình, nút Google tự ẩn; email + mật khẩu vẫn dùng bình thường.
+Turnstile nếu bật:
 
-## G. Turnstile — tùy chọn nhưng khuyến nghị
-
-- điền `TURNSTILE_SITE_KEY` trong `wrangler.jsonc`;
-- đặt secret:
-
-```powershell
+```bash
 npx wrangler secret put TURNSTILE_SECRET_KEY
 ```
 
-Nếu không cấu hình, biểu mẫu vẫn hoạt động và backend vẫn có rate limiting cơ bản.
+Không cấu hình secret trong file public.
 
-## H. Deploy
+## 5. Deploy staging trước
 
-```powershell
-npm run validate
+```bash
 npm run deploy
 ```
 
-Sau deploy, kiểm tra:
+Kiểm tra `/api/health` phải cho thấy database và storage đã bind. Sau đó chạy toàn bộ `docs/PRODUCTION_CHECKLIST.md` trên Worker/staging URL.
 
-```text
-https://<worker-url>/api/health
-```
+## 6. Custom domain
 
-Kỳ vọng:
+Chỉ gắn/chuyển production domain sau khi staging pass:
 
-```json
-{"ok":true,"production":true,"database":true,"storage":true}
-```
+`https://ctt.skyfirst.io.vn`
 
-## I. Gắn domain chính
+## 7. Caching
 
-Domain vận hành hiện tại của app là:
+Các API public config/news/classes/events/units/resources dùng Cloudflare Cache API. Khi nội dung tương ứng được sửa trong Admin, source chủ động invalidate cache key liên quan. Lookup credential/case không cache công khai.
 
-```text
-https://volunteer.skyfirst.io.vn
-```
+## 8. Upload
 
-Gắn custom domain/route theo cách bạn đang sử dụng trên Cloudflare. Chỉ gắn sau khi Worker URL hoạt động ổn.
+Public form dùng upload session: browser xin session → Worker stream request body vào R2 → server kiểm MIME/magic bytes/size → form submit finalize metadata trong D1. Đây là streaming gateway, không buffer toàn file trong form submit. Nếu sau này chuyển sang presigned S3-compatible direct-to-R2, vẫn giữ contract upload-session/finalize hiện tại.
 
-## J. Đăng nhập lần đầu
+## 9. Rollback
 
-- Email: `skyfirst.ec@gmail.com`
-- Mật khẩu tạm: xem `FIRST_LOGIN_SUPER_ADMIN.txt`
-- Hệ thống bắt buộc đổi mật khẩu.
-- Sau đó vào **Bảo mật tài khoản → Thiết lập 2FA**.
-
-## K. Kiểm thử bắt buộc trước khi công bố
-
-1. Đăng nhập Super Admin.
-2. Cấp 01 tài khoản Thành viên thử nghiệm.
-3. Gửi 01 hồ sơ Core Team.
-4. Gửi 01 hồ sơ TNV dạy học.
-5. Gửi 01 đăng ký lớp SFEC.
-6. Gửi 01 Support ticket.
-7. Kiểm tra hồ sơ xuất hiện trên máy khác.
-8. Kiểm tra email về `skyfirst.ec@gmail.com`.
-9. Đổi trạng thái hồ sơ và kiểm tra email người nộp.
-10. Tạo GCN → phê duyệt → phát hành → tra cứu mã.
-11. Upload và mở file bằng tài khoản có quyền; thử mở khi chưa đăng nhập để bảo đảm bị chặn.
-12. Tạo backup.
+Trước thay đổi production lớn, tạo backup nghiệp vụ và giữ bản deploy trước. Migration `0005` là additive; không rollback bằng cách xóa cột trên D1 production. Nếu cần rollback app, deploy source trước đó nhưng giữ database và kiểm tra compatibility.

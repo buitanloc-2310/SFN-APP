@@ -1,20 +1,14 @@
 {
-  "name": "Sky First Network",
-  "short_name": "SFN",
-  "start_url": "/#home",
+  "name": "Cổng Thông tin Số Sky First",
+  "short_name": "Sky First",
+  "description": "Sky First Digital Information Portal",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f5f8fc",
-  "theme_color": "#0e56b2",
+  "background_color": "#f6f9fd",
+  "theme_color": "#0759b8",
   "icons": [
-    {
-      "src": "/assets/sfn-logo.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/assets/sfn-logo.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
+    {"src":"/assets/sfn-logo.png","sizes":"192x192","type":"image/png"},
+    {"src":"/assets/sfn-logo.png","sizes":"512x512","type":"image/png"}
   ]
 }

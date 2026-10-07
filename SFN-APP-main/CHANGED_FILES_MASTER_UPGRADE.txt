@@ -1,0 +1,34 @@
+MASTER UPGRADE 2026-10 — key changed/new files
+
+Backend:
+- src/index.js
+- src/public.js
+- src/admin.js
+- src/auth.js
+- migrations/0005_digital_information_infrastructure.sql
+
+Public:
+- public/index.html
+- public/bootstrap.js
+- public/digital-portal.js
+- public/digital.css
+- public/app.js
+- public/sw.js
+- public/manifest.webmanifest
+- public/403.html
+- public/404.html
+- public/error.html
+- public/maintenance.html
+
+Validation / docs:
+- scripts/validate.mjs
+- README_FIRST.md
+- FINAL_AUDIT.md
+- FINAL_CTT_UPGRADE.md
+- LIEN_THONG_GCN_TOAN_HE_2026.md
+- RUNNABLE_FIX.md
+- docs/DEPLOY_CLOUDFLARE.md
+- docs/PRODUCTION_CHECKLIST.md
+- docs/SECURITY.md
+- docs/MASTER_UPGRADE_2026-10.md
+- docs/STATIC_VALIDATION_REPORT_2026-10-07.md

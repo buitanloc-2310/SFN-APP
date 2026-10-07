@@ -239,6 +239,7 @@ export async function authRoute(request, env, url) {
     p === "/api/auth/register" &&
     request.method === "POST"
   ) {
+    return json({error:"PUBLIC_REGISTRATION_DISABLED"},404);
     const body = await readJson(request);
 
     const email = String(body?.email || "")
@@ -429,8 +430,9 @@ export async function authRoute(request, env, url) {
     );
 
     const portal = String(
-      body?.portal || "student"
+      body?.portal || "admin"
     );
+    if(portal!=="admin") return json({error:"PUBLIC_ACCOUNT_LOGIN_DISABLED"},403);
 
     const u = await verifyPassword(
       env,
@@ -903,9 +905,8 @@ export async function authRoute(request, env, url) {
       );
     }
 
-    const portal =
-      url.searchParams.get("portal") ||
-      "student";
+    const portal=url.searchParams.get("portal")||"admin";
+    if(portal!=="admin") return json({error:"PUBLIC_ACCOUNT_LOGIN_DISABLED"},403);
 
     const state = randomToken(24);
     const hash = await sha256(state);
@@ -1063,34 +1064,7 @@ export async function authRoute(request, env, url) {
     ).bind(email).first();
 
     if (!u) {
-      const res = await env.DB.prepare(`
-        INSERT INTO users(
-          email,
-          full_name,
-          status,
-          email_verified,
-          must_change_password
-        )
-        VALUES(
-          ?,?,
-          'active',
-          1,
-          0
-        )
-      `)
-        .bind(
-          email,
-          profile.name || email
-        )
-        .run();
-
-      u = {
-        id:res.meta.last_row_id
-      };
-
-      await env.DB.prepare(
-        "INSERT INTO user_roles(user_id,role_id,scope_unit_code) VALUES(?,'student','')"
-      ).bind(u.id).run();
+      return Response.redirect(`${env.APP_URL}/?auth_error=ADMIN_ACCOUNT_NOT_FOUND`,302);
     } else {
       await env.DB.prepare(`
         UPDATE users

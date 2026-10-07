@@ -1,9 +1,9 @@
 {
-  "name": "sfn-production-master",
-  "version": "1.0.0",
+  "name": "sky-first-digital-information-portal",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Sky First Network — Production Master",
+  "description": "Cổng Thông tin Số Sky First — Digital Information Infrastructure on Cloudflare Workers, D1 and R2",
   "scripts": {
     "dev": "wrangler dev --remote",
     "deploy": "wrangler deploy",

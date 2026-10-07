@@ -17,6 +17,25 @@ async function nextCounter(env,key){
   const r=await env.DB.prepare("UPDATE counters SET value=value+1 WHERE key=? RETURNING value").bind(key).first();
   return Number(r?.value||1);
 }
+
+function credentialKind(certType=""){
+  const t=String(certType||"").toLowerCase();
+  if(t.includes("bằng khen")||t.includes("bang khen")||t==="bk") return "BK";
+  if(t.includes("xác nhận")||t.includes("xac nhan")||t==="gxn") return "GXN";
+  return "GCN";
+}
+
+async function generateCredentialCode(env,certType){
+  const kind=credentialKind(certType);
+  for(let attempt=0;attempt<64;attempt++){
+    const bytes=new Uint32Array(1); crypto.getRandomValues(bytes);
+    const n=10000+(bytes[0]%90000);
+    const code=`SFN-${kind}-${n}`;
+    const exists=await env.DB.prepare("SELECT id FROM certificates WHERE code=? OR public_id=? LIMIT 1").bind(code,code).first();
+    if(!exists) return code;
+  }
+  throw new Error("CREDENTIAL_ID_COLLISION_RETRY_EXHAUSTED");
+}
 function parseBodyJson(row,key){
   try{return JSON.parse(row?.[key]||"{}")}catch{return {}}
 }
@@ -35,6 +54,14 @@ async function ensureRoleGrantAllowed(actor,roleId){
 async function listUserRoles(env,userId){
   const rs=await env.DB.prepare("SELECT role_id,scope_unit_code,granted_at,expires_at FROM user_roles WHERE user_id=?").bind(userId).all();
   return rs.results||[];
+}
+
+const PUBLIC_CACHE_PATH={news:"/api/public/news",classes:"/api/public/classes",events:"/api/public/events",units:"/api/public/units",documents:"/api/public/resources"};
+function invalidatePublicCache(url,paths,ctx){
+  if(typeof caches==="undefined") return;
+  const unique=[...new Set((paths||[]).filter(Boolean))];if(!unique.length)return;
+  const work=Promise.all(unique.map(path=>caches.default.delete(new Request(new URL(path,url.origin),{method:"GET"}))));
+  if(ctx?.waitUntil)ctx.waitUntil(work);else return work;
 }
 
 const GENERIC = {
@@ -83,7 +110,7 @@ function makeUpdate(table,idField,idValue,fields,data){
   return {sql:`UPDATE ${table} SET ${sets.join(",")}${["news","classes","events","units","documents","tasks"].includes(table)?",updated_at=CURRENT_TIMESTAMP":""} WHERE ${idField}=?`,vals};
 }
 
-export async function adminRoute(request,env,url){
+export async function adminRoute(request,env,url,ctx){
   if(!url.pathname.startsWith("/api/admin/")) return null;
   const user=await getAuthUser(request,env);
   if(!user) return json({error:"AUTH_REQUIRED"},401);
@@ -132,12 +159,20 @@ export async function adminRoute(request,env,url){
     const code=decodeURIComponent(subMatch[1]),body=await readJson(request)||{};
     const current=await env.DB.prepare("SELECT * FROM submissions WHERE code=?").bind(code).first();
     if(!current)return json({error:"NOT_FOUND"},404);
-    const allowed=["status","assigned_to","score","internal_note"],sets=[],vals=[];
+    const allowed=["status","assigned_to","score","internal_note","next_action","result_summary"],sets=[],vals=[];
     for(const k of allowed) if(k in body){sets.push(`${k}=?`);vals.push(body[k])}
     if(sets.length){
       vals.push(code); await env.DB.prepare(`UPDATE submissions SET ${sets.join(",")},updated_at=CURRENT_TIMESTAMP WHERE code=?`).bind(...vals).run();
     }
-    await audit(env,request,user,"Cập nhật hồ sơ","submission",code,body);
+    if(body.status&&body.status!==current.status){
+      const publicLabel={
+        "Đã tiếp nhận":"TIẾP NHẬN","Đang kiểm tra":"KIỂM TRA","Đang xử lý":"XỬ LÝ",
+        "Cần bổ sung":"CẦN BỔ SUNG","Hoàn tất":"HOÀN TẤT","Đã hoàn tất":"HOÀN TẤT"
+      }[body.status]||String(body.status).toUpperCase();
+      await env.DB.prepare("INSERT INTO case_events(submission_code,event_type,public_label,public_note,status,created_by) VALUES(?,?,?,?,?,?)")
+        .bind(code,"status",publicLabel,String(body.note||body.next_action||""),body.status,user.id).run();
+    }
+    await audit(env,request,user,"Cập nhật hồ sơ","submission",code,{status:body.status,assigned_to:body.assigned_to,score:body.score,next_action:body.next_action,result_summary:body.result_summary});
     if(body.status&&current.email&&body.status!==current.status){
       await sendTemplatedEmail(env,"status_update",current.email,{code,status:body.status,note_block:body.note?`<p>${escapeHtml(body.note)}</p>`:""});
       if(current.user_id) await notifyUser(env,current.user_id,`Hồ sơ ${code}: ${body.status}`,body.note||"","submission",`/?record=${encodeURIComponent(code)}`);
@@ -250,6 +285,7 @@ export async function adminRoute(request,env,url){
     const body=await readJson(request)||{},items=Array.isArray(body.items)?body.items:[];
     for(const x of items) await env.DB.prepare("UPDATE modules SET enabled=? WHERE key=?").bind(x.enabled?1:0,x.key).run();
     await audit(env,request,user,"Cập nhật trạng thái Modules","module","*",{count:items.length});
+    invalidatePublicCache(url,["/api/config"],ctx);
     return json({ok:true});
   }
 
@@ -282,6 +318,9 @@ export async function adminRoute(request,env,url){
     if(!env.FILES)return json({error:"STORAGE_UNAVAILABLE"},503);
     const key=decodeURIComponent(mediaMatch[1]);
     if(!key||key.includes(".."))return json({error:"INVALID_PATH"},400);
+    const mediaUrl=`/media/${key}`;
+    const used=await env.DB.prepare("SELECT COUNT(*) c FROM settings WHERE value_json LIKE ?").bind(`%${mediaUrl}%`).first();
+    if(Number(used?.c||0)>0)return json({error:"ASSET_IN_USE",message:"Asset đang được tham chiếu trong cấu hình. Hãy thay reference trước khi xóa."},409);
     await env.FILES.delete(`public-media/${key}`);
     await audit(env,request,user,"Xóa ảnh giao diện","media",key,{});
     return json({ok:true});
@@ -300,6 +339,7 @@ export async function adminRoute(request,env,url){
         .bind(k,JSON.stringify(v),user.id).run();
     }
     await audit(env,request,user,"Cập nhật cài đặt hệ thống","settings","*",{keys:Object.keys(items)});
+    invalidatePublicCache(url,["/api/config"],ctx);
     return json({ok:true});
   }
 
@@ -314,19 +354,23 @@ export async function adminRoute(request,env,url){
     if(!body.name||!body.prefix||!body.config) return json({error:"INVALID_INPUT"},400);
     const cfg={...body.config};
     cfg.form_type=cfg.form_type||body.form_type||"general";
-    if(typeof cfg.profile_photo_required!=="boolean") cfg.profile_photo_required=!(cfg.form_type==="class"||cfg.form_type==="student");
+    if(typeof cfg.profile_photo_required!=="boolean") cfg.profile_photo_required=false;
+    const cfgJson=JSON.stringify(cfg);
     await env.DB.prepare("INSERT INTO forms(id,name,prefix,description,audience,min_age,enabled,recipient_email,version,config_json,updated_by) VALUES(?,?,?,?,?,?,1,?,1,?,?)")
-      .bind(idForm,body.name,body.prefix,body.description||"",body.audience||"public",body.min_age??null,body.recipient_email||"skyfirst.ec@gmail.com",JSON.stringify(cfg),user.id).run();
-    await audit(env,request,user,"Tạo biểu mẫu","form",idForm,{name:body.name});return json({ok:true,id:idForm});
+      .bind(idForm,body.name,body.prefix,body.description||"",body.audience||"public",body.min_age??null,body.recipient_email||"skyfirst.ec@gmail.com",cfgJson,user.id).run();
+    try{await env.DB.prepare("INSERT INTO form_revisions(form_id,version,config_json,status,created_by) VALUES(?,1,?,'published',?)").bind(idForm,cfgJson,user.id).run();}catch{}
+    await audit(env,request,user,"Tạo biểu mẫu","form",idForm,{name:body.name,version:1});invalidatePublicCache(url,["/api/config"],ctx);return json({ok:true,id:idForm});
   }
   const formMatch=p.match(/^\/api\/admin\/forms\/([^/]+)$/);
   if(formMatch&&request.method==="PUT"){
     const deny=requirePermission(user,"form.manage");if(deny)return deny;
     const fid=decodeURIComponent(formMatch[1]),body=await readJson(request)||{};
     const current=await env.DB.prepare("SELECT * FROM forms WHERE id=?").bind(fid).first();if(!current)return json({error:"NOT_FOUND"},404);
-    await env.DB.prepare("UPDATE forms SET name=?,prefix=?,description=?,audience=?,min_age=?,enabled=?,recipient_email=?,version=version+1,config_json=?,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?")
-      .bind(body.name||current.name,body.prefix||current.prefix,body.description??current.description,body.audience||current.audience,body.min_age??current.min_age,body.enabled===false?0:1,body.recipient_email||current.recipient_email,JSON.stringify(body.config||JSON.parse(current.config_json)),user.id,fid).run();
-    await audit(env,request,user,"Cập nhật biểu mẫu","form",fid,{version:Number(current.version)+1});return json({ok:true});
+    const nextVersion=Number(current.version)+1,nextConfig=JSON.stringify(body.config||JSON.parse(current.config_json));
+    await env.DB.prepare("UPDATE forms SET name=?,prefix=?,description=?,audience=?,min_age=?,enabled=?,recipient_email=?,version=?,config_json=?,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?")
+      .bind(body.name||current.name,body.prefix||current.prefix,body.description??current.description,body.audience||current.audience,body.min_age??current.min_age,body.enabled===false?0:1,body.recipient_email||current.recipient_email,nextVersion,nextConfig,user.id,fid).run();
+    try{await env.DB.prepare("INSERT INTO form_revisions(form_id,version,config_json,status,created_by) VALUES(?,?,?,'published',?)").bind(fid,nextVersion,nextConfig,user.id).run();}catch{}
+    await audit(env,request,user,"Cập nhật biểu mẫu","form",fid,{version:nextVersion});invalidatePublicCache(url,["/api/config"],ctx);return json({ok:true,version:nextVersion});
   }
 
   if(p==="/api/admin/terms"&&request.method==="GET"){
@@ -354,19 +398,19 @@ export async function adminRoute(request,env,url){
     if(!idValue) return json({error:"MISSING_ID"},400);
     const ins=makeInsert(g.table,g.id,idValue,g.fields,data);
     await env.DB.prepare(ins.sql).bind(...ins.vals).run();
-    await audit(env,request,user,`Tạo ${type}`,type,String(idValue),data);return json({ok:true,id:idValue});
+    await audit(env,request,user,`Tạo ${type}`,type,String(idValue),data);invalidatePublicCache(url,[PUBLIC_CACHE_PATH[type]],ctx);return json({ok:true,id:idValue});
   }
   const genericOne=p.match(/^\/api\/admin\/content\/(news|classes|events|units|documents|tasks)\/([^/]+)$/);
   if(genericOne&&request.method==="PUT"){
     const [_,type,idRaw]=genericOne,g=GENERIC[type],deny=requirePermission(user,g.permission);if(deny)return deny;
     const idValue=decodeURIComponent(idRaw),body=await readJson(request)||{},upd=makeUpdate(g.table,g.id,idValue,g.fields,body);
     if(upd) await env.DB.prepare(upd.sql).bind(...upd.vals).run();
-    await audit(env,request,user,`Cập nhật ${type}`,type,idValue,body);return json({ok:true});
+    await audit(env,request,user,`Cập nhật ${type}`,type,idValue,body);invalidatePublicCache(url,[PUBLIC_CACHE_PATH[type]],ctx);return json({ok:true});
   }
   if(genericOne&&request.method==="DELETE"){
     const [_,type,idRaw]=genericOne,g=GENERIC[type],deny=requirePermission(user,g.permission);if(deny)return deny;
     const idValue=decodeURIComponent(idRaw);await env.DB.prepare(`DELETE FROM ${g.table} WHERE ${g.id}=?`).bind(idValue).run();
-    await audit(env,request,user,`Xóa ${type}`,type,idValue,{});return json({ok:true});
+    await audit(env,request,user,`Xóa ${type}`,type,idValue,{});invalidatePublicCache(url,[PUBLIC_CACHE_PATH[type]],ctx);return json({ok:true});
   }
 
 
@@ -450,6 +494,18 @@ export async function adminRoute(request,env,url){
       .bind(idA,idC,user.id).run();
     await audit(env,request,user,"Đề nghị cấp GCN/GXN","certificate",idC,{approval:idA});return json({ok:true,id:idC,approval_id:idA});
   }
+  const certHistoryMatch=p.match(/^\/api\/admin\/certificates\/([^/]+)\/history$/);
+  if(certHistoryMatch&&request.method==="GET"){
+    const deny=requirePermission(user,"certificate.view");if(deny)return deny;
+    const idC=decodeURIComponent(certHistoryMatch[1]);
+    const [cert,history]=await env.DB.batch([
+      env.DB.prepare("SELECT id,code,public_id,legacy_code,cert_type,full_name,status,issued_at,revoked_at,revocation_reason,supersedes_id,superseded_by_id FROM certificates WHERE id=?").bind(idC),
+      env.DB.prepare("SELECT action,note,actor_id,created_at FROM certificate_history WHERE certificate_id=? ORDER BY created_at DESC,id DESC").bind(idC)
+    ]);
+    const item=cert.results?.[0];if(!item)return json({error:"NOT_FOUND"},404);
+    return json({item,history:history.results||[]});
+  }
+
   const certMatch=p.match(/^\/api\/admin\/certificates\/([^/]+)$/);
   if(certMatch&&request.method==="PATCH"){
     const idC=decodeURIComponent(certMatch[1]),body=await readJson(request)||{};
@@ -457,18 +513,44 @@ export async function adminRoute(request,env,url){
     if(body.action==="issue"){
       const deny=requirePermission(user,"certificate.issue");if(deny)return deny;
       if(current.status!=="approved")return json({error:"NOT_APPROVED"},409);
-      const year=new Date().getFullYear(),kind=current.cert_type.toLowerCase().includes("xác nhận")?"GXN":"GCN";
-      const n=await nextCounter(env,`certificate:${kind}:${year}`),code=`${String(n).padStart(3,"0")}/${kind}-SFN/${year}`;
-      await env.DB.prepare("UPDATE certificates SET code=?,status='issued',issued_by=?,issued_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-        .bind(code,user.id,idC).run();
+      if(current.code||current.issued_at)return json({error:"ALREADY_ISSUED"},409);
+      const code=await generateCredentialCode(env,current.cert_type);
+      const immutableSnapshot={
+        code,cert_type:current.cert_type,full_name:current.full_name,email:current.email||"",
+        content:current.content,metadata:parseBodyJson(current,"metadata_json")
+      };
+      await env.DB.prepare("UPDATE certificates SET code=?,public_id=?,status='issued',issued_by=?,issued_at=CURRENT_TIMESTAMP,immutable_snapshot_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(code,code,user.id,JSON.stringify(immutableSnapshot),idC).run();
       await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Phát hành',?,?)").bind(idC,body.note||"",user.id).run();
-      await audit(env,request,user,"Phát hành GCN/GXN","certificate",idC,{code});return json({ok:true,code});
+      if(current.supersedes_id){
+        await env.DB.prepare("UPDATE certificates SET status='superseded',superseded_by_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('issued','revoked')")
+          .bind(idC,current.supersedes_id).run();
+        await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Được thay thế',?,?)")
+          .bind(current.supersedes_id,`Thay thế bởi ${code}`,user.id).run();
+      }
+      await audit(env,request,user,"Phát hành Credential","certificate",idC,{code,registry:"ONE_SKY_FIRST"});return json({ok:true,code});
     }
     if(body.action==="revoke"){
       const deny=requirePermission(user,"certificate.issue");if(deny)return deny;
-      await env.DB.prepare("UPDATE certificates SET status='revoked',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(idC).run();
-      await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Thu hồi',?,?)").bind(idC,body.note||"",user.id).run();
-      await audit(env,request,user,"Thu hồi GCN/GXN","certificate",idC,{note:body.note||""});return json({ok:true});
+      if(!["issued","superseded"].includes(current.status))return json({error:"NOT_ISSUED"},409);
+      const reason=String(body.note||body.reason||"").trim();
+      await env.DB.prepare("UPDATE certificates SET status='revoked',revoked_at=CURRENT_TIMESTAMP,revocation_reason=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(reason,idC).run();
+      await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Thu hồi',?,?)").bind(idC,reason,user.id).run();
+      await audit(env,request,user,"Thu hồi Credential","certificate",idC,{reason});return json({ok:true});
+    }
+    if(body.action==="supersede"){
+      const deny=requirePermission(user,"certificate.issue");if(deny)return deny;
+      if(current.status!=="issued")return json({error:"ONLY_ISSUED_CAN_BE_SUPERSEDED"},409);
+      const replacementId=uid("cert"),token=uid("verify");
+      const meta={...parseBodyJson(current,"metadata_json"),replacement_reason:String(body.note||"").trim()};
+      await env.DB.prepare("INSERT INTO certificates(id,cert_type,full_name,email,content,status,requested_by,verification_token,metadata_json,supersedes_id) VALUES(?,?,?,?,?,'pending_approval',?,?,?,?)")
+        .bind(replacementId,current.cert_type,current.full_name,current.email||"",current.content,user.id,token,JSON.stringify(meta),idC).run();
+      const idA=uid("approval");
+      await env.DB.prepare("INSERT INTO approvals(id,entity_type,entity_id,action,requested_by,assigned_role,status,due_at) VALUES(?,'certificate',?,'Phê duyệt credential thay thế',?,'network_secretary','pending',datetime('now','+7 days'))")
+        .bind(idA,replacementId,user.id).run();
+      await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Khởi tạo thay thế',?,?)").bind(idC,body.note||"",user.id).run();
+      await audit(env,request,user,"Khởi tạo Credential thay thế","certificate",idC,{replacement_id:replacementId,approval:idA});
+      return json({ok:true,replacement_id:replacementId,approval_id:idA});
     }
     return json({error:"INVALID_ACTION"},400);
   }
@@ -540,7 +622,7 @@ export async function adminRoute(request,env,url){
 
   if(p==="/api/admin/backup"&&request.method==="POST"){
     const deny=requirePermission(user,"backup.create");if(deny)return deny;
-    const tables=["settings","modules","terms","forms","units","submissions","people","people_history","teaching_scopes","internal_requests","unit_members","classes","class_enrollments","attendance","events","event_registrations","news","documents","certificates","certificate_history","approvals","interviews","evaluations","tickets","ticket_messages","notifications","email_templates","tasks","data_requests"];
+    const tables=["settings","modules","terms","forms","form_revisions","units","submissions","case_events","people","people_history","teaching_scopes","internal_requests","unit_members","classes","class_enrollments","attendance","events","event_registrations","news","documents","certificates","certificate_history","approvals","interviews","evaluations","tickets","ticket_messages","notifications","email_templates","tasks","data_requests"];
     const snapshot={created_at:new Date().toISOString(),tables:{}};
     for(const t of tables){
       const rs=await env.DB.prepare(`SELECT * FROM ${t}`).all();snapshot.tables[t]=rs.results||[];
@@ -573,9 +655,10 @@ export async function adminRoute(request,env,url){
     const allowed=new Set(["image/jpeg","image/png","application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]);
     if(file.type&&!allowed.has(file.type))return json({error:"FILE_TYPE_NOT_ALLOWED"},400);
     const idF=uid("file"),safe=String(file.name||"file").replace(/[^\p{L}\p{N}._-]+/gu,"_").slice(0,120),key=`private/admin/${new Date().getUTCFullYear()}/${idF}/${safe}`;
-    await env.FILES.put(key,file.stream(),{httpMetadata:{contentType:file.type||"application/octet-stream"}});
-    await env.DB.prepare("INSERT INTO files(id,owner_user_id,r2_key,filename,mime,size,visibility) VALUES(?,?,?,?,?,?,?)")
-      .bind(idF,user.id,key,safe,file.type||"",file.size||0,fd.get("visibility")==="public"?"public":"private").run();
+    const bytes=await file.arrayBuffer(),hash=await sha256(bytes);
+    await env.FILES.put(key,bytes,{httpMetadata:{contentType:file.type||"application/octet-stream"},customMetadata:{sha256:hash}});
+    await env.DB.prepare("INSERT INTO files(id,owner_user_id,r2_key,filename,mime,size,visibility,sha256) VALUES(?,?,?,?,?,?,?,?)")
+      .bind(idF,user.id,key,safe,file.type||"",file.size||0,fd.get("visibility")==="public"?"public":"private",hash).run();
     await audit(env,request,user,"Upload file","file",idF,{filename:safe,size:file.size});
     return json({ok:true,id:idF,filename:safe});
   }
@@ -591,6 +674,13 @@ export async function adminRoute(request,env,url){
     const deny=requirePermission(user,"file.manage");if(deny)return deny;
     const idF=decodeURIComponent(fileMatch[1]),f=await env.DB.prepare("SELECT r2_key FROM files WHERE id=?").bind(idF).first();
     if(!f)return json({error:"NOT_FOUND"},404);
+    const [docUse,certUse,subUse]=await env.DB.batch([
+      env.DB.prepare("SELECT COUNT(*) c FROM documents WHERE file_id=?").bind(idF),
+      env.DB.prepare("SELECT COUNT(*) c FROM certificates WHERE file_id=?").bind(idF),
+      env.DB.prepare("SELECT COUNT(*) c FROM submissions WHERE answers_json LIKE ?").bind(`%${idF}%`)
+    ]);
+    const refs=Number(docUse.results?.[0]?.c||0)+Number(certUse.results?.[0]?.c||0)+Number(subUse.results?.[0]?.c||0);
+    if(refs>0)return json({error:"ASSET_IN_USE",message:"File đang được dùng bởi hồ sơ, tài liệu hoặc credential. Không thể xóa an toàn.",references:refs},409);
     await env.FILES.delete(f.r2_key);await env.DB.prepare("DELETE FROM files WHERE id=?").bind(idF).run();
     await audit(env,request,user,"Xóa file","file",idF,{});return json({ok:true});
   }
@@ -640,7 +730,7 @@ export async function adminRoute(request,env,url){
     const obj=await env.FILES.get(b.r2_key);if(!obj)return json({error:"BACKUP_OBJECT_NOT_FOUND"},404);
     const snap=JSON.parse(await obj.text());
     const insertOrder=[
-      "settings","modules","terms","forms","units","submissions","people","people_history","teaching_scopes","internal_requests","unit_members",
+      "settings","modules","terms","forms","form_revisions","units","submissions","case_events","people","people_history","teaching_scopes","internal_requests","unit_members",
       "classes","class_enrollments","attendance","events","event_registrations","news","documents","certificates","certificate_history",
       "approvals","interviews","evaluations","tickets","ticket_messages","notifications","email_templates","tasks","data_requests"
     ];
