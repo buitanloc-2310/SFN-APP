@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+
+  <title>Trung Tâm Thành Viên Số Sky First</title>
+
+  <link rel="icon" type="image/png" href="/sfn-logo.png?v=20260902">
+  <link rel="shortcut icon" type="image/png" href="/sfn-logo.png?v=20260902">
+  <link rel="apple-touch-icon" href="/sfn-logo.png?v=20260902">
+
+  <link rel="stylesheet" href="/styles.css?v=20261009-member-v8-audit-fix">
+</head>
+
+<body>
+  <div id="app"></div>
+
+  <script>
+  // Startup guard: never leave the user with a silent white page.
+  window.__SFN_APP_STARTED__ = false;
+  window.addEventListener('error', function (e) {
+    if (window.__SFN_APP_STARTED__) return;
+    var app = document.getElementById('app');
+    if (!app) return;
+    app.innerHTML = '<main style="min-height:100vh;display:grid;place-items:center;padding:24px;font-family:Arial,sans-serif;background:#f7fbff"><section style="max-width:680px;width:100%;background:#fff;border:1px solid #dbe7f0;border-radius:18px;padding:24px;box-shadow:0 18px 50px rgba(15,50,80,.08)"><h1 style="margin:0 0 10px;color:#123b5a">Không thể khởi động Trung Tâm Thành Viên Số</h1><p style="color:#526b7e;line-height:1.6">Trình duyệt đã gặp lỗi khi tải giao diện. Hãy tải lại trang; nếu lỗi vẫn còn, mở DevTools → Console và gửi lỗi hiển thị cho quản trị hệ thống.</p><p style="font-size:12px;color:#7890a2">Lỗi: ' + String(e.message || 'JavaScript startup error').replace(/[&<>]/g, function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])}) + '</p></section></main>';
+  });
+</script>
+<script defer src="/app.js?v=20261009-member-v8-audit-fix"></script>
+<script>
+  window.addEventListener('load', function () {
+    setTimeout(function () {
+      if (window.__SFN_APP_STARTED__) return;
+      var app = document.getElementById('app');
+      if (app && !app.innerHTML.trim()) {
+        app.innerHTML = '<main style="min-height:100vh;display:grid;place-items:center;padding:24px;font-family:Arial,sans-serif;background:#f7fbff"><section style="max-width:680px;width:100%;background:#fff;border:1px solid #dbe7f0;border-radius:18px;padding:24px"><h1 style="margin:0 0 10px;color:#123b5a">Giao diện chưa khởi động</h1><p style="color:#526b7e;line-height:1.6">Tệp giao diện chưa được trình duyệt thực thi. Hãy tải lại trang hoặc kiểm tra cache/CDN của <code>/app.js</code>.</p></section></main>';
+      }
+    }, 1200);
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "tk",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tk",
+      "database_id": "ff630699-cc44-471d-9507-aa94c84468fb",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "tksfn"
+    }
+  ],
+
+  "vars": {
+    "APP_NAME": "TRUNG TÂM THÀNH VIÊN SỐ SKY FIRST",
+    "APP_URL": "https://member.skyfirst.io.vn"
+  }
+}
