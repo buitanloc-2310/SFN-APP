@@ -1,0 +1,20 @@
+{
+  "name": "The Sky First English Club",
+  "short_name": "SFEC",
+  "start_url": "/#home",
+  "display": "standalone",
+  "background_color": "#f5f8fc",
+  "theme_color": "#0e56b2",
+  "icons": [
+    {
+      "src": "/assets/sfec-logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/sfec-logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

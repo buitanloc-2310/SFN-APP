@@ -1,0 +1,40 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "sfec",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-21",
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sfec-app-db",
+      "database_id": "5df0669d-c747-4a62-9e24-ed672ea1e376"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "sfec-app-files"
+    }
+  ],
+
+  "vars": {
+    "APP_URL": "https://sfec.skyfirst.io.vn",
+    "MAIL_FROM": "SFEC · The Sky First English Club <sfec@skyfirst.io.vn>",
+    "GOOGLE_CLIENT_ID": "",
+    "GOOGLE_REDIRECT_URI": "https://sfec.skyfirst.io.vn/api/auth/google/callback",
+    "TURNSTILE_SITE_KEY": ""
+  },
+
+  "triggers": {
+    "crons": [
+      "20 2 * * *"
+    ]
+  }
+}

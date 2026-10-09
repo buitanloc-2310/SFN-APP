@@ -1,0 +1,17 @@
+{
+  "name": "sfec-production-master",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Sky First English Club (SFEC) — Cloudflare Production App",
+  "scripts": {
+    "dev": "wrangler dev --remote",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply DB --remote",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "validate": "node scripts/validate.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.30.0"
+  }
+}
