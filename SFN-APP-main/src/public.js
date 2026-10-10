@@ -555,10 +555,11 @@ export async function publicRoute(request,env,url,ctx){
     await audit(env,request,user,"Tiếp nhận hồ sơ","submission",code,{form_id:idForm,email_queued:emailQueued,email_sent:!!confirmation.ok});
     return json({ok:true,code,status:"Đã tiếp nhận",received_at:new Date().toISOString(),form_name:row.name,next_action:"Theo dõi trạng thái hồ sơ và bổ sung thông tin khi được yêu cầu",tracking_url:`/ho-so?code=${encodeURIComponent(code)}`,email_queued:emailQueued,email_sent:!!confirmation.ok});
   }
-  if(p==="/api/lookup/submission"&&request.method==="GET"){
+  if(p==="/api/lookup/submission"&&(request.method==="GET"||request.method==="POST")){
     const rl=await rateLimit(env,`case-lookup:${await ipHash(request)}`,12,300);if(!rl.ok)return json({error:"RATE_LIMIT",message:"Bạn đang tra cứu quá nhanh. Vui lòng thử lại sau."},429,{"Cache-Control":"no-store"});
-    const code=String(url.searchParams.get("code")||"").trim();
-    const email=String(url.searchParams.get("email")||"").trim().toLowerCase();
+    const body=request.method==="POST"?(await readJson(request)||{}):{};
+    const code=String(body.code??url.searchParams.get("code")??"").trim().slice(0,160);
+    const email=String(body.email??url.searchParams.get("email")??"").trim().toLowerCase().slice(0,254);
 
     if(!code||!email){
       return json({
