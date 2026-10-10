@@ -14,7 +14,7 @@ function needsAppBundle({path,route}){
 async function loadAppBundle(){
   if(appBundleLoaded)return;
   appBundleLoaded=true;
-  await import('/app.js');
+  await import('/app.js?v=20261010-v4');
 }
 
 async function renderPublic(){
@@ -39,4 +39,17 @@ document.getElementById('themeBtn')?.addEventListener('click',()=>applyTheme(doc
 window.addEventListener('hashchange',()=>{if(!appBundleLoaded)renderPublic()});
 renderPublic();
 
-if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js?v=20261010-v4',{updateViaCache:'none'}).then(reg=>{
+    reg.update().catch(()=>{});
+  }).catch(()=>{});
+  let hadController=!!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(!hadController){hadController=true;return;}
+    try{
+      if(sessionStorage.getItem('sfn_sw_reloaded_v4')==='1')return;
+      sessionStorage.setItem('sfn_sw_reloaded_v4','1');
+    }catch{}
+    location.reload();
+  });
+}
