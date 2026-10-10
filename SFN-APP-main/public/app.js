@@ -861,7 +861,7 @@ async function renderAdmin(){
 
   app.innerHTML=`<div class="dashboard"><aside class="sidebar" id="adminSidebar">${adminMenu.map(g=>`<div class="sidebar-group"><div class="sidebar-label">${E(g.group)}</div>${g.items.map(m=>`<button type="button" class="${section===m[0]?"active":""}" data-admin-route="${E(m[0])}">${E(m[1])}</button>`).join("")}</div>`).join("")}<button type="button" id="adminLogout">↩ Đăng xuất</button></aside><section id="adminMain"><div class="loading">Đang tải…</div></section></div>`;
 
-  document.querySelectorAll("[data-admin-route]").forEach(btn=>btn.addEventListener("click",()=>{location.hash=`admin/${btn.dataset.adminRoute}`}));
+  document.querySelectorAll("[data-admin-route]").forEach(btn=>btn.addEventListener("click",()=>{try{sessionStorage.setItem("ctt_admin_scroll_y",String(window.scrollY||0));}catch{} location.hash=`admin/${btn.dataset.adminRoute}`}));
   document.getElementById("adminLogout")?.addEventListener("click",logout);
   const main=document.getElementById("adminMain");
 
@@ -898,6 +898,14 @@ async function renderAdmin(){
     if(section==="backup")return await adminBackup(main);
   }catch(err){
     main.innerHTML=`<div class="notice bad">${E(errorText(err))}</div>`;
+  }finally{
+    try{
+      const saved=sessionStorage.getItem("ctt_admin_scroll_y");
+      if(saved!==null){
+        sessionStorage.removeItem("ctt_admin_scroll_y");
+        requestAnimationFrame(()=>window.scrollTo({top:Number(saved)||0,behavior:"auto"}));
+      }
+    }catch{}
   }
 }
 

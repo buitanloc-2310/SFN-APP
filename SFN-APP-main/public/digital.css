@@ -120,3 +120,35 @@ body.dark .home-stat{background:linear-gradient(135deg,#0b2748,#103a67);border-c
 .ecosystem-unit>small{margin-top:auto;color:#c2def8;font-size:12px}
 @media(max-width:800px){.ecosystem-v4{grid-template-columns:1fr;gap:22px}.ecosystem-cards-v4{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.ecosystem-cards-v4{grid-template-columns:1fr}.ecosystem-unit{min-height:120px;padding:18px}}
+
+
+/* V3 audit fixes: separate hero, statistics and quick-access sections */
+.hero-sfn-command .digital-hero-grid{min-height:clamp(500px,58vw,650px);padding-bottom:54px}
+.home-stats{margin:22px auto 0!important;padding-inline:clamp(16px,2.2vw,30px);gap:14px;align-items:stretch}
+.home-stat{min-height:104px;overflow:hidden}
+.quick-actions-new.quick-v3{margin:22px auto 0!important;position:relative;z-index:1;clear:both}
+.home-stat strong{overflow-wrap:anywhere}
+.home-stat [data-stat-state="unavailable"]{font-size:clamp(12px,1.15vw,15px);letter-spacing:0}
+.home-stat:nth-child(1) i{background:linear-gradient(145deg,#147dff,#34d5ff);color:#fff}
+.home-stat:nth-child(2) i{background:linear-gradient(145deg,#7658ff,#b18aff);color:#fff}
+.home-stat:nth-child(3) i{background:linear-gradient(145deg,#11a88a,#55e6c1);color:#fff}
+.home-stat:nth-child(4) i{background:linear-gradient(145deg,#f39a32,#ffd166);color:#15243a}
+.quick-actions-new.quick-v3 a:nth-child(3n+1) i{background:linear-gradient(145deg,#e7f2ff,#cfe8ff);color:#1264bd}
+.quick-actions-new.quick-v3 a:nth-child(3n+2) i{background:linear-gradient(145deg,#f0eaff,#dfd3ff);color:#6741c6}
+.quick-actions-new.quick-v3 a:nth-child(3n) i{background:linear-gradient(145deg,#e0fbf4,#c5f4e7);color:#087d68}
+@media(max-width:1000px){
+ .hero-sfn-command .digital-hero-grid{min-height:auto;padding-bottom:38px}
+ .home-stats{margin:16px auto 0!important}
+ .quick-actions-new.quick-v3{margin:16px auto 0!important}
+}
+@media(max-width:760px){
+ .home-stats{grid-template-columns:repeat(2,minmax(0,1fr));padding-inline:14px;gap:10px}
+ .home-stat{min-height:88px;padding:12px}
+ .home-stat i{width:38px;height:38px;flex-basis:38px;font-size:19px}
+ .quick-actions-new.quick-v3{grid-template-columns:repeat(2,minmax(0,1fr));margin:14px 14px 0!important}
+ .quick-actions-new.quick-v3 a{border-right:0;border-bottom:1px solid var(--dip-line);padding:12px}
+}
+@media(max-width:420px){
+ .home-stats{grid-template-columns:1fr}
+ .home-stat{min-height:76px}
+}

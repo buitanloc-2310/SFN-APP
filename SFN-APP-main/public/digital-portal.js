@@ -34,8 +34,8 @@ async function home(app){
   const runStat=el=>{
     const key=el.dataset.stat;let target=Number(statSettings.values[key]||0);
     if(statSettings.source==="d1"){
-      if(!statConfig.d1_values||!Number.isFinite(Number(statConfig.d1_values[key]))){el.textContent="—";return}
-      target=Number(statConfig.d1_values[key]);
+      if(!statConfig.d1_values||!Object.prototype.hasOwnProperty.call(statConfig.d1_values,key)||!Number.isFinite(Number(statConfig.d1_values[key]))){el.textContent="Chưa có dữ liệu";el.setAttribute("data-stat-state","unavailable");return}
+      target=Number(statConfig.d1_values[key]);el.removeAttribute("data-stat-state");
     }
     const duration=Math.max(250,Math.min(30000,Number(statSettings.duration_ms)||1800));
     const cycles=Math.max(1,Math.min(100,Number(statSettings.cycles)||100));
