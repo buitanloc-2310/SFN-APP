@@ -324,7 +324,21 @@ export async function publicRoute(request,env,url,ctx){
         forms=await env.DB.prepare("SELECT id,name,prefix,description,audience,min_age,version FROM forms WHERE enabled=1 ORDER BY rowid").all();
       }
     }catch(err){ console.error("PUBLIC_CONFIG_DB_FALLBACK",err); }
+    const homeStats=await getSetting(env,"home_stats",{source:"d1",values:{programs:1200,members:50000,certificates:10000,partners:100},duration_ms:1800,cycles:100});
+    let d1Stats=null;
+    try{
+      if(env.DB&&homeStats.source==="d1"){
+        const counts=await env.DB.batch([
+          env.DB.prepare("SELECT (SELECT COUNT(*) FROM classes)+(SELECT COUNT(*) FROM events) AS n"),
+          env.DB.prepare("SELECT COUNT(*) AS n FROM users WHERE status='active'"),
+          env.DB.prepare("SELECT COUNT(*) AS n FROM certificates WHERE lower(status)='issued' AND issued_at IS NOT NULL"),
+          env.DB.prepare("SELECT COUNT(*) AS n FROM units WHERE status!='Đã giải thể'")
+        ]);
+        d1Stats={programs:Number(counts[0]?.results?.[0]?.n||0),members:Number(counts[1]?.results?.[0]?.n||0),certificates:Number(counts[2]?.results?.[0]?.n||0),partners:Number(counts[3]?.results?.[0]?.n||0)};
+      }
+    }catch(err){console.error("HOME_STATS_D1_FALLBACK",err)}
     return json({
+      home_stats:{...homeStats,d1_values:d1Stats},
       app_name:await getSetting(env,"app_name","Cổng Thông tin Số Sky First"),
       app_short_name:await getSetting(env,"app_short_name","Sky First Network"),
       app_url:env.APP_URL||await getSetting(env,"app_url",""),
@@ -342,7 +356,7 @@ export async function publicRoute(request,env,url,ctx){
       header_account_label:await getSetting(env,"header_account_label","Đăng nhập"),
       footer_description:await getSetting(env,"footer_description","Kết nối giáo dục, tri thức và phát triển cộng đồng trên một hệ thống thống nhất."),
       footer_email:await getSetting(env,"footer_email","skyfirst.ec@gmail.com"),
-      footer_support_email:await getSetting(env,"footer_support_email","support@skyfirst.io.vn"),
+      footer_support_email:await getSetting(env,"footer_support_email","ctt@skyfirst.io.vn"),
       footer_portal_email:await getSetting(env,"footer_portal_email","ctt@skyfirst.io.vn"),
       portal_main_label:await getSetting(env,"portal_main_label","Trang thông tin điện tử Sky First Network"),
       portal_main_url:await getSetting(env,"portal_main_url","https://skyfirst.io.vn"),
