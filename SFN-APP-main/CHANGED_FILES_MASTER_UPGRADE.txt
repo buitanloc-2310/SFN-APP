@@ -1,34 +1,19 @@
-MASTER UPGRADE 2026-10 — key changed/new files
+CTT V6 ADMIN REVIEW — key changed/new files
 
-Backend:
-- src/index.js
-- src/public.js
-- src/admin.js
-- src/auth.js
-- migrations/0005_digital_information_infrastructure.sql
+Backend / API
+- src/auth.js — frontend receives effective permission list; backend authorization remains authoritative.
+- src/admin.js — existing media upload validates permission, size, MIME and image magic bytes; stores in R2 and logs audit.
+- src/public.js — homepage statistics no longer have fake numeric defaults.
 
-Public:
-- public/index.html
-- public/bootstrap.js
-- public/digital-portal.js
-- public/digital.css
-- public/app.js
-- public/sw.js
-- public/manifest.webmanifest
-- public/403.html
-- public/404.html
-- public/error.html
-- public/maintenance.html
+Public / Admin UI
+- public/app.js — Admin nav/menu, custom accessible dialogs, dedicated home stats table, news CRUD and real cover upload/editor, UTC+7 date handling, form validation fixes.
+- public/digital-portal.js — true-data statistics fallback and cover-image missing/broken state.
+- public/styles.css — Admin menu/table/CMS/dialog/responsive styling.
+- public/index.html, public/bootstrap.js, public/sw.js — asset/cache version update.
+- public/assets/sfn-logo.png — retained unmodified; SHA-256 matches supplied original logo.
 
-Validation / docs:
-- scripts/validate.mjs
+Documents
 - README_FIRST.md
-- FINAL_AUDIT.md
-- FINAL_CTT_UPGRADE.md
-- LIEN_THONG_GCN_TOAN_HE_2026.md
-- RUNNABLE_FIX.md
-- docs/DEPLOY_CLOUDFLARE.md
-- docs/PRODUCTION_CHECKLIST.md
-- docs/SECURITY.md
-- docs/MASTER_UPGRADE_2026-10.md
-- docs/STATIC_VALIDATION_REPORT_2026-10-07.md
+- CTT_V6_ADMIN_AUDIT_REPORT.md
+
+No SQL migrations were added; production D1/R2 were not modified. Not deployed.

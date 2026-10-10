@@ -324,7 +324,20 @@ export async function publicRoute(request,env,url,ctx){
         forms=await env.DB.prepare("SELECT id,name,prefix,description,audience,min_age,version FROM forms WHERE enabled=1 ORDER BY rowid").all();
       }
     }catch(err){ console.error("PUBLIC_CONFIG_DB_FALLBACK",err); }
-    const homeStats=await getSetting(env,"home_stats",{source:"d1",values:{programs:1200,members:50000,certificates:10000,partners:100},duration_ms:1800,cycles:100});
+    const homeStatsDefaults={
+      source:"d1",
+      values:{programs:null,members:null,certificates:null,partners:null},
+      labels:{programs:"Chương trình & sự kiện",members:"Thành viên cộng đồng",certificates:"Chứng nhận đã phát hành",partners:"Đối tác & đơn vị đồng hành"},
+      duration_ms:1800,
+      cycles:100
+    };
+    const storedHomeStats=await getSetting(env,"home_stats",homeStatsDefaults);
+    const homeStats={
+      ...homeStatsDefaults,
+      ...(storedHomeStats&&typeof storedHomeStats==="object"?storedHomeStats:{}),
+      values:{...homeStatsDefaults.values,...(storedHomeStats?.values||{})},
+      labels:{...homeStatsDefaults.labels,...(storedHomeStats?.labels||{})}
+    };
     let d1Stats=null;
     try{
       if(env.DB&&homeStats.source==="d1"){

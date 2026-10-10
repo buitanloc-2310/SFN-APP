@@ -338,11 +338,18 @@ export async function adminRoute(request,env,url,ctx){
     const fd=await request.formData(),file=fd.get("file");
     if(!file||typeof file!=="object"||!("size" in file)||!file.size)return json({error:"FILE_REQUIRED"},400);
     if(file.size>15*1024*1024)return json({error:"FILE_TOO_LARGE",max_mb:15},400);
-    const allowed=new Set(["image/jpeg","image/png","image/webp","image/gif","image/svg+xml"]);
-    if(file.type&&!allowed.has(file.type))return json({error:"IMAGE_TYPE_NOT_ALLOWED"},400);
+    const allowed=new Set(["image/jpeg","image/png","image/webp","image/gif"]);
+    if(!allowed.has(file.type))return json({error:"IMAGE_TYPE_NOT_ALLOWED",message:"Chỉ hỗ trợ JPG, PNG, WEBP hoặc GIF."},400);
+    const bytes=await file.arrayBuffer(),head=new Uint8Array(bytes.slice(0,16));
+    const ascii=(start,end)=>String.fromCharCode(...head.slice(start,end));
+    const signatureOk=file.type==="image/jpeg"?(head[0]===0xff&&head[1]===0xd8&&head[2]===0xff)
+      :file.type==="image/png"?(head[0]===0x89&&ascii(1,4)==="PNG")
+      :file.type==="image/webp"?(ascii(0,4)==="RIFF"&&ascii(8,12)==="WEBP")
+      :file.type==="image/gif"?(ascii(0,4)==="GIF8"):false;
+    if(!signatureOk)return json({error:"IMAGE_SIGNATURE_MISMATCH",message:"Nội dung file không khớp định dạng ảnh đã chọn."},400);
     const safe=String(file.name||"image").normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,120)||"image";
     const key=`${new Date().toISOString().slice(0,10)}/${crypto.randomUUID()}-${safe}`;
-    await env.FILES.put(`public-media/${key}`,file.stream(),{httpMetadata:{contentType:file.type||"application/octet-stream"}});
+    await env.FILES.put(`public-media/${key}`,bytes,{httpMetadata:{contentType:file.type}});
     await audit(env,request,user,"Upload ảnh giao diện","media",key,{size:file.size,mime:file.type});
     return json({ok:true,key,url:`/media/${key}`},201);
   }
@@ -353,8 +360,12 @@ export async function adminRoute(request,env,url,ctx){
     const key=decodeURIComponent(mediaMatch[1]);
     if(!key||key.includes(".."))return json({error:"INVALID_PATH"},400);
     const mediaUrl=`/media/${key}`;
-    const used=await env.DB.prepare("SELECT COUNT(*) c FROM settings WHERE value_json LIKE ?").bind(`%${mediaUrl}%`).first();
-    if(Number(used?.c||0)>0)return json({error:"ASSET_IN_USE",message:"Asset đang được tham chiếu trong cấu hình. Hãy thay reference trước khi xóa."},409);
+    const [settingsUse,newsUse]=await env.DB.batch([
+      env.DB.prepare("SELECT COUNT(*) c FROM settings WHERE value_json LIKE ?").bind(`%${mediaUrl}%`),
+      env.DB.prepare("SELECT COUNT(*) c FROM news WHERE cover_file_id=?").bind(key)
+    ]);
+    const refs=Number(settingsUse.results?.[0]?.c||0)+Number(newsUse.results?.[0]?.c||0);
+    if(refs>0)return json({error:"ASSET_IN_USE",message:"Ảnh đang được dùng trong cấu hình hoặc làm ảnh đại diện bài viết. Hãy thay ảnh trong nội dung trước khi xóa.",references:refs},409);
     await env.FILES.delete(`public-media/${key}`);
     await audit(env,request,user,"Xóa ảnh giao diện","media",key,{});
     return json({ok:true});

@@ -2,7 +2,7 @@
   json, readJson, randomToken, sha256, pbkdf2, newSalt, safeEq, parseCookies,
   sessionCookie, clearSessionCookie, ipHash, uid, rateLimit
 } from "./utils.js";
-import {hasPermission, highestRoleLevel, roleLevel} from "./permissions.js";
+import {hasPermission, highestRoleLevel, roleLevel, permissionsForRoles} from "./permissions.js";
 import {sendTemplatedEmail} from "./email.js";
 
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
@@ -27,6 +27,9 @@ export async function getUserById(env, id) {
   if (!u) return null;
 
   u.roles = await loadRoles(env, u.id);
+  // Read-only effective permission list for rendering the correct admin navigation.
+  // Every API continues to enforce permissions independently on the server.
+  u.permissions = [...permissionsForRoles(u.roles)];
   return u;
 }
 

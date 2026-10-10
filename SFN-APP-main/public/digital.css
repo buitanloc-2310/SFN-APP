@@ -475,3 +475,8 @@ body.public-digital{overflow-x:hidden;background:linear-gradient(180deg,#f8fbff 
 .portal-globe .portal-logo img{width:88%;height:58%;object-fit:contain}
 .ecosystem-brand-core img{width:94px;height:72px;object-fit:contain}
 @media(max-width:760px){.dip-brand .brand-signature{width:98px;height:58px}.dip-brand .brand-subline small{font-size:8px}.ecosystem-brand-core img{width:82px;height:62px}}
+
+/* Explicitly identify the existing hand-coded SVG illustration as a placeholder, not an uploaded photo. */
+.cover-default-note{position:absolute;z-index:3;left:12px;right:12px;bottom:12px;display:inline-flex;justify-content:center;align-items:center;max-width:calc(100% - 24px);padding:7px 9px;border:1px solid rgba(157,211,255,.38);border-radius:9px;background:rgba(3,20,56,.78);backdrop-filter:blur(8px);color:#e3f4ff;font-size:8px;font-style:normal;font-weight:900;letter-spacing:.07em;line-height:1.4;text-align:center}
+.news-catalog-cover>span:not(.cover-default-note){z-index:4}
+.news-detail-cover>.cover-default-note{bottom:18px;left:18px;right:auto;max-width:calc(100% - 36px)}

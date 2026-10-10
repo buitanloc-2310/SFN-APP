@@ -10,7 +10,8 @@ const state={
 
 const E=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
 const J=x=>{try{return typeof x==="string"?JSON.parse(x):x}catch{return {}}};
-const fmt=d=>d?new Date(d).toLocaleString("vi-VN"):"—";
+const fmt=d=>d?new Date(d).toLocaleString("vi-VN",{timeZone:"Asia/Ho_Chi_Minh"}):"—";
+const cttToday=()=>{const p=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Ho_Chi_Minh",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`;};
 const rolesOf=u=>(u?.roles||[]).map(r=>r.role_id);
 const isAdmin=u=>(u?.roles||[]).some(r=>Number(r.level)>=40||["owner","super_admin","system_admin","network_secretary","content_admin","office","hr","certificate_manager","reviewer","case_manager","communications","external_events","editor","unit_admin","handler"].includes(r.role_id));
 const isMember=u=>(u?.roles||[]).some(r=>["member","volunteer","handler","unit_admin","editor","communications","external_events","case_manager","reviewer","certificate_manager","hr","office","content_admin","network_secretary","system_admin","super_admin","owner"].includes(r.role_id));
@@ -33,12 +34,71 @@ function toast(msg,type="good"){
   el.style.cssText="position:fixed;right:18px;bottom:18px;z-index:200;max-width:420px;box-shadow:0 15px 50px #0003";
   el.innerHTML=E(msg);document.body.appendChild(el);setTimeout(()=>el.remove(),4200);
 }
+let modalReturnFocus=null,modalKeyHandler=null;
 function modal(html){
-  modalRoot.innerHTML=`<div class="modal-bg" id="modalBg"><div class="modal">${html}</div></div>`;
-  document.getElementById("modalBg").addEventListener("click",e=>{if(e.target.id==="modalBg")closeModal()});
+  modalReturnFocus=document.activeElement;
+  if(modalKeyHandler)document.removeEventListener("keydown",modalKeyHandler);
+  modalRoot.innerHTML=`<div class="modal-bg" id="modalBg"><div class="modal" role="dialog" aria-modal="true" aria-label="Hộp thoại quản trị">${html}</div></div>`;
+  const bg=document.getElementById("modalBg"),box=bg?.querySelector(".modal");
+  bg?.addEventListener("click",e=>{if(e.target.id==="modalBg")closeModal()});
+  modalKeyHandler=e=>{
+    const current=modalRoot.querySelector('[role="dialog"]');if(!current)return;
+    if(e.key==="Escape"){e.preventDefault();closeModal();return;}
+    if(e.key!=="Tab")return;
+    const focusable=[...current.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter(el=>el.offsetParent!==null);
+    if(!focusable.length){e.preventDefault();current.tabIndex=-1;current.focus();return;}
+    const first=focusable[0],last=focusable[focusable.length-1];
+    if(!current.contains(document.activeElement)){e.preventDefault();(e.shiftKey?last:first).focus();}
+    else if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+  };
+  document.addEventListener("keydown",modalKeyHandler);
+  const first=box?.querySelector('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href]');
+  if(first)requestAnimationFrame(()=>first.focus());
 }
-function closeModal(){modalRoot.innerHTML=""}
+let activeAdminDialogCancel=null;
+function closeModal(){
+  const cancel=activeAdminDialogCancel;activeAdminDialogCancel=null;modalRoot.innerHTML="";
+  if(modalKeyHandler){document.removeEventListener("keydown",modalKeyHandler);modalKeyHandler=null;}
+  if(cancel)cancel();
+  const target=modalReturnFocus;modalReturnFocus=null;
+  if(target?.isConnected)requestAnimationFrame(()=>target.focus?.());
+}
 window.closeModal=closeModal;
+function adminDialog({title="Thao tác quản trị",description="",fields=[],confirmText="Lưu",cancelText="Hủy",danger=false}={}){
+  return new Promise(resolve=>{
+    let settled=false;
+    const finish=value=>{if(settled)return;settled=true;activeAdminDialogCancel=null;modalRoot.innerHTML="";resolve(value)};
+    const inputHtml=f=>{
+      const id=`admin-dialog-${f.name}`,value=f.value??"",required=f.required?"required":"",help=f.help?`<small class="muted">${E(f.help)}</small>`:"";
+      if(f.type==="textarea")return `<div class="field"><label for="${E(id)}">${E(f.label)}</label><textarea id="${E(id)}" name="${E(f.name)}" rows="${Number(f.rows)||4}" ${required} placeholder="${E(f.placeholder||"")}">${E(value)}</textarea>${help}</div>`;
+      if(f.type==="select")return `<div class="field"><label for="${E(id)}">${E(f.label)}</label><select id="${E(id)}" name="${E(f.name)}" ${required}>${(f.options||[]).map(o=>{const opt=typeof o==="string"?{value:o,label:o}:o;return `<option value="${E(opt.value)}" ${String(opt.value)===String(value)?"selected":""}>${E(opt.label)}</option>`}).join("")}</select>${help}</div>`;
+      if(f.type==="checkbox")return `<label class="check admin-dialog-check"><input id="${E(id)}" name="${E(f.name)}" type="checkbox" ${f.checked?"checked":""}><span>${E(f.label)}</span></label>${help}`;
+      return `<div class="field"><label for="${E(id)}">${E(f.label)}</label><input id="${E(id)}" name="${E(f.name)}" type="${E(f.type||"text")}" value="${E(value)}" ${required} ${f.min!==undefined?`min="${E(f.min)}"`:""} ${f.max!==undefined?`max="${E(f.max)}"`:""} ${f.step!==undefined?`step="${E(f.step)}"`:""} maxlength="${E(f.maxlength||500)}" placeholder="${E(f.placeholder||"")}">${help}</div>`;
+    };
+    modal(`<div class="admin-dialog-head"><span class="eyebrow">SKY FIRST · QUẢN TRỊ</span><button type="button" class="admin-modal-close" id="adminDialogClose" aria-label="Đóng">×</button><h2 id="adminDialogTitle">${E(title)}</h2>${description?`<p class="muted">${E(description)}</p>`:""}</div><form id="adminDialogForm" class="admin-dialog-form">${fields.map(inputHtml).join("")}<div class="admin-dialog-actions"><button type="button" class="secondary" id="adminDialogCancel">${E(cancelText)}</button><button type="submit" class="${danger?"danger":"primary"}">${E(confirmText)}</button></div></form>`);
+    activeAdminDialogCancel=()=>finishWithCleanup(null);
+    const escapeDialog=e=>{if(e.key==="Escape"){e.preventDefault();window.removeEventListener("keydown",escapeDialog);finish(null);}};
+    window.addEventListener("keydown",escapeDialog);
+    const originalFinish=finish;
+    const finishWithCleanup=value=>{window.removeEventListener("keydown",escapeDialog);originalFinish(value);};
+    document.getElementById("adminDialogClose")?.addEventListener("click",()=>finishWithCleanup(null));
+    document.getElementById("adminDialogCancel")?.addEventListener("click",()=>finishWithCleanup(null));
+    document.getElementById("adminDialogForm")?.addEventListener("submit",e=>{
+      e.preventDefault();const form=e.currentTarget;if(!form.reportValidity())return;
+      const out={};for(const f of fields){const el=form.elements.namedItem(f.name);if(!el)continue;out[f.name]=f.type==="checkbox"?el.checked:el.value;}
+      finishWithCleanup(out);
+    });
+    const first=document.querySelector("#adminDialogForm input:not([type=checkbox]),#adminDialogForm textarea,#adminDialogForm select");first?.focus();
+  });
+}
+async function adminPrompt(message,defaultValue="",options={}){
+  const out=await adminDialog({title:options.title||"Nhập thông tin",description:options.description||"",confirmText:options.confirmText||"Tiếp tục",fields:[{name:"value",label:message,value:defaultValue,type:options.type||"text",required:!!options.required,placeholder:options.placeholder||"",min:options.min,max:options.max,step:options.step,options:options.options,help:options.help}]});
+  return out===null?null:out.value;
+}
+async function adminConfirm(message,{title="Xác nhận thao tác",confirmText="Xác nhận",danger=false}={}){
+  const out=await adminDialog({title,description:message,confirmText,cancelText:"Quay lại",danger,fields:[]});return out!==null;
+}
 
 async function loadConfig(){
   try{state.config=await api("/api/config")}catch{state.config={app_name:"Sky First Network",hero_title:"Kết nối giáo dục. Phát triển cộng đồng.",hero_text:"Một không gian chung cho học tập, hoạt động và phát triển cộng đồng.",hero_cover_url:"/assets/sfn-cover.png",modules:[],forms:[]}}
@@ -744,18 +804,12 @@ window.internalRequest=type=>{
   };
 };
 
-window.privacyRequest=type=>{
-  const note=prompt("Ghi chú thêm (nếu có):")||"";
-
-  api("/api/me/data-requests",{
-    method:"POST",
-    body:{
-      request_type:type,
-      note
-    }
-  })
-  .then(()=>toast("Đã tiếp nhận yêu cầu."))
-  .catch(e=>toast(errorText(e),"bad"));
+window.privacyRequest=async type=>{
+  const note=await adminPrompt("Ghi chú thêm (không bắt buộc):","",{title:"Yêu cầu quyền riêng tư",type:"textarea",required:false});
+  if(note===null)return;
+  api("/api/me/data-requests",{method:"POST",body:{request_type:type,note}})
+    .then(()=>toast("Đã tiếp nhận yêu cầu."))
+    .catch(e=>toast(errorText(e),"bad"));
 };
 
 async function renderSecurity(main){
@@ -815,20 +869,12 @@ window.setup2fa=async()=>{
   }
 };
 
-window.disable2fa=()=>{
-  const pw=prompt("Nhập mật khẩu để tắt 2FA:");
-  if(!pw)return;
-
-  api("/api/me/2fa/disable",{
-    method:"POST",
-    body:{password:pw}
-  })
-  .then(async()=>{
-    await loadMe();
-    toast("Đã tắt 2FA.");
-    renderPortal();
-  })
-  .catch(e=>toast(errorText(e),"bad"));
+window.disable2fa=async()=>{
+  const pw=await adminPrompt("Mật khẩu hiện tại","",{title:"Tắt xác minh hai bước",type:"password",required:true,description:"Nhập mật khẩu để xác nhận thao tác bảo mật."});
+  if(pw===null||!pw)return;
+  api("/api/me/2fa/disable",{method:"POST",body:{password:pw}})
+    .then(async()=>{await loadMe();toast("Đã tắt 2FA.");renderPortal();})
+    .catch(e=>toast(errorText(e),"bad"));
 };
 
 window.revokeAllSessions=()=>api("/api/me/sessions/revoke-all",{
@@ -840,33 +886,110 @@ window.revokeAllSessions=()=>api("/api/me/sessions/revoke-all",{
 })
 .catch(e=>toast(errorText(e),"bad"));
 
+if(!window.__cttAdminHotkeysInstalled){
+  window.__cttAdminHotkeysInstalled=true;
+  window.addEventListener("keydown",e=>{
+    if(!document.body.classList.contains("admin-mode"))return;
+    const active=document.activeElement;
+    const editing=active&&(active.matches?.("input,textarea,select,[contenteditable=true]")||active.isContentEditable);
+    if(e.key==="/"&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!editing){const input=document.getElementById("adminMenuSearch");if(input){e.preventDefault();input.focus();}}
+    if(e.key==="Escape"){const layout=document.getElementById("adminLayout");if(layout?.classList.contains("nav-open")){layout.classList.remove("nav-open");document.getElementById("adminMenuToggle")?.setAttribute("aria-expanded","false");}}
+  });
+}
+
 const adminMenu=[
- {group:"TỔNG QUAN",items:[["dashboard","Tổng quan"],["approvals","Chờ xử lý"],["search","Tìm kiếm"]]},
- {group:"NỘI DUNG & GIAO DIỆN",items:[["site","Trang & Trang chủ"],["header","Menu & Điều hướng"],["news","Tin tức & Thông báo"],["footer","Chân trang"],["media","Thư viện hình ảnh"]]},
- {group:"CHƯƠNG TRÌNH & HOẠT ĐỘNG",items:[["classes","Chương trình & Lớp học"],["events","Hoạt động & Sự kiện"],["units","Đơn vị"],["tasks","Nhiệm vụ"]]},
- {group:"BIỂU MẪU & HỒ SƠ",items:[["forms","Biểu mẫu"],["submissions","Hồ sơ"],["recruitment","Tuyển dụng & Đánh giá"],["teaching","Tình nguyện viên dạy học"]]},
- {group:"GIẤY ĐÃ PHÁT HÀNH",items:[["certificates","Giấy chứng nhận · Giấy xác nhận · Bảng khen"],["approvals","Chờ xét duyệt"]]},
- {group:"TÀI NGUYÊN",items:[["documents","Tài liệu & Ấn phẩm"],["files","Tệp & Minh chứng"]]},
- {group:"HỆ THỐNG",items:[["users","Quản trị viên & Phân quyền"],["email","Email & Thông báo"],["privacy","Quyền riêng tư"],["audit","Nhật ký hoạt động"],["backup","Sao lưu & Khôi phục"],["maintenance","Bảo trì & Tình trạng hệ thống"],["modules","Chức năng hệ thống"]]}
+ {group:"TỔNG QUAN",items:[
+  ["dashboard","Tổng quan","dashboard.view"],["home-stats","Thống kê trang chủ","settings.manage"],["approvals","Chờ xử lý","approval.view"],["search","Tìm kiếm toàn hệ thống","search.use"]
+ ]},
+ {group:"NỘI DUNG & GIAO DIỆN",items:[
+  ["site","Trang chủ & Nhận diện","settings.manage"],["header","Menu & Điều hướng","settings.manage"],["news","Tin tức & Ảnh đại diện","news.manage"],["footer","Chân trang & Liên kết","settings.manage"],["media","Thư viện hình ảnh","file.manage"]
+ ]},
+ {group:"CHƯƠNG TRÌNH & HOẠT ĐỘNG",items:[
+  ["classes","Chương trình & Lớp học","class.manage"],["events","Hoạt động & Sự kiện","event.manage"],["units","Đơn vị","unit.manage"],["people","Nhân sự & Thành viên","people.view"],["tasks","Nhiệm vụ & Bàn giao","task.manage"],["tickets","Hỗ trợ & Ticket","ticket.manage"]
+ ]},
+ {group:"BIỂU MẪU & HỒ SƠ",items:[
+  ["forms","Biểu mẫu trực tuyến","form.view"],["submissions","Hồ sơ đăng ký","submission.view"],["recruitment","Tuyển dụng & Đánh giá","submission.view"],["teaching","Tình nguyện viên dạy học","people.view"],["terms","Điều khoản & Cam kết","form.view"]
+ ]},
+ {group:"GIẤY TỜ & TÀI NGUYÊN",items:[
+  ["certificates","Giấy chứng nhận / xác nhận","certificate.view"],["documents","Tài liệu & Ấn phẩm","document.manage"],["files","Tệp & Minh chứng","file.manage"]
+ ]},
+ {group:"HỆ THỐNG & AN TOÀN",items:[
+  ["users","Quản trị viên & Phân quyền","user.view"],["email","Email & Thông báo","email.manage"],["privacy","Quyền riêng tư","privacy.manage"],["audit","Nhật ký hoạt động","audit.view"],["backup","Sao lưu & Khôi phục","backup.create"],["maintenance","Bảo trì & Trang lỗi","settings.manage"],["modules","Chức năng hệ thống","module.manage"],["settings","Cài đặt hệ thống","settings.manage"]
+ ]}
 ];
+
+const adminRoutePermissions={
+ dashboard:"dashboard.view","home-stats":"settings.manage",approvals:"approval.view",search:"search.use",
+ site:"settings.manage",header:"settings.manage",news:"news.manage",footer:"settings.manage",media:"file.manage",
+ classes:"class.manage",events:"event.manage",units:"unit.manage",people:"people.view",tasks:"task.manage",tickets:"ticket.manage",
+ forms:"form.view",submissions:"submission.view",recruitment:"submission.view",teaching:"people.view",terms:"form.view",
+ certificates:"certificate.view",documents:"document.manage",files:"file.manage",users:"user.view",email:"email.manage",
+ privacy:"privacy.manage",audit:"audit.view",backup:"backup.create",maintenance:"settings.manage",modules:"module.manage",settings:"settings.manage"
+};
+function adminCan(permission){
+  if(!permission||!state.user)return true;
+  const permissions=state.user.permissions;
+  if(!Array.isArray(permissions))return false;
+  return permissions.includes("*")||permissions.includes(permission);
+}
+function adminMenuMarkup(section){
+  return adminMenu.map((group,index)=>{
+    const items=group.items.filter(item=>adminCan(item[2]));
+    if(!items.length)return "";
+    return `<section class="admin-nav-group" data-admin-group="${index}"><button type="button" class="admin-nav-group-title" data-admin-group-toggle="${index}" aria-expanded="true"><span>${E(group.group)}</span><b aria-hidden="true">⌄</b></button><div class="admin-nav-items">${items.map(item=>`<button type="button" class="admin-nav-item ${section===item[0]?"active":""}" data-admin-route="${E(item[0])}" data-admin-label="${E(item[1].toLocaleLowerCase("vi"))}" ${section===item[0]?'aria-current="page"':""}><span class="admin-nav-dot" aria-hidden="true"></span><span>${E(item[1])}</span>${section===item[0]?'<i aria-hidden="true">●</i>':""}</button>`).join("")}</div></section>`;
+  }).join("");
+}
 
 async function renderAdmin(){
   document.body.classList.add("admin-mode");document.body.classList.remove("public-digital");
-  if(!state.user||!isAdmin(state.user)){
-    location.hash="login";
-    return;
-  }
-
+  if(!state.user||!isAdmin(state.user)){location.hash="login";return;}
   const section=location.hash.split("/")[1]||"dashboard";
+  const requiredPermission=adminRoutePermissions[section];
+  app.innerHTML=`<div class="admin-layout" id="adminLayout">
+    <aside class="admin-sidebar" id="adminSidebar" aria-label="Danh mục quản trị">
+      <div class="admin-brand"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><div><b>SKY FIRST</b><small>TRUNG TÂM QUẢN TRỊ</small></div></div>
+      <label class="admin-menu-search"><span aria-hidden="true">⌕</span><input type="search" id="adminMenuSearch" placeholder="Tìm chức năng…" aria-label="Tìm chức năng quản trị"><kbd>/</kbd></label>
+      <nav class="admin-nav" aria-label="Menu quản trị">${adminMenuMarkup(section)}</nav>
+      <div class="admin-sidebar-foot"><span class="admin-online-dot"></span><span>Hệ thống quản trị</span><a href="/" target="_blank" rel="noopener">Xem website ↗</a></div>
+    </aside>
+    <section class="admin-workspace">
+      <header class="admin-topbar"><div class="admin-topbar-left"><button type="button" id="adminMenuToggle" class="admin-mobile-menu" aria-controls="adminSidebar" aria-expanded="false">☰ <span>Danh mục</span></button><div><span class="admin-topbar-kicker">SKY FIRST NETWORK</span><b id="adminCurrentLabel">${E(adminMenu.flatMap(g=>g.items).find(x=>x[0]===section)?.[1]||"Quản trị hệ thống")}</b></div></div><div class="admin-topbar-actions"><span class="admin-user-chip"><i>${E((state.user.full_name||state.user.email||"A").slice(0,1).toUpperCase())}</i><span><b>${E(state.user.full_name||"Quản trị viên")}</b><small>${E(state.user.email||"")}</small></span></span><a href="/" class="admin-view-site" target="_blank" rel="noopener">Xem website ↗</a><button type="button" id="adminLogout" class="admin-logout">Đăng xuất</button></div></header>
+      <section id="adminMain" class="admin-main"><div class="loading">Đang tải dữ liệu quản trị…</div></section>
+    </section>
+  </div>`;
 
-  app.innerHTML=`<div class="dashboard"><aside class="sidebar" id="adminSidebar">${adminMenu.map(g=>`<div class="sidebar-group"><div class="sidebar-label">${E(g.group)}</div>${g.items.map(m=>`<button type="button" class="${section===m[0]?"active":""}" data-admin-route="${E(m[0])}">${E(m[1])}</button>`).join("")}</div>`).join("")}<button type="button" id="adminLogout">↩ Đăng xuất</button></aside><section id="adminMain"><div class="loading">Đang tải…</div></section></div>`;
-
-  document.querySelectorAll("[data-admin-route]").forEach(btn=>btn.addEventListener("click",()=>{try{sessionStorage.setItem("ctt_admin_scroll_y",String(window.scrollY||0));}catch{} location.hash=`admin/${btn.dataset.adminRoute}`}));
+  const layout=document.getElementById("adminLayout");
+  document.querySelectorAll("[data-admin-route]").forEach(btn=>btn.addEventListener("click",()=>{
+    if(btn.dataset.adminRoute===section){layout?.classList.remove("nav-open");return;}
+    try{sessionStorage.setItem("ctt_admin_scroll_y",String(window.scrollY||0));}catch{}
+    layout?.classList.remove("nav-open");location.hash=`admin/${btn.dataset.adminRoute}`;
+  }));
+  document.querySelectorAll("[data-admin-group-toggle]").forEach(btn=>btn.addEventListener("click",()=>{
+    const group=btn.closest(".admin-nav-group"),collapsed=group?.classList.toggle("is-collapsed");btn.setAttribute("aria-expanded",String(!collapsed));
+  }));
+  document.getElementById("adminMenuSearch")?.addEventListener("keydown",e=>{
+    if(e.key==="Escape"){e.currentTarget.value="";e.currentTarget.dispatchEvent(new Event("input",{bubbles:true}));e.currentTarget.blur();}
+  });
+  document.getElementById("adminMenuSearch")?.addEventListener("input",e=>{
+    const q=e.currentTarget.value.trim().toLocaleLowerCase("vi");
+    document.querySelectorAll(".admin-nav-group").forEach(group=>{
+      let visible=0;
+      group.querySelectorAll("[data-admin-route]").forEach(item=>{const yes=!q||(item.textContent||"").toLocaleLowerCase("vi").includes(q)||(group.querySelector(".admin-nav-group-title")?.textContent||"").toLocaleLowerCase("vi").includes(q);item.hidden=!yes;if(yes)visible++;});
+      group.hidden=visible===0;
+      if(q&&visible){group.classList.remove("is-collapsed");group.querySelector(".admin-nav-group-title")?.setAttribute("aria-expanded","true");}
+    });
+  });
+  document.getElementById("adminMenuToggle")?.addEventListener("click",e=>{
+    const open=layout?.classList.toggle("nav-open");e.currentTarget.setAttribute("aria-expanded",String(!!open));
+  });
   document.getElementById("adminLogout")?.addEventListener("click",logout);
   const main=document.getElementById("adminMain");
-
+  if(requiredPermission&&!adminCan(requiredPermission)){
+    main.innerHTML=`<section class="admin-access-denied"><span>403 · KHÔNG ĐỦ QUYỀN</span><h1>Chức năng giới hạn quyền truy cập</h1><p>Tài khoản của bà chưa được cấp quyền cần thiết cho khu vực này. Dữ liệu vẫn được bảo vệ bởi kiểm tra quyền ở máy chủ.</p><a class="primary" href="#admin/dashboard">Quay về Tổng quan</a></section>`;return;
+  }
   try{
     if(section==="dashboard")return await adminDashboard(main);
+    if(section==="home-stats")return await adminHomeStats(main);
     if(section==="approvals")return await adminApprovals(main);
     if(section==="submissions")return await adminSubmissions(main);
     if(section==="users")return await adminUsers(main);
@@ -875,11 +998,11 @@ async function renderAdmin(){
     if(section==="forms")return await adminForms(main);
     if(section==="terms")return await adminTerms(main);
     if(section==="teaching")return await adminTeaching(main);
-    if(section==="classes")return await adminGeneric(main,"classes","Lớp học",["unit_code","title","level","status","capacity"]);
-    if(section==="events")return await adminGeneric(main,"events","Sự kiện",["unit_code","title","start_at","end_at","status","capacity"]);
-    if(section==="documents")return await adminGeneric(main,"documents","Kho văn bản",["code","doc_type","title","visibility","status","issued_at"]);
+    if(section==="classes")return await adminGeneric(main,"classes","Chương trình & Lớp học",["unit_code","title","level","status","capacity"]);
+    if(section==="events")return await adminGeneric(main,"events","Hoạt động & Sự kiện",["unit_code","title","start_at","end_at","status","capacity"]);
+    if(section==="documents")return await adminGeneric(main,"documents","Tài liệu & Ấn phẩm",["code","doc_type","title","visibility","status","issued_at"]);
     if(section==="units")return await adminGeneric(main,"units","Đơn vị trực thuộc",["code","name","unit_type","manager_name","email","status"]);
-    if(section==="news")return await adminGeneric(main,"news","Tin tức & CMS",["title","slug","body","status","published_at"]);
+    if(section==="news")return await adminNews(main);
     if(section==="tasks")return await adminGeneric(main,"tasks","Nhiệm vụ & Bàn giao",["title","description","assigned_to","unit_code","status","priority","due_at"]);
     if(section==="certificates")return await adminCertificates(main);
     if(section==="tickets")return await adminTickets(main);
@@ -896,16 +1019,13 @@ async function renderAdmin(){
     if(section==="search")return await adminSearch(main);
     if(section==="audit")return await adminAudit(main);
     if(section==="backup")return await adminBackup(main);
+    main.innerHTML=`<div class="admin-access-denied"><h1>Không tìm thấy mục quản trị</h1><p>Đường dẫn này chưa được cấu hình.</p><a class="primary" href="#admin/dashboard">Về Tổng quan</a></div>`;
   }catch(err){
-    main.innerHTML=`<div class="notice bad">${E(errorText(err))}</div>`;
+    console.error("ADMIN_ROUTE_ERROR",section,err);
+    main.innerHTML=`<div class="notice bad admin-error"><b>Không thể tải mục quản trị.</b><p>${E(errorText(err))}</p><button type="button" class="secondary" id="adminRetry">Thử tải lại</button><a href="#admin/dashboard" class="admin-error-link">Về Tổng quan</a></div>`;
+    document.getElementById("adminRetry")?.addEventListener("click",()=>renderAdmin());
   }finally{
-    try{
-      const saved=sessionStorage.getItem("ctt_admin_scroll_y");
-      if(saved!==null){
-        sessionStorage.removeItem("ctt_admin_scroll_y");
-        requestAnimationFrame(()=>window.scrollTo({top:Number(saved)||0,behavior:"auto"}));
-      }
-    }catch{}
+    try{const saved=sessionStorage.getItem("ctt_admin_scroll_y");if(saved!==null){sessionStorage.removeItem("ctt_admin_scroll_y");requestAnimationFrame(()=>window.scrollTo({top:Number(saved)||0,behavior:"auto"}));}}catch{}
   }
 }
 
@@ -920,6 +1040,65 @@ async function adminDashboard(main){
   <div class="kpis"><div class="kpi"><b>${c.submissions}</b>Hồ sơ</div><div class="kpi"><b>${c.pending}</b>Cần xử lý</div><div class="kpi"><b>${c.people}</b>Nhân sự</div><div class="kpi"><b>${c.certificates}</b>GCN/GXN đã cấp</div><div class="kpi"><b>${c.approvals}</b>Chờ phê duyệt</div><div class="kpi"><b>${c.tickets}</b>Ticket mở</div><div class="kpi"><b>${c.tasks}</b>Nhiệm vụ</div></div>
   <div class="admin-quick-grid"><button class="admin-quick" onclick="location.hash='admin/submissions'">${lineIcon("users")}<b>Xử lý hồ sơ</b><span>Tiếp nhận và cập nhật trạng thái</span></button><button class="admin-quick" onclick="location.hash='admin/certificates'">${lineIcon("badge")}<b>Phát hành giấy</b><span>Giấy chứng nhận, Giấy xác nhận và Bảng khen</span></button><button class="admin-quick" onclick="location.hash='admin/media'">${lineIcon("book")}<b>Thêm tài nguyên</b><span>Tải ảnh và tệp sử dụng trên Cổng</span></button><button class="admin-quick" onclick="location.hash='admin/maintenance'">${lineIcon("shield")}<b>Chỉnh sửa Trang chủ</b><span>Nội dung, giao diện và trạng thái công khai</span></button></div>
   <div class="card" style="margin-top:16px"><h2>Quản trị an toàn</h2><p class="muted">Các module được tách theo chức năng. Ảnh giao diện lưu ở R2; cấu hình công khai có giá trị mặc định trong source; dữ liệu nghiệp vụ tiếp tục dùng D1 để không làm thay đổi dữ liệu cũ.</p></div>`;
+}
+
+
+async function adminHomeStats(main){
+  const [settings,config]=await Promise.all([loadSettingsMap(),api("/api/config")]);
+  const stored=settings.home_stats||{},cfg=config.home_stats||{};
+  const defaults={
+    source:"d1",
+    values:{programs:0,members:0,certificates:0,partners:0},
+    labels:{programs:"Chương trình & sự kiện",members:"Thành viên cộng đồng",certificates:"Chứng nhận đã phát hành",partners:"Đối tác & đơn vị đồng hành"},
+    duration_ms:1800,cycles:100
+  };
+  const stats={...defaults,...stored,values:{...defaults.values,...(stored.values||{})},labels:{...defaults.labels,...(stored.labels||{})}};
+  const d1=cfg.d1_values||{};
+  const hasD1=key=>Object.prototype.hasOwnProperty.call(d1,key)&&d1[key]!==null&&d1[key]!==undefined&&String(d1[key]).trim()!==""&&Number.isFinite(Number(d1[key]))&&Number(d1[key])>=0;
+  const rows=[
+    ["programs","Chương trình & sự kiện"],
+    ["members","Thành viên cộng đồng"],
+    ["certificates","Chứng nhận đã phát hành"],
+    ["partners","Đối tác & đơn vị đồng hành"]
+  ];
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">QUẢN LÝ TRANG CHỦ</span><h1>Thống kê trang chủ</h1><p class="muted">Quản lý riêng bốn thẻ số liệu ở trang công khai. Chế độ D1 hiển thị số liệu thật; chế độ thủ công dùng giá trị do quản trị viên nhập.</p></div><span class="system-pill ${stats.source==="d1"?"ok":"warn"}">${stats.source==="d1"?"Nguồn: D1":"Nguồn: Thủ công"}</span></div>
+    <form id="homeStatsForm" class="admin-stat-manager">
+      <section class="card admin-card-premium"><div class="admin-card-heading"><div><span class="eyebrow">01 / NGUỒN DỮ LIỆU</span><h2>Chọn cách lấy số liệu</h2></div><span class="admin-status-tag">Được lưu trong Cài đặt</span></div><div class="field"><label for="hsSource">Nguồn thống kê</label><select id="hsSource" name="source"><option value="d1" ${stats.source==="d1"?"selected":""}>Tự động lấy số liệu thật từ D1</option><option value="manual" ${stats.source==="manual"?"selected":""}>Dùng số do quản trị viên nhập</option></select></div><p class="muted admin-help-text">Số liệu D1 chỉ đọc để hiển thị, không sửa trực tiếp dữ liệu nghiệp vụ. Khi chọn thủ công, bốn ô giá trị bên dưới sẽ được sử dụng.</p></section>
+      <section class="card admin-card-premium"><div class="admin-card-heading"><div><span class="eyebrow">02 / BẢNG THỐNG KÊ</span><h2>Nhãn và giá trị từng thẻ</h2></div><span class="admin-status-tag">4 thẻ đang cấu hình</span></div><div class="table-scroll"><table class="admin-stats-table"><thead><tr><th>Thẻ</th><th>Nhãn công khai</th><th>Giá trị thủ công</th><th>Dữ liệu D1 hiện tại</th><th>Trạng thái</th></tr></thead><tbody>${rows.map(([key,defaultLabel],i)=>`<tr><td><span class="admin-stat-key">0${i+1}</span><b>${E(defaultLabel)}</b><small>${E(key)}</small></td><td><input type="text" class="admin-stat-label" name="label_${key}" maxlength="80" required value="${E(stats.labels[key]||defaultLabel)}" aria-label="Nhãn ${E(defaultLabel)}"></td><td><input type="number" class="admin-stat-value" name="value_${key}" min="0" step="1" required value="${E(stats.values[key]??0)}" aria-label="Giá trị thủ công ${E(defaultLabel)}"></td><td><strong class="admin-d1-value">${hasD1(key)?E(new Intl.NumberFormat("vi-VN").format(Number(d1[key]))):"Chưa có dữ liệu"}</strong><small>${hasD1(key)?"Đọc từ cấu hình D1":"Kiểm tra kết nối / dữ liệu"}</small></td><td><span class="status ${hasD1(key)?"":"status-warn"}">${hasD1(key)?"Có dữ liệu":"Chưa xác định"}</span></td></tr>`).join("")}</tbody></table></div><div class="admin-stat-preview"><span class="eyebrow">XEM NHANH</span><div class="admin-stat-preview-grid">${rows.map(([key,defaultLabel],i)=>`<article class="admin-stat-preview-card stat-tone-${i+1}"><i>${["▤","♧","✓","↗"][i]}</i><div><b data-hs-preview-value="${key}">${stats.source==="d1"?(hasD1(key)?E(new Intl.NumberFormat("vi-VN").format(Number(d1[key]))):"Chưa có dữ liệu"):(stats.values[key]!==null&&stats.values[key]!==undefined&&String(stats.values[key]).trim()!==""&&Number.isFinite(Number(stats.values[key]))?E(new Intl.NumberFormat("vi-VN").format(Number(stats.values[key]))):"Chưa có dữ liệu")}</b><span data-hs-preview-label="${key}">${E(stats.labels[key]||defaultLabel)}</span></div></article>`).join("")}</div></div></section>
+      <section class="card admin-card-premium"><div class="admin-card-heading"><div><span class="eyebrow">03 / HIỆU ỨNG</span><h2>Hoạt ảnh đếm số</h2></div></div><div class="row2"><div class="field"><label for="hsDuration">Thời lượng mỗi lượt (giây)</label><input id="hsDuration" type="number" min="0.25" max="30" step="0.05" value="${E((Number(stats.duration_ms)||1800)/1000)}" required></div><div class="field"><label for="hsCycles">Số lượt chạy (1–100)</label><input id="hsCycles" type="number" min="1" max="100" step="1" value="${E(stats.cycles||100)}" required></div></div><p class="muted admin-help-text">Bộ đếm dừng ở giá trị đích sau số lượt đã chọn; không chạy vô hạn và không cập nhật lặp vào D1.</p></section>
+      <div class="admin-sticky-save"><span>Thay đổi chỉ áp dụng sau khi lưu.</span><button type="submit" class="primary" id="saveHomeStats">Lưu thống kê trang chủ</button></div>
+    </form>`;
+  const form=document.getElementById("homeStatsForm"),source=document.getElementById("hsSource");
+  const updateMode=()=>{
+    const manual=source.value==="manual";
+    form.querySelectorAll(".admin-stat-value").forEach(input=>{input.disabled=!manual;input.setAttribute("aria-disabled",String(!manual));});
+    document.querySelectorAll("[data-hs-preview-value]").forEach(el=>{
+      const key=el.dataset.hsPreviewValue;
+      const n=manual?form.elements[`value_${key}`].value:d1[key];
+      el.textContent=n!==undefined&&n!==null&&String(n).trim()!==""&&Number.isFinite(Number(n))&&Number(n)>=0?new Intl.NumberFormat("vi-VN").format(Number(n)):"Chưa có dữ liệu";
+    });
+    document.querySelectorAll("[data-hs-preview-label]").forEach(el=>{const key=el.dataset.hsPreviewLabel;el.textContent=form.elements[`label_${key}`].value.trim()||rows.find(r=>r[0]===key)?.[1]||key;});
+  };
+  source.addEventListener("change",updateMode);
+  form.querySelectorAll(".admin-stat-value,.admin-stat-label").forEach(el=>el.addEventListener("input",updateMode));
+  updateMode();
+  form.addEventListener("submit",async e=>{
+    e.preventDefault();const btn=document.getElementById("saveHomeStats");
+    const labels={},values={};
+    for(const [key,defaultLabel] of rows){
+      labels[key]=String(form.elements[`label_${key}`].value||"").trim();
+      const n=Number(form.elements[`value_${key}`].value);
+      if(!labels[key]||labels[key].length>80||!Number.isFinite(n)||n<0||!Number.isInteger(n)){toast(`Kiểm tra nhãn và giá trị của mục ${defaultLabel}.`,"bad");return;}
+      values[key]=n;
+    }
+    const duration=Number(document.getElementById("hsDuration").value),cycles=Number(document.getElementById("hsCycles").value);
+    if(!Number.isFinite(duration)||duration<.25||duration>30||!Number.isInteger(cycles)||cycles<1||cycles>100){toast("Thời lượng phải từ 0,25 đến 30 giây và số lượt từ 1 đến 100.","bad");return;}
+    btn.disabled=true;btn.textContent="Đang lưu…";
+    try{
+      await api("/api/admin/settings",{method:"PUT",body:{items:{home_stats:{source:source.value==="d1"?"d1":"manual",values,labels,duration_ms:Math.round(duration*1000),cycles}}}});
+      await loadConfig();toast("Đã lưu bảng thống kê trang chủ.");await adminHomeStats(main);
+    }catch(err){toast(errorText(err),"bad");btn.disabled=false;btn.textContent="Lưu thống kê trang chủ";}
+  });
 }
 
 async function adminSubmissions(main){
@@ -972,42 +1151,27 @@ window.convertPerson=code=>api(`/api/admin/submissions/${encodeURIComponent(code
 .then(d=>toast("Đã tạo hồ sơ nhân sự #"+d.person_id))
 .catch(e=>toast(errorText(e),"bad"));
 
-window.scheduleInterview=code=>{
-  const at=prompt("Thời gian phỏng vấn (YYYY-MM-DDTHH:MM):");
-  if(!at)return;
-
-  const url=prompt("Link Meet/Zoom:")||"";
-
-  api("/api/admin/interviews",{
-    method:"POST",
-    body:{
-      submission_code:code,
-      scheduled_at:at,
-      meeting_url:url
-    }
-  })
-  .then(()=>toast("Đã tạo lịch phỏng vấn."))
-  .catch(e=>toast(errorText(e),"bad"));
+window.scheduleInterview=async code=>{
+  const values=await adminDialog({title:"Lên lịch phỏng vấn",description:`Hồ sơ ${code} · thời gian theo giờ Việt Nam (UTC+7).`,confirmText:"Tạo lịch",fields:[
+    {name:"at",label:"Thời gian phỏng vấn",type:"datetime-local",required:true},
+    {name:"url",label:"Link Meet / Zoom (không bắt buộc)",type:"url",required:false,placeholder:"https://…"}
+  ]});
+  if(!values)return;
+  api("/api/admin/interviews",{method:"POST",body:{submission_code:code,scheduled_at:`${values.at}:00+07:00`,meeting_url:values.url||""}})
+    .then(()=>toast("Đã tạo lịch phỏng vấn."))
+    .catch(e=>toast(errorText(e),"bad"));
 };
 
-window.addEvaluation=code=>{
-  const score=prompt("Điểm tổng hợp (0-100):");
-  if(score===null)return;
-
-  const rec=prompt("Khuyến nghị:")||"";
-  const note=prompt("Ghi chú:")||"";
-
-  api("/api/admin/evaluations",{
-    method:"POST",
-    body:{
-      submission_code:code,
-      score:{total:Number(score)},
-      recommendation:rec,
-      note
-    }
-  })
-  .then(()=>toast("Đã lưu đánh giá."))
-  .catch(e=>toast(errorText(e),"bad"));
+window.addEvaluation=async code=>{
+  const values=await adminDialog({title:"Chấm đánh giá hồ sơ",description:`Hồ sơ ${code}. Điểm tổng hợp từ 0 đến 100.`,confirmText:"Lưu đánh giá",fields:[
+    {name:"score",label:"Điểm tổng hợp",type:"number",required:true,min:0,max:100,step:0.1},
+    {name:"recommendation",label:"Khuyến nghị",type:"textarea",required:false,rows:3},
+    {name:"note",label:"Ghi chú nội bộ",type:"textarea",required:false,rows:3}
+  ]});
+  if(!values)return;const score=Number(values.score);if(!Number.isFinite(score)||score<0||score>100){toast("Điểm phải nằm trong khoảng 0–100.","bad");return;}
+  api("/api/admin/evaluations",{method:"POST",body:{submission_code:code,score:{total:score},recommendation:values.recommendation||"",note:values.note||""}})
+    .then(()=>toast("Đã lưu đánh giá."))
+    .catch(e=>toast(errorText(e),"bad"));
 };
 
 async function adminApprovals(main){
@@ -1016,21 +1180,12 @@ async function adminApprovals(main){
   main.innerHTML=`<h1>Trung tâm phê duyệt</h1><div class="card table-scroll"><table><thead><tr><th>Loại</th><th>Hành động</th><th>Trạng thái</th><th>Hạn</th><th></th></tr></thead><tbody>${(d.items||[]).map(a=>`<tr><td>${E(a.entity_type)}<br><span class="small">${E(a.entity_id)}</span></td><td>${E(a.action)}</td><td><span class="status">${E(a.status)}</span></td><td>${fmt(a.due_at)}</td><td>${a.status==="pending"?`<button class="primary" onclick="decideApproval('${E(a.id)}','approved')">Phê duyệt</button> <button class="danger" onclick="decideApproval('${E(a.id)}','rejected')">Từ chối</button>`:""}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
-window.decideApproval=(id,status)=>{
-  const note=prompt("Ghi chú quyết định (nếu có):")||"";
-
-  api(`/api/admin/approvals/${encodeURIComponent(id)}`,{
-    method:"PATCH",
-    body:{
-      status,
-      note
-    }
-  })
-  .then(()=>{
-    toast("Đã cập nhật phê duyệt.");
-    adminApprovals(document.getElementById("adminMain"));
-  })
-  .catch(e=>toast(errorText(e),"bad"));
+window.decideApproval=async(id,status)=>{
+  const note=await adminPrompt("Ghi chú quyết định (không bắt buộc)","",{title:status==="approved"?"Phê duyệt yêu cầu":"Từ chối yêu cầu",type:"textarea"});
+  if(note===null)return;
+  api(`/api/admin/approvals/${encodeURIComponent(id)}`,{method:"PATCH",body:{status,note}})
+    .then(()=>{toast("Đã cập nhật phê duyệt.");adminApprovals(document.getElementById("adminMain"));})
+    .catch(e=>toast(errorText(e),"bad"));
 };
 
 async function adminUsers(main){
@@ -1115,7 +1270,7 @@ window.saveRoles=async idUser=>{
 };
 
 window.resetUserPassword=async(idUser,email)=>{
-  if(!confirm(`Tạo mật khẩu tạm thời mới cho ${email}? Tất cả phiên đăng nhập hiện tại sẽ bị thu hồi.`))return;
+  if(!await adminConfirm(`Tạo mật khẩu tạm thời mới cho ${email}? Tất cả phiên đăng nhập hiện tại sẽ bị thu hồi.`,{title:"Đặt lại mật khẩu",confirmText:"Tạo mật khẩu tạm thời",danger:true}))return;
 
   try{
     const d=await api(`/api/admin/users/${idUser}/reset-password`,{
@@ -1153,11 +1308,13 @@ async function adminPeople(main){
   main.innerHTML=`<h1>Tuyển dụng & Đánh giá</h1><div class="grid"><div class="card"><h3>Quy trình Core Team</h3><p>Tiếp nhận → Sàng lọc → Phỏng vấn → Đánh giá bổ sung → Thông báo → Tiếp nhận.</p><a class="primary" href="#admin/submissions">Mở hồ sơ</a></div><div class="card"><h3>TNV Dạy học</h3><p>Đánh giá đúng phạm vi Lớp 9/10/11/12/Cơ bản/Giao tiếp/IELTS; có thể dạy thử trước khi phân lớp.</p><a class="primary" href="#admin/submissions">Mở hồ sơ TNV</a></div><div class="card"><h3>Chấm điểm & Phỏng vấn</h3><p>Mở một hồ sơ và dùng nút Lịch phỏng vấn / Chấm đánh giá.</p></div></div>`;
 }
 
-window.requestGenericApproval=(entity_type,entity_id)=>{
-  const action=prompt("Nội dung cần phê duyệt:","Phê duyệt hồ sơ/đề xuất");
-  if(!action)return;
-  const role=prompt("Vai trò được giao phê duyệt:","network_secretary")||"network_secretary";
-  api("/api/admin/approvals",{method:"POST",body:{entity_type,entity_id,action,assigned_role:role}})
+window.requestGenericApproval=async(entity_type,entity_id)=>{
+  const values=await adminDialog({title:"Gửi yêu cầu phê duyệt",description:`Đối tượng: ${entity_type} · ${entity_id}`,confirmText:"Gửi phê duyệt",fields:[
+    {name:"action",label:"Nội dung cần phê duyệt",value:"Phê duyệt hồ sơ/đề xuất",required:true},
+    {name:"role",label:"Vai trò được giao phê duyệt",type:"select",value:"network_secretary",required:true,options:[{value:"network_secretary",label:"Thư ký mạng lưới"},{value:"system_admin",label:"Quản trị hệ thống"},{value:"content_admin",label:"Quản trị nội dung"},{value:"certificate_manager",label:"Quản lý chứng nhận"}]}
+  ]});
+  if(!values)return;
+  api("/api/admin/approvals",{method:"POST",body:{entity_type,entity_id,action:values.action.trim(),assigned_role:values.role}})
     .then(()=>toast("Đã chuyển vào Trung tâm phê duyệt."))
     .catch(e=>toast(errorText(e),"bad"));
 };
@@ -1204,19 +1361,15 @@ async function adminTeaching(main){
   main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Phạm vi TNV Dạy học</h1><button class="primary" onclick="addTeachingScope()">+ Thêm phạm vi</button></div><div class="notice">Các phạm vi chuẩn: Lớp 9, Lớp 10, Lớp 11, Lớp 12, Tiếng Anh Cơ bản, Tiếng Anh Giao tiếp, IELTS. Được nhận làm TNV không đồng nghĩa được phép dạy tất cả phạm vi.</div><div class="card table-scroll"><table><thead><tr><th>Nhân sự</th><th>Phạm vi</th><th>Trạng thái</th><th>Ghi chú đánh giá</th><th></th></tr></thead><tbody>${state.admin.teaching.map(x=>`<tr><td>${E(x.full_name)}<br><span class="small">${E(x.email||"")}</span></td><td><b>${E(x.scope)}</b></td><td><span class="status">${E(x.status)}</span></td><td>${E(x.assessment_note||"")}</td><td><button class="secondary" onclick="editTeachingScope('${E(x.id)}')">Đánh giá</button></td></tr>`).join("")}</tbody></table></div>`;
 }
 
-window.addTeachingScope=()=>{
-  const person=prompt("ID hồ sơ nhân sự:");
-  if(!person)return;
-  const scope=prompt("Phạm vi (Lớp 9/10/11/12/Cơ bản/Giao tiếp/IELTS):");
-  if(!scope)return;
-
-  api("/api/admin/teaching-scopes",{
-    method:"POST",
-    body:{person_id:Number(person),scope,status:"Đang đánh giá"}
-  }).then(()=>{
-    toast("Đã thêm phạm vi.");
-    adminTeaching(document.getElementById("adminMain"));
-  }).catch(e=>toast(errorText(e),"bad"));
+window.addTeachingScope=async()=>{
+  const values=await adminDialog({title:"Thêm phạm vi tình nguyện viên dạy học",confirmText:"Thêm phạm vi",fields:[
+    {name:"person",label:"ID hồ sơ nhân sự",type:"number",min:1,step:1,required:true},
+    {name:"scope",label:"Phạm vi giảng dạy",type:"select",required:true,options:["Lớp 9","Lớp 10","Lớp 11","Lớp 12","Tiếng Anh Cơ bản","Tiếng Anh Giao tiếp","IELTS"]}
+  ]});
+  if(!values)return;const person=Number(values.person);if(!Number.isInteger(person)||person<=0){toast("ID hồ sơ phải là số nguyên dương.","bad");return;}
+  api("/api/admin/teaching-scopes",{method:"POST",body:{person_id:person,scope:values.scope,status:"Đang đánh giá"}})
+    .then(()=>{toast("Đã thêm phạm vi.");adminTeaching(document.getElementById("adminMain"));})
+    .catch(e=>toast(errorText(e),"bad"));
 };
 
 window.editTeachingScope=idt=>{
@@ -1243,18 +1396,15 @@ async function adminPrivacy(main){
   main.innerHTML=`<h1>Trung tâm Quyền riêng tư</h1><div class="card table-scroll"><table><thead><tr><th>Email</th><th>Yêu cầu</th><th>Trạng thái</th><th>Ngày gửi</th><th></th></tr></thead><tbody>${state.admin.dataRequests.map(x=>`<tr><td>${E(x.email)}</td><td>${E(x.request_type)}<br><span class="small">${E(x.note||"")}</span></td><td><span class="status">${E(x.status)}</span></td><td>${fmt(x.created_at)}</td><td><button class="secondary" onclick="processPrivacy('${E(x.id)}')">Xử lý</button></td></tr>`).join("")}</tbody></table></div>`;
 }
 
-window.processPrivacy=idr=>{
-  const status=prompt("Trạng thái:","Đang xử lý");
-  if(!status)return;
-  const note=prompt("Ghi chú xử lý:")||"";
-
-  api(`/api/admin/data-requests/${encodeURIComponent(idr)}`,{
-    method:"PATCH",
-    body:{status,note}
-  }).then(()=>{
-    toast("Đã cập nhật.");
-    adminPrivacy(document.getElementById("adminMain"));
-  }).catch(e=>toast(errorText(e),"bad"));
+window.processPrivacy=async idr=>{
+  const values=await adminDialog({title:"Xử lý yêu cầu quyền riêng tư",confirmText:"Lưu xử lý",fields:[
+    {name:"status",label:"Trạng thái",value:"Đang xử lý",required:true},
+    {name:"note",label:"Ghi chú xử lý",type:"textarea",rows:4,required:false}
+  ]});
+  if(!values)return;
+  api(`/api/admin/data-requests/${encodeURIComponent(idr)}`,{method:"PATCH",body:{status:values.status.trim(),note:values.note||""}})
+    .then(()=>{toast("Đã cập nhật.");adminPrivacy(document.getElementById("adminMain"));})
+    .catch(e=>toast(errorText(e),"bad"));
 };
 
 async function adminForms(main){
@@ -1296,29 +1446,47 @@ function initBuilderDragDrop(){
   let from=null;document.querySelectorAll('[data-builder-pos]').forEach(el=>{el.addEventListener('dragstart',()=>{from=el.dataset.builderPos;el.classList.add('dragging')});el.addEventListener('dragend',()=>el.classList.remove('dragging'));el.addEventListener('dragover',e=>e.preventDefault());el.addEventListener('drop',e=>{e.preventDefault();if(!from)return;const [fsi,ffi]=from.split(':').map(Number),[tsi,tfi]=el.dataset.builderPos.split(':').map(Number);if(fsi!==tsi)return;const a=state.formBuilder.config.sections[fsi].fields,[moved]=a.splice(ffi,1);a.splice(tfi,0,moved);renderFormBuilder()})})
 }
 
-window.addBuilderSection=()=>{
-  const title=prompt("Tên phần:"); if(!title)return;
-  state.formBuilder.config.sections.push({title,fields:[]}); renderFormBuilder();
+window.addBuilderSection=async()=>{
+  const value=await adminPrompt("Tên phần","",{title:"Thêm phần biểu mẫu",required:true});
+  const title=String(value||"").trim();if(!title)return;
+  state.formBuilder.config.sections.push({title,fields:[]});renderFormBuilder();
 };
-window.deleteBuilderSection=i=>{if(confirm("Xóa phần này?")){state.formBuilder.config.sections.splice(i,1);renderFormBuilder();}};
-window.addBuilderField=si=>{
-  const label=prompt("Nhãn câu hỏi:"); if(!label)return;
-  const key=(prompt("Mã kỹ thuật (không dấu, không khoảng trắng):")||label.toLowerCase().replace(/\s+/g,"_").replace(/[^\w]/g,"")).slice(0,50);
-  const type=prompt("Loại: text / email / date / textarea / select / checkbox / file / signature","text")||"text";
-  const req=confirm("Bắt buộc trả lời?"); let options=[];
-  if(type==="select")options=(prompt("Các lựa chọn, cách nhau bằng |","")||"").split("|").map(x=>x.trim()).filter(Boolean);
-  state.formBuilder.config.sections[si].fields.push({key,label,type,required:req,options}); renderFormBuilder();
+window.deleteBuilderSection=async i=>{
+  const section=state.formBuilder.config.sections[i];if(!section)return;
+  if(await adminConfirm(`Xóa phần “${section.title}” cùng toàn bộ câu hỏi bên trong?`,{title:"Xóa phần biểu mẫu",confirmText:"Xóa phần",danger:true})){state.formBuilder.config.sections.splice(i,1);renderFormBuilder();}
 };
-window.editBuilderField=(si,fi)=>{
-  const x=state.formBuilder.config.sections[si].fields[fi]; if(!x)return;
-  const label=prompt("Nhãn câu hỏi:",x.label); if(label===null)return;
-  const type=prompt("Loại: text / email / date / textarea / select / checkbox / file / signature",x.type||"text")||x.type;
-  const required=confirm("Đặt trường này là bắt buộc?\nOK = Bắt buộc, Cancel = Không bắt buộc");
-  let options=x.options||[];
-  if(type==="select") options=(prompt("Các lựa chọn, cách nhau bằng |",options.join(" | "))||"").split("|").map(v=>v.trim()).filter(Boolean);
-  Object.assign(x,{label,type,required,options}); renderFormBuilder();
+const builderFieldTypes=["text","email","date","textarea","select","checkbox","file","signature"];
+function builderFieldKey(value){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/g,"d").replace(/Đ/g,"D").toLowerCase().trim().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,50);}
+window.addBuilderField=async si=>{
+  const value=await adminDialog({title:"Thêm câu hỏi",description:"Mã kỹ thuật được tạo tự động nếu để trống. Với câu hỏi dạng lựa chọn, nhập mỗi lựa chọn trên một dòng.",confirmText:"Thêm câu hỏi",fields:[
+    {name:"label",label:"Nhãn câu hỏi",required:true},
+    {name:"key",label:"Mã kỹ thuật (không bắt buộc)",placeholder:"vd: ho_ten"},
+    {name:"type",label:"Loại trường",type:"select",value:"text",required:true,options:builderFieldTypes.map(v=>({value:v,label:v}))},
+    {name:"required",label:"Bắt buộc trả lời",type:"select",value:"yes",options:[{value:"yes",label:"Có, bắt buộc"},{value:"no",label:"Không bắt buộc"}]},
+    {name:"options",label:"Các lựa chọn (chỉ cho select)",type:"textarea",rows:4,placeholder:"Một lựa chọn trên mỗi dòng"}
+  ]});
+  if(!value)return;const label=value.label.trim(),key=builderFieldKey(value.key||label),type=value.type,options=String(value.options||"").split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
+  if(!label||!key){toast("Nhãn và mã kỹ thuật hợp lệ là bắt buộc.","bad");return;}
+  if(state.formBuilder.config.sections.some(sec=>(sec.fields||[]).some(f=>f.key===key))){toast("Mã kỹ thuật đã tồn tại trong biểu mẫu.","bad");return;}
+  if(type==="select"&&!options.length){toast("Câu hỏi dạng select cần ít nhất một lựa chọn.","bad");return;}
+  state.formBuilder.config.sections[si].fields.push({key,label,type,required:value.required==="yes",options:type==="select"?options:[]});renderFormBuilder();
 };
-window.deleteBuilderField=(si,fi)=>{state.formBuilder.config.sections[si].fields.splice(fi,1);renderFormBuilder();};
+window.editBuilderField=async(si,fi)=>{
+  const x=state.formBuilder.config.sections[si]?.fields[fi];if(!x)return;
+  const value=await adminDialog({title:"Chỉnh sửa câu hỏi",description:"Giữ nguyên mã kỹ thuật để tránh làm sai dữ liệu đã gửi. Với loại select, nhập mỗi lựa chọn trên một dòng.",confirmText:"Lưu câu hỏi",fields:[
+    {name:"label",label:"Nhãn câu hỏi",value:x.label,required:true},
+    {name:"key",label:"Mã kỹ thuật",value:x.key,required:true},
+    {name:"type",label:"Loại trường",type:"select",value:x.type||"text",required:true,options:builderFieldTypes.map(v=>({value:v,label:v}))},
+    {name:"required",label:"Bắt buộc trả lời",type:"select",value:x.required?"yes":"no",options:[{value:"yes",label:"Có, bắt buộc"},{value:"no",label:"Không bắt buộc"}]},
+    {name:"options",label:"Các lựa chọn (chỉ cho select)",type:"textarea",value:(x.options||[]).join("\n"),rows:4}
+  ]});
+  if(!value)return;const label=value.label.trim(),key=builderFieldKey(value.key),type=value.type,options=String(value.options||"").split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
+  if(!label||!key){toast("Nhãn và mã kỹ thuật hợp lệ là bắt buộc.","bad");return;}
+  if(state.formBuilder.config.sections.some((sec,sidx)=>(sec.fields||[]).some((f,fidx)=>f.key===key&&(sidx!==si||fidx!==fi)))){toast("Mã kỹ thuật đã được dùng bởi câu hỏi khác.","bad");return;}
+  if(type==="select"&&!options.length){toast("Câu hỏi dạng select cần ít nhất một lựa chọn.","bad");return;}
+  Object.assign(x,{label,key,type,required:value.required==="yes",options:type==="select"?options:[]});renderFormBuilder();
+};
+window.deleteBuilderField=async(si,fi)=>{const field=state.formBuilder.config.sections[si]?.fields[fi];if(!field)return;if(await adminConfirm(`Xóa câu hỏi “${field.label}” khỏi cấu hình biểu mẫu?`,{title:"Xóa câu hỏi",confirmText:"Xóa câu hỏi",danger:true})){state.formBuilder.config.sections[si].fields.splice(fi,1);renderFormBuilder();}};
 window.moveField=(si,fi,dir)=>{const a=state.formBuilder.config.sections[si].fields,j=fi+dir;if(j<0||j>=a.length)return;[a[fi],a[j]]=[a[j],a[fi]];renderFormBuilder();};
 
 window.previewFormBuilder=()=>{
@@ -1343,30 +1511,121 @@ window.saveFormBuilder=async()=>{
   }catch(e){toast(errorText(e),"bad")}
 };
 
-window.createForm=()=>{
-  const name=prompt("Tên biểu mẫu:"); if(!name)return;
-  const idForm=prompt("ID biểu mẫu (vd: volunteer_2026):"); if(!idForm)return;
-  const prefix=prompt("Tiền tố mã đăng ký (vd: SFN-TNV):","SFN-FORM"); if(!prefix)return;
-  const kind=(prompt("Loại biểu mẫu: general / class / student","general")||"general").toLowerCase();
-  const photoRequired=false;
-  const cfg={id:idForm,name,prefix,description:"",audience:"public",form_type:kind,presentation:"classic",review_before_submit:true,minor_mode:false,profile_photo_required:photoRequired,term_codes:["PRIVACY/SFN"],sections:[{title:"Thông tin",fields:[{key:"full_name",label:"Họ và tên",type:"text",required:true},{key:"email",label:"Email",type:"email",required:true}]}]};
+window.createForm=async()=>{
+  const values=await adminDialog({title:"Tạo biểu mẫu mới",description:"Biểu mẫu được tạo với các trường cơ bản; có thể mở Form Builder để bổ sung logic và điều kiện.",confirmText:"Tạo biểu mẫu",fields:[
+    {name:"name",label:"Tên biểu mẫu",required:true},
+    {name:"id",label:"ID biểu mẫu",required:true,placeholder:"volunteer_2026",help:"Dùng chữ thường, số và dấu gạch dưới; phải duy nhất."},
+    {name:"prefix",label:"Tiền tố mã đăng ký",value:"SFN-FORM",required:true,placeholder:"SFN-TNV"},
+    {name:"kind",label:"Loại biểu mẫu",type:"select",value:"general",options:[{value:"general",label:"Đăng ký chung"},{value:"class",label:"Lớp học"},{value:"student",label:"Học viên mới"}]}
+  ]});
+  if(!values)return;const name=values.name.trim(),idForm=values.id.trim().toLowerCase(),prefix=values.prefix.trim(),kind=values.kind;
+  if(!/^[a-z0-9_-]{2,80}$/.test(idForm)){toast("ID chỉ được gồm chữ thường, số, dấu gạch dưới hoặc gạch ngang.","bad");return;}
+  const cfg={id:idForm,name,prefix,description:"",audience:"public",form_type:kind,presentation:"classic",review_before_submit:true,minor_mode:false,profile_photo_required:false,term_codes:["PRIVACY/SFN"],sections:[{title:"Thông tin",fields:[{key:"full_name",label:"Họ và tên",type:"text",required:true},{key:"email",label:"Email",type:"email",required:true}]}]};
   api("/api/admin/forms",{method:"POST",body:{id:idForm,name,prefix,description:"",audience:"public",config:cfg}}).then(()=>{toast("Đã tạo biểu mẫu.");adminForms(document.getElementById("adminMain"));}).catch(e=>toast(errorText(e),"bad"));
 };
 
-window.cloneForm=idForm=>{
-  const src=state.admin.forms.find(x=>x.id===idForm); if(!src)return;
-  const newId=prompt("ID biểu mẫu mới:",`${src.id}_copy`); if(!newId)return;
-  const newName=prompt("Tên biểu mẫu mới:",`${src.name} — Bản sao`); if(!newName)return;
-  const newPrefix=prompt("Tiền tố mã đăng ký:",src.prefix); if(!newPrefix)return;
-  const cfg=JSON.parse(JSON.stringify(src.config)); cfg.id=newId; cfg.name=newName; cfg.prefix=newPrefix;
+window.cloneForm=async idForm=>{
+  const src=state.admin.forms.find(x=>x.id===idForm);if(!src)return;
+  const values=await adminDialog({title:"Sao chép biểu mẫu",description:"Cấu hình và các câu hỏi hiện tại sẽ được sao chép sang biểu mẫu mới.",confirmText:"Sao chép",fields:[
+    {name:"id",label:"ID biểu mẫu mới",value:`${src.id}_copy`,required:true},
+    {name:"name",label:"Tên biểu mẫu mới",value:`${src.name} — Bản sao`,required:true},
+    {name:"prefix",label:"Tiền tố mã đăng ký",value:src.prefix,required:true}
+  ]});
+  if(!values)return;const newId=values.id.trim().toLowerCase(),newName=values.name.trim(),newPrefix=values.prefix.trim();
+  if(!/^[a-z0-9_-]{2,80}$/.test(newId)){toast("ID chỉ được gồm chữ thường, số, dấu gạch dưới hoặc gạch ngang.","bad");return;}
+  const cfg=JSON.parse(JSON.stringify(src.config));cfg.id=newId;cfg.name=newName;cfg.prefix=newPrefix;
   api("/api/admin/forms",{method:"POST",body:{id:newId,name:newName,prefix:newPrefix,description:src.description||"",audience:src.audience||"public",min_age:src.min_age,recipient_email:src.recipient_email,config:cfg}}).then(()=>{toast("Đã sao chép biểu mẫu.");adminForms(document.getElementById("adminMain"));}).catch(e=>toast(errorText(e),"bad"));
 };
 
-async function adminGeneric(main,type,title,fields){
-  const d=await api(`/api/admin/content/${type}`);
-  state.admin[type]=d.items||[];
 
-  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">${E(title)}</h1><button class="primary" onclick="createGeneric('${type}')">+ Thêm</button></div><div class="card table-scroll"><table><thead><tr>${fields.map(f=>`<th>${E(f)}</th>`).join("")}<th></th></tr></thead><tbody>${state.admin[type].map(x=>`<tr>${fields.map(f=>`<td>${E(String(x[f]??"").slice(0,220))}</td>`).join("")}<td><button class="secondary" onclick="editGeneric('${type}','${E(x.id||x.code)}')">Sửa</button> <button class="danger" onclick="deleteGeneric('${type}','${E(x.id||x.code)}')">Xóa</button></td></tr>`).join("")}</tbody></table></div>${type==="classes"?`<div class="card" style="margin-top:14px"><h2>Điểm danh</h2><p>Mở danh sách học viên theo lớp và ghi nhận Có mặt/Vắng/Có phép qua chức năng quản trị lớp.</p><button class="secondary" onclick="attendanceTool()">Mở công cụ điểm danh</button></div>`:""}${type==="events"?`<div class="card" style="margin-top:14px"><h2>Check-in</h2><button class="secondary" onclick="checkinTool()">Nhập mã check-in</button></div>`:""}`;
+function adminNewsSlug(value){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/g,"d").replace(/Đ/g,"D").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,160);}
+function adminNewsTags(value){try{const parsed=typeof value==="string"?JSON.parse(value||"[]"):value;return Array.isArray(parsed)?parsed.map(x=>String(x)).join(", "):""}catch{return String(value||"")}}
+function adminNewsDatetime(value){
+  if(!value)return "";const raw=String(value).trim();const ms=Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw)?raw:`${raw.replace(" ","T")}+07:00`);if(!Number.isFinite(ms))return "";
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Ho_Chi_Minh",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date(ms));const v=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${v.year}-${v.month}-${v.day}T${v.hour}:${v.minute}`;
+}
+function adminNewsCoverUrl(key){return key?`/media/${encodeURIComponent(String(key))}`:"";}
+async function adminNews(main){
+  const d=await api("/api/admin/content/news");state.admin.news=d.items||[];
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">CMS · TIN TỨC & THÔNG BÁO</span><h1>Quản lý tin tức</h1><p class="muted">Tạo, sửa, xuất bản và tải ảnh đại diện thật cho từng bài viết. Không tự tạo hoặc thay ảnh đại diện bằng ảnh AI.</p></div><button type="button" class="primary" id="newsCreateBtn">＋ Viết bài mới</button></div>
+  <section class="admin-news-summary"><div><b>${state.admin.news.length}</b><span>Tổng bài viết</span></div><div><b>${state.admin.news.filter(x=>x.status==="published").length}</b><span>Đang công khai</span></div><div><b>${state.admin.news.filter(x=>x.cover_file_id).length}</b><span>Đã có ảnh đại diện</span></div><div><b>${state.admin.news.filter(x=>x.status!=="published").length}</b><span>Bản nháp / ẩn</span></div></section>
+  <section class="card admin-card-premium"><div class="toolbar admin-news-toolbar"><label class="admin-searchbox"><span>⌕</span><input id="adminNewsSearch" type="search" placeholder="Tìm tiêu đề, slug hoặc nội dung…" aria-label="Tìm bài viết"></label><select id="adminNewsStatus" aria-label="Lọc trạng thái"><option value="all">Tất cả trạng thái</option><option value="published">Đang công khai</option><option value="draft">Bản nháp</option><option value="other">Ẩn / trạng thái khác</option></select><span id="adminNewsCount" class="muted small"></span></div>
+  <div class="table-scroll"><table class="admin-news-table"><thead><tr><th>Ảnh đại diện</th><th>Bài viết</th><th>Trạng thái</th><th>Ngày đăng</th><th>Đường dẫn</th><th>Thao tác</th></tr></thead><tbody id="adminNewsRows"></tbody></table></div><div id="adminNewsEmpty" class="admin-empty-state" hidden><span>▤</span><b>Không tìm thấy bài viết phù hợp</b><p>Thử đổi từ khóa hoặc tạo bài viết mới.</p></div></section>`;
+  const rows=document.getElementById("adminNewsRows"),search=document.getElementById("adminNewsSearch"),filter=document.getElementById("adminNewsStatus"),count=document.getElementById("adminNewsCount"),empty=document.getElementById("adminNewsEmpty");
+  const draw=()=>{
+    const q=search.value.trim().toLocaleLowerCase("vi"),status=filter.value;
+    const items=state.admin.news.filter(x=>{
+      const text=[x.title,x.slug,x.body,x.tags_json].join(" ").toLocaleLowerCase("vi");
+      const statusOk=status==="all"||(status==="published"?x.status==="published":status==="draft"?x.status==="draft":!['published','draft'].includes(String(x.status||'')));
+      return (!q||text.includes(q))&&statusOk;
+    });
+    rows.innerHTML=items.map(x=>`<tr><td><div class="admin-news-thumb">${x.cover_file_id?`<img src="${E(adminNewsCoverUrl(x.cover_file_id))}" alt="Ảnh đại diện ${E(x.title)}" loading="lazy"><span class="image-ready">Đã tải ảnh</span>`:`<div class="admin-news-placeholder"><i>▤</i><b>Chưa có ảnh</b><small>Dùng minh họa mặc định</small></div>`}</div></td><td><b class="admin-news-title">${E(x.title||"Chưa có tiêu đề")}</b><small>${E(x.slug||"Chưa có slug")}</small><p>${E(String(x.body||"").replace(/<[^>]*>/g," ").trim().slice(0,150))}${String(x.body||"").length>150?"…":""}</p></td><td><span class="status ${x.status==="published"?"":"status-warn"}">${x.status==="published"?"Đang công khai":x.status==="draft"?"Bản nháp":E(x.status||"Chưa đặt")}</span></td><td>${E(fmt(x.published_at))}</td><td><code>${E(x.slug?`#news/${x.slug}`:`ID: ${x.id}`)}</code></td><td><div class="admin-row-actions"><button type="button" class="secondary" data-news-edit="${E(x.id)}">Sửa</button><a class="admin-preview-link" href="/#news/${encodeURIComponent(x.slug||x.id)}" target="_blank" rel="noopener">Xem ↗</a><button type="button" class="danger" data-news-delete="${E(x.id)}">Xóa</button></div></td></tr>`).join("");
+    count.textContent=`${items.length} / ${state.admin.news.length} bài`;empty.hidden=items.length>0;
+    rows.querySelectorAll("[data-news-edit]").forEach(btn=>btn.addEventListener("click",()=>openNewsEditor(btn.dataset.newsEdit)));
+    rows.querySelectorAll("[data-news-delete]").forEach(btn=>btn.addEventListener("click",()=>confirmDeleteNews(btn.dataset.newsDelete)));
+    rows.querySelectorAll(".admin-news-thumb img").forEach(img=>img.addEventListener("error",()=>{const box=img.closest(".admin-news-thumb");if(box)box.innerHTML='<div class="admin-news-placeholder"><i>▤</i><b>Không tải được ảnh</b><small>Kiểm tra lại ảnh đại diện</small></div>';},{once:true}));
+  };
+  search.addEventListener("input",draw);filter.addEventListener("change",draw);document.getElementById("newsCreateBtn").addEventListener("click",()=>openNewsEditor(null));draw();
+}
+window.openNewsEditor=(id)=>{
+  const row=id?state.admin.news.find(x=>String(x.id)===String(id)):null;if(id&&!row){toast("Không tìm thấy bài viết cần sửa.","bad");return;}
+  const x=row||{title:"",slug:"",body:"",status:"draft",published_at:"",tags_json:"[]",cover_file_id:""};
+  const oldCover=x.cover_file_id?adminNewsCoverUrl(x.cover_file_id):"";
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">CMS / ${row?"CHỈNH SỬA":"BÀI VIẾT MỚI"}</span><h2>${row?"Chỉnh sửa tin tức":"Tạo tin tức mới"}</h2><p class="muted">Ảnh đại diện phải là ảnh thật do bà tải lên hoặc ảnh được phép sử dụng.</p></div><button type="button" class="admin-modal-close" data-news-close aria-label="Đóng">×</button></div>
+  <form id="adminNewsEditor" data-news-id="${E(row?.id||"")}"><div class="admin-news-editor-grid"><div class="admin-news-editor-fields">
+  <div class="field"><label for="neTitle">Tiêu đề bài viết *</label><input id="neTitle" name="title" maxlength="240" required value="${E(x.title)}" placeholder="Nhập tiêu đề rõ ràng"></div>
+  <div class="field"><label for="neSlug">Đường dẫn / slug *</label><input id="neSlug" name="slug" maxlength="160" required value="${E(x.slug)}" placeholder="vi-du-bai-viet"><small class="muted">Dùng chữ thường, số và dấu gạch nối; phải khác các bài khác.</small></div>
+  <div class="field"><label for="neBody">Nội dung *</label><textarea id="neBody" name="body" rows="9" required placeholder="Nhập nội dung bài viết…">${E(x.body||"")}</textarea></div>
+  <div class="row2"><div class="field"><label for="neStatus">Trạng thái</label><select id="neStatus" name="status"><option value="draft" ${x.status==="draft"?"selected":""}>Bản nháp</option><option value="published" ${x.status==="published"?"selected":""}>Công khai</option><option value="hidden" ${!['draft','published'].includes(String(x.status||''))?"selected":""}>Ẩn</option></select></div><div class="field"><label for="nePublished">Ngày / giờ đăng (UTC+7)</label><input id="nePublished" name="published_at" type="datetime-local" value="${E(adminNewsDatetime(x.published_at))}"></div></div>
+  <div class="field"><label for="neTags">Nhãn / chủ đề</label><input id="neTags" name="tags" value="${E(adminNewsTags(x.tags_json))}" placeholder="Tin tức, Thông báo, SFN"><small class="muted">Ngăn cách nhiều nhãn bằng dấu phẩy.</small></div></div>
+  <aside class="admin-news-image-panel"><h3>Ảnh đại diện</h3><div id="neImagePreview" class="admin-news-image-preview">${oldCover?`<img src="${E(oldCover)}" alt="Ảnh đại diện hiện tại">`:`<div class="admin-news-placeholder large"><i>▤</i><b>Chưa tải ảnh đại diện</b><small>Trang công khai sẽ dùng minh họa mặc định hiện có.</small></div>`}</div><label class="admin-upload-cta" for="neImageFile"><span>＋</span><b>Tải ảnh từ máy tính</b><small>PNG, JPG, WEBP hoặc GIF · tối đa 15 MB</small></label><input type="file" id="neImageFile" accept="image/jpeg,image/png,image/webp,image/gif" hidden><label class="admin-remove-cover"><input id="neRemoveCover" type="checkbox" ${oldCover?"":"disabled"}> Bỏ ảnh đại diện hiện tại</label><p class="muted admin-help-text">Không dùng ảnh do AI tạo. Ưu tiên ảnh hoạt động/chương trình thật do Sky First sở hữu hoặc có quyền sử dụng.</p></aside></div>
+  <div class="admin-sticky-save"><span>${row?`Đang sửa bài #${E(row.id)}`:"Bài mới được lưu ở trạng thái nháp nếu chưa chọn công khai."}</span><div><button type="button" class="secondary" data-news-close>Hủy</button><button type="submit" class="primary" id="neSave">${row?"Lưu thay đổi":"Tạo bài viết"}</button></div></div></form>`);
+  document.querySelectorAll("[data-news-close]").forEach(btn=>btn.addEventListener("click",closeModal));
+  const form=document.getElementById("adminNewsEditor"),title=document.getElementById("neTitle"),slug=document.getElementById("neSlug"),fileInput=document.getElementById("neImageFile"),preview=document.getElementById("neImagePreview"),remove=document.getElementById("neRemoveCover");
+  preview.querySelector("img")?.addEventListener("error",()=>{preview.innerHTML='<div class="admin-news-placeholder large"><i>!</i><b>Không tải được ảnh hiện tại</b><small>Bà có thể tải ảnh mới lên để thay thế.</small></div>';},{once:true});
+  let slugTouched=!!x.slug;
+  slug.addEventListener("input",()=>{slugTouched=true;});title.addEventListener("input",()=>{if(!slugTouched)slug.value=adminNewsSlug(title.value);});
+  if(!row){title.addEventListener("blur",()=>{if(!slug.value)slug.value=adminNewsSlug(title.value);});}
+  remove.addEventListener("change",()=>{if(remove.checked){preview.innerHTML='<div class="admin-news-placeholder large"><i>▤</i><b>Chưa tải ảnh đại diện</b><small>Đang chọn bỏ ảnh hiện tại</small></div>';fileInput.value="";}});
+  fileInput.addEventListener("change",()=>{
+    const file=fileInput.files?.[0];if(!file)return;
+    if(!["image/jpeg","image/png","image/webp","image/gif"].includes(file.type)){toast("Chỉ hỗ trợ ảnh JPG, PNG, WEBP hoặc GIF.","bad");fileInput.value="";return;}
+    if(file.size>15*1024*1024){toast("Ảnh vượt quá giới hạn 15 MB.","bad");fileInput.value="";return;}
+    remove.checked=false;remove.disabled=false;preview.innerHTML=`<img alt="Xem trước ảnh vừa chọn">`;const img=preview.querySelector("img");img.addEventListener("error",()=>{preview.innerHTML='<div class="admin-news-placeholder large"><i>!</i><b>Không thể xem trước ảnh này</b><small>Hãy thử chọn một file ảnh hợp lệ khác.</small></div>';},{once:true});img.src=URL.createObjectURL(file);
+  });
+  form.addEventListener("submit",async e=>{
+    e.preventDefault();const save=document.getElementById("neSave"),fd=new FormData(form);
+    const titleText=String(fd.get("title")||"").trim(),slugText=adminNewsSlug(fd.get("slug")),bodyText=String(fd.get("body")||"").trim();
+    if(!titleText||!slugText||!bodyText){toast("Vui lòng nhập tiêu đề, đường dẫn và nội dung.","bad");return;}
+    const tags=String(fd.get("tags")||"").split(",").map(v=>v.trim()).filter(Boolean).slice(0,20);
+    const data={title:titleText,slug:slugText,body:bodyText,status:String(fd.get("status")||"draft"),published_at:fd.get("published_at")?`${fd.get("published_at")}:00+07:00`:null,tags_json:JSON.stringify(tags),cover_file_id:remove.checked?"":String(x.cover_file_id||"")};
+    if(data.status==="published"&&!data.published_at)data.published_at=new Date().toISOString();
+    const image=fileInput.files?.[0];save.disabled=true;save.textContent="Đang lưu…";
+    try{
+      if(image){const uploadFd=new FormData();uploadFd.append("file",image);const uploaded=await api("/api/admin/media",{method:"POST",body:uploadFd});data.cover_file_id=uploaded.key;}
+      if(row)await api(`/api/admin/content/news/${encodeURIComponent(row.id)}`,{method:"PUT",body:data});
+      else await api("/api/admin/content/news",{method:"POST",body:data});
+      closeModal();toast(row?"Đã cập nhật bài viết và ảnh đại diện.":"Đã tạo bài viết.");await adminNews(document.getElementById("adminMain"));
+    }catch(err){toast(errorText(err),"bad");save.disabled=false;save.textContent=row?"Lưu thay đổi":"Tạo bài viết";}
+  });
+};
+window.confirmDeleteNews=id=>{
+  const x=state.admin.news.find(v=>String(v.id)===String(id));if(!x)return;
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">XÁC NHẬN THAO TÁC</span><h2>Xóa bài viết?</h2></div><button type="button" class="admin-modal-close" data-delete-cancel aria-label="Đóng">×</button></div><p>Bài viết <b>${E(x.title)}</b> sẽ bị xóa khỏi CMS. Thao tác này không thể hoàn tác.</p><div class="admin-sticky-save"><button type="button" class="secondary" data-delete-cancel>Giữ lại</button><button type="button" class="danger" id="confirmDeleteNewsBtn">Xác nhận xóa</button></div>`);
+  document.querySelectorAll("[data-delete-cancel]").forEach(btn=>btn.addEventListener("click",closeModal));
+  document.getElementById("confirmDeleteNewsBtn").addEventListener("click",async e=>{const btn=e.currentTarget;btn.disabled=true;btn.textContent="Đang xóa…";try{await api(`/api/admin/content/news/${encodeURIComponent(id)}`,{method:"DELETE"});closeModal();toast("Đã xóa bài viết.");await adminNews(document.getElementById("adminMain"));}catch(err){toast(errorText(err),"bad");btn.disabled=false;btn.textContent="Xác nhận xóa";}});
+};
+
+async function adminGeneric(main,type,title,fields){
+  const d=await api(`/api/admin/content/${type}`);state.admin[type]=d.items||[];
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">QUẢN LÝ DỮ LIỆU</span><h1>${E(title)}</h1><p class="muted">Dữ liệu được lưu trong hệ thống quản trị. Mọi thao tác đều cần xác nhận và báo rõ kết quả.</p></div><button type="button" class="primary" id="genericCreateBtn">＋ Thêm mới</button></div><section class="card admin-card-premium"><div class="toolbar admin-news-toolbar"><label class="admin-searchbox"><span>⌕</span><input type="search" id="genericSearch" placeholder="Tìm trong bảng…" aria-label="Tìm kiếm dữ liệu"></label><span class="muted small" id="genericCount"></span></div><div class="table-scroll"><table class="admin-generic-table"><thead><tr>${fields.map(f=>`<th>${E(adminFieldLabel(f))}</th>`).join("")}<th>Thao tác</th></tr></thead><tbody id="genericRows"></tbody></table></div><div id="genericEmpty" class="admin-empty-state" hidden><span>⌕</span><b>Không có bản ghi phù hợp</b><p>Thử từ khóa khác hoặc thêm bản ghi mới.</p></div></section>${type==="classes"?`<div class="card" style="margin-top:14px"><h2>Điểm danh lớp</h2><p class="muted">Mở danh sách học viên theo lớp và ghi nhận trạng thái tham dự.</p><button type="button" class="secondary" id="attendanceToolBtn">Mở công cụ điểm danh</button></div>`:""}${type==="events"?`<div class="card" style="margin-top:14px"><h2>Check-in sự kiện</h2><button type="button" class="secondary" id="checkinToolBtn">Nhập mã check-in</button></div>`:""}`;
+  const rows=document.getElementById("genericRows"),search=document.getElementById("genericSearch"),count=document.getElementById("genericCount"),empty=document.getElementById("genericEmpty");
+  const draw=()=>{const q=search.value.trim().toLocaleLowerCase("vi"),items=state.admin[type].filter(x=>!q||fields.some(f=>String(x[f]??"").toLocaleLowerCase("vi").includes(q)));rows.innerHTML=items.map(x=>`<tr>${fields.map(f=>`<td>${E(String(x[f]??"").slice(0,220))}</td>`).join("")}<td><div class="admin-row-actions"><button type="button" class="secondary" data-generic-edit="${E(x.id??x.code)}">Sửa</button><button type="button" class="danger" data-generic-delete="${E(x.id??x.code)}">Xóa</button></div></td></tr>`).join("");count.textContent=`${items.length} / ${state.admin[type].length} bản ghi`;empty.hidden=items.length>0;
+    rows.querySelectorAll("[data-generic-edit]").forEach(btn=>btn.addEventListener("click",()=>openGenericEditor(type,btn.dataset.genericEdit)));
+    rows.querySelectorAll("[data-generic-delete]").forEach(btn=>btn.addEventListener("click",()=>confirmDeleteGeneric(type,btn.dataset.genericDelete)));
+  };
+  search.addEventListener("input",draw);document.getElementById("genericCreateBtn").addEventListener("click",()=>openGenericEditor(type,null));
+  document.getElementById("attendanceToolBtn")?.addEventListener("click",()=>attendanceTool());document.getElementById("checkinToolBtn")?.addEventListener("click",()=>checkinTool());draw();
 }
 
 const genericFields={
@@ -1378,75 +1637,51 @@ const genericFields={
   tasks:["title","description","assigned_to","unit_code","status","priority","due_at"]
 };
 
-window.createGeneric=type=>{
-  const body={};
-
-  for(const f of genericFields[type]||[]){
-    const v=prompt(`${f}:`,f.endsWith("_json")?"{}":"");
-    if(v===null)return;
-    body[f]=v;
-    if(["capacity","assigned_to"].includes(f)&&v!=="")body[f]=Number(v);
+function adminFieldLabel(field){return ({
+  title:"Tiêu đề / Tên",slug:"Slug",body:"Nội dung",status:"Trạng thái",published_at:"Ngày đăng",tags_json:"Nhãn (JSON)",cover_file_id:"Khóa ảnh đại diện",
+  unit_code:"Đơn vị",level:"Cấp độ",schedule_json:"Lịch học (JSON)",capacity:"Sức chứa",data_json:"Dữ liệu bổ sung (JSON)",start_at:"Bắt đầu",end_at:"Kết thúc",
+  code:"Mã",name:"Tên",unit_type:"Loại đơn vị",manager_name:"Người phụ trách",email:"Email",doc_type:"Loại tài liệu",visibility:"Phạm vi hiển thị",file_id:"Tệp",issued_at:"Ngày phát hành",
+  description:"Mô tả",assigned_to:"Người phụ trách (ID)",priority:"Ưu tiên",due_at:"Hạn hoàn thành"
+})[field]||field;}
+function genericFieldControl(type,field,value,isEdit){
+  const id=`generic-${field}`,label=adminFieldLabel(field),jsonField=field.endsWith("_json"),large=["body","description"].includes(field)||jsonField,dateField=["published_at","start_at","end_at","issued_at","due_at"].includes(field),numberField=["capacity","assigned_to"].includes(field),emailField=field==="email";
+  if(field==="status"){
+    const choices=type==="classes"?["Đang mở đăng ký","Đang hoạt động","Tạm dừng","Đã kết thúc","Nháp"]:type==="events"?["Sắp diễn ra","Đang diễn ra","Đã kết thúc","Nháp"]:type==="units"?["Đang hoạt động","Tạm ngừng","Đã giải thể"]:type==="documents"?["Có hiệu lực","Hết hiệu lực","Nháp"]:["Cần làm","Đang thực hiện","Hoàn thành","Đã hủy"];
+    const options=[...new Set([String(value||""),...choices].filter(Boolean))];return `<div class="field"><label for="${id}">${E(label)}</label><select id="${id}" name="${E(field)}">${options.map(v=>`<option value="${E(v)}" ${v===String(value||"")?"selected":""}>${E(v)}</option>`).join("")}</select></div>`;
   }
-
-  if(type!=="units")body.id=body.id||undefined;
-
-  api(`/api/admin/content/${type}`,{
-    method:"POST",
-    body
-  }).then(()=>{
-    toast("Đã thêm.");
-    adminGeneric(
-      document.getElementById("adminMain"),
-      type,
-      adminTitle(type),
-      displayFields(type)
-    );
-  }).catch(e=>toast(errorText(e),"bad"));
-};
-
-window.editGeneric=(type,idv)=>{
-  const x=(state.admin[type]||[]).find(
-    o=>String(o.id||o.code)===String(idv)
-  );
-  if(!x)return;
-
-  const body={};
-
-  for(const f of genericFields[type]||[]){
-    const v=prompt(`${f}:`,String(x[f]??""));
-    if(v===null)return;
-    body[f]=v;
-    if(["capacity","assigned_to"].includes(f)&&v!=="")body[f]=Number(v);
-  }
-
-  api(`/api/admin/content/${type}/${encodeURIComponent(idv)}`,{
-    method:"PUT",
-    body
-  }).then(()=>{
-    toast("Đã cập nhật.");
-    adminGeneric(
-      document.getElementById("adminMain"),
-      type,
-      adminTitle(type),
-      displayFields(type)
-    );
-  }).catch(e=>toast(errorText(e),"bad"));
-};
-
-window.deleteGeneric=(type,idv)=>{
-  if(!confirm("Xóa mục này?"))return;
-
-  api(`/api/admin/content/${type}/${encodeURIComponent(idv)}`,{
-    method:"DELETE"
-  }).then(()=>{
-    toast("Đã xóa.");
-    adminGeneric(
-      document.getElementById("adminMain"),
-      type,
-      adminTitle(type),
-      displayFields(type)
-    );
-  }).catch(e=>toast(errorText(e),"bad"));
+  const inputType=dateField?"datetime-local":numberField?"number":emailField?"email":"text",v=dateField?adminNewsDatetime(value):String(value??"");
+  const disabled=isEdit&&type==="units"&&field==="code"?"readonly":"";
+  return `<div class="field"><label for="${id}">${E(label)}${(["title","name","code"].includes(field)?" *":"")}</label>${large?`<textarea id="${id}" name="${E(field)}" rows="${jsonField?4:field==="body"?8:4}" ${["title","code"].includes(field)?"required":""} placeholder="${jsonField?"Nhập JSON hợp lệ…":"Nhập "+label.toLowerCase()+"…"}>${E(v)}</textarea>`:`<input id="${id}" name="${E(field)}" type="${inputType}" ${numberField?'min="0" step="1"':''} value="${E(v)}" ${disabled} ${["title","name","code"].includes(field)?"required":""} placeholder="${E(label)}">`}</div>`;
+}
+window.createGeneric=type=>openGenericEditor(type,null);
+window.editGeneric=(type,idv)=>openGenericEditor(type,idv);
+function openGenericEditor(type,idv){
+  const x=idv===null||idv===undefined?null:(state.admin[type]||[]).find(o=>String(o.id??o.code)===String(idv));if(idv!==null&&idv!==undefined&&!x){toast("Không tìm thấy bản ghi cần sửa.","bad");return;}
+  const fields=genericFields[type]||[],isEdit=!!x;
+  const defaults=type==="classes"?{unit_code:"SFEC",title:"",level:"",status:"Đang mở đăng ký",capacity:"",schedule_json:"{}",data_json:"{}"}:type==="events"?{unit_code:"SFN",title:"",start_at:"",end_at:"",status:"Sắp diễn ra",capacity:"",data_json:"{}"}:type==="units"?{code:"",name:"",unit_type:"",manager_name:"",email:"",status:"Đang hoạt động",data_json:"{}"}:type==="documents"?{code:"",doc_type:"",title:"",visibility:"internal",status:"Có hiệu lực",file_id:"",issued_at:"",metadata_json:"{}"}:{title:"",description:"",assigned_to:"",unit_code:"",status:"Cần làm",priority:"Bình thường",due_at:""};
+  const values={...defaults,...(x||{})};
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">DỮ LIỆU / ${isEdit?"CHỈNH SỬA":"BẢN GHI MỚI"}</span><h2>${isEdit?"Chỉnh sửa bản ghi":"Thêm bản ghi mới"}</h2><p class="muted">Trường có dấu * là bắt buộc. JSON phải đúng định dạng trước khi lưu.</p></div><button type="button" class="admin-modal-close" id="genericClose" aria-label="Đóng">×</button></div><form id="genericEditor" data-type="${E(type)}" data-id="${E(x?.id??x?.code??"")}"><div class="admin-generic-form-grid">${fields.map(f=>genericFieldControl(type,f,values[f],isEdit)).join("")}</div><div class="admin-sticky-save"><span>${isEdit?`Bản ghi ${E(x.id??x.code)}`:"Bản ghi mới chưa lưu"}</span><div><button type="button" class="secondary" id="genericCancel">Hủy</button><button type="submit" class="primary" id="genericSave">${isEdit?"Lưu thay đổi":"Tạo bản ghi"}</button></div></div></form>`);
+  document.getElementById("genericClose")?.addEventListener("click",closeModal);document.getElementById("genericCancel")?.addEventListener("click",closeModal);
+  document.getElementById("genericEditor").addEventListener("submit",async e=>{
+    e.preventDefault();const form=e.currentTarget,save=document.getElementById("genericSave"),fd=new FormData(form),body={};
+    try{
+      for(const f of fields){let value=fd.get(f);if(["capacity","assigned_to"].includes(f)){value=value===""?null:Number(value);if(value!==null&&(!Number.isFinite(value)||value<0||!Number.isInteger(value)))throw new Error(`Giá trị ${adminFieldLabel(f)} phải là số nguyên không âm.`);}else if(f.endsWith("_json")){const raw=String(value||"").trim()||"{}";JSON.parse(raw);value=raw;}else if(["published_at","start_at","end_at","issued_at","due_at"].includes(f)){value=value?`${value}:00+07:00`:null;}else value=String(value??"").trim();body[f]=value;}
+      if(type==="units"&&!isEdit&&!body.code)throw new Error("Mã đơn vị là bắt buộc.");
+      if(isEdit&&type!=="units")body.id=x.id;
+      if(type==="units"&&isEdit)body.code=x.code;
+      save.disabled=true;save.textContent="Đang lưu…";
+      if(isEdit)await api(`/api/admin/content/${type}/${encodeURIComponent(x.id??x.code)}`,{method:"PUT",body});else await api(`/api/admin/content/${type}`,{method:"POST",body});
+      closeModal();toast(isEdit?"Đã cập nhật bản ghi.":"Đã tạo bản ghi.");await adminGeneric(document.getElementById("adminMain"),type,adminTitle(type),displayFields(type));
+    }catch(err){toast(errorText(err),"bad");save.disabled=false;save.textContent=isEdit?"Lưu thay đổi":"Tạo bản ghi";}
+  });
+}
+window.deleteGeneric=(type,idv)=>confirmDeleteGeneric(type,idv);
+window.confirmDeleteGeneric=(type,idv)=>{
+  const x=(state.admin[type]||[]).find(o=>String(o.id??o.code)===String(idv));if(!x)return;
+  const label=x.title||x.name||x.code||x.id||"bản ghi";
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">XÁC NHẬN THAO TÁC</span><h2>Xóa bản ghi?</h2></div><button type="button" class="admin-modal-close" id="genericDeleteClose" aria-label="Đóng">×</button></div><p>Bản ghi <b>${E(label)}</b> sẽ bị xóa. Thao tác này không thể hoàn tác.</p><div class="admin-sticky-save"><button type="button" class="secondary" id="genericDeleteCancel">Giữ lại</button><button type="button" class="danger" id="genericDeleteConfirm">Xác nhận xóa</button></div>`);
+  document.getElementById("genericDeleteClose")?.addEventListener("click",closeModal);document.getElementById("genericDeleteCancel")?.addEventListener("click",closeModal);
+  document.getElementById("genericDeleteConfirm").addEventListener("click",async e=>{const btn=e.currentTarget;btn.disabled=true;btn.textContent="Đang xóa…";try{await api(`/api/admin/content/${type}/${encodeURIComponent(idv)}`,{method:"DELETE"});closeModal();toast("Đã xóa bản ghi.");await adminGeneric(document.getElementById("adminMain"),type,adminTitle(type),displayFields(type));}catch(err){toast(errorText(err),"bad");btn.disabled=false;btn.textContent="Xác nhận xóa";}});
 };
 
 function adminTitle(t){
@@ -1472,8 +1707,8 @@ function displayFields(t){
 }
 
 window.attendanceTool=async()=>{
-  const classId=prompt("ID lớp (vd SFEC-L9):");
-  if(!classId)return;
+  const classId=await adminPrompt("ID lớp (ví dụ SFEC-L9)","",{title:"Mở công cụ điểm danh",required:true});
+  if(classId===null||!classId.trim())return;
 
   try{
     const d=await api(
@@ -1493,21 +1728,18 @@ window.markAttendance=(classId,enrollmentId,status)=>api(
     body:{
       class_id:classId,
       enrollment_id:enrollmentId,
-      session_date:new Date().toISOString().slice(0,10),
+      session_date:cttToday(),
       status
     }
   }
 ).then(()=>toast("Đã điểm danh."))
  .catch(e=>toast(errorText(e),"bad"));
 
-window.checkinTool=()=>{
-  const code=prompt("Mã check-in:");
-  if(!code)return;
-
-  api("/api/admin/event-checkin",{
-    method:"POST",
-    body:{checkin_code:code}
-  }).then(()=>toast("Check-in thành công."))
+window.checkinTool=async()=>{
+  const code=await adminPrompt("Mã check-in","",{title:"Check-in sự kiện",required:true});
+  if(code===null||!code.trim())return;
+  api("/api/admin/event-checkin",{method:"POST",body:{checkin_code:code.trim()}})
+    .then(()=>toast("Check-in thành công."))
     .catch(e=>toast(errorText(e),"bad"));
 };
 
@@ -1661,21 +1893,19 @@ window.showCertQR=code=>{
   modal(`<h2>QR xác thực — ${E(code)}</h2><p>QR chỉ chứa liên kết tra cứu công khai, không chứa dữ liệu hồ sơ riêng tư.</p><img alt="QR" style="max-width:280px;width:100%" src="https://quickchart.io/qr?size=300&text=${encodeURIComponent(text)}"><p><a href="/gcn/${encodeURIComponent(code)}" onclick="closeModal()">Mở Verification Record</a></p>`);
 };
 
-window.revokeCert=idc=>{
-  const note=prompt("Lý do thu hồi:")||"";
-
-  api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{
-    method:"PATCH",
-    body:{action:"revoke",note}
-  }).then(()=>{
-    toast("Đã thu hồi.");
-    adminCertificates(document.getElementById("adminMain"));
-  }).catch(e=>toast(errorText(e),"bad"));
+window.revokeCert=async idc=>{
+  const note=await adminPrompt("Lý do thu hồi","",{title:"Thu hồi giấy đã phát hành",type:"textarea",required:true});
+  if(note===null||!note.trim())return;
+  if(!await adminConfirm("Giấy sẽ được chuyển sang trạng thái thu hồi. Hãy chắc chắn lý do đã chính xác.",{title:"Xác nhận thu hồi",confirmText:"Thu hồi giấy",danger:true}))return;
+  api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{method:"PATCH",body:{action:"revoke",note:note.trim()}})
+    .then(()=>{toast("Đã thu hồi.");adminCertificates(document.getElementById("adminMain"));})
+    .catch(e=>toast(errorText(e),"bad"));
 };
 
-window.supersedeCert=idc=>{
-  const note=prompt("Lý do cần thay thế credential:");if(note===null)return;
-  api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{method:"PATCH",body:{action:"supersede",note}}).then(()=>{toast("Đã tạo bản replacement chờ phê duyệt. Giấy cũ chỉ chuyển sang trạng thái đã được thay thế khi bản mới được phát hành.");adminCertificates(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"));
+window.supersedeCert=async idc=>{
+  const note=await adminPrompt("Lý do cần thay thế giấy","",{title:"Yêu cầu thay thế giấy",type:"textarea",required:true});if(note===null||!note.trim())return;
+  if(!await adminConfirm("Tạo một yêu cầu thay thế chờ phê duyệt; giấy hiện tại chưa bị thay đổi cho đến khi bản mới được phát hành.",{title:"Xác nhận yêu cầu thay thế",confirmText:"Gửi yêu cầu"}))return;
+  api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{method:"PATCH",body:{action:"supersede",note:note.trim()}}).then(()=>{toast("Đã tạo bản replacement chờ phê duyệt.");adminCertificates(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"));
 };
 window.credentialHistory=async idc=>{
   try{const d=await api(`/api/admin/certificates/${encodeURIComponent(idc)}/history`);modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Lịch sử giấy đã phát hành</h2><p><b>${E(d.item.code||'Chưa phát hành')}</b> · ${E(d.item.full_name)} · ${E(d.item.status)}</p><div class="timeline-admin">${(d.history||[]).map(h=>`<div class="card"><b>${E(h.action)}</b><p>${E(h.note||'')}</p><small>${fmt(h.created_at)}${h.actor_id?` · Actor #${E(h.actor_id)}`:''}</small></div>`).join('')||'<p>Chưa có history.</p>'}</div>`)}catch(e){toast(errorText(e),'bad')}
@@ -1741,15 +1971,11 @@ window.uploadAdminFile=()=>{
   };
 };
 
-window.deleteFile=idf=>{
-  if(!confirm("Xóa file?"))return;
-
-  api(`/api/admin/files/${encodeURIComponent(idf)}`,{
-    method:"DELETE"
-  }).then(()=>{
-    toast("Đã xóa.");
-    adminFiles(document.getElementById("adminMain"));
-  }).catch(e=>toast(errorText(e),"bad"));
+window.deleteFile=async idf=>{
+  if(!await adminConfirm("Tệp sẽ bị xóa khỏi kho lưu trữ. Thao tác này không thể hoàn tác.",{title:"Xóa tệp",confirmText:"Xóa tệp",danger:true}))return;
+  api(`/api/admin/files/${encodeURIComponent(idf)}`,{method:"DELETE"})
+    .then(()=>{toast("Đã xóa.");adminFiles(document.getElementById("adminMain"));})
+    .catch(e=>toast(errorText(e),"bad"));
 };
 
 async function adminEmail(main){
@@ -1825,9 +2051,9 @@ async function adminMedia(main){
   const d=await api("/api/admin/media");state.admin.media=d.items||[];
   main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">THƯ VIỆN HÌNH ẢNH</span><h1>Thư viện ảnh</h1><p class="muted">Ảnh giao diện được lưu trực tiếp trên R2, không cần bản ghi D1.</p></div><button class="primary" onclick="uploadSiteImage()">+ Tải ảnh</button></div><div class="media-grid">${state.admin.media.map(x=>`<div class="media-card"><img src="${E(x.url)}" alt=""><div class="media-meta"><b>${E(x.key.split('/').pop())}</b><small>${Math.round((x.size||0)/1024)} KB</small><div class="actions"><button class="secondary" onclick="copyMediaUrl('${E(x.url)}')">Sao chép URL</button><button class="danger" onclick="deleteSiteImage('${E(x.key)}')">Xóa</button></div></div></div>`).join("")||`<div class="card muted">Chưa có ảnh tải lên.</div>`}</div>`;
 }
-window.uploadSiteImage=()=>{modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Tải ảnh lên R2</h2><form id="siteImageForm"><div class="field"><label>Chọn ảnh</label><input name="file" type="file" accept="image/*" required></div><button class="primary">Tải lên</button></form>`);document.getElementById("siteImageForm").onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.target);try{const r=await api("/api/admin/media",{method:"POST",body:fd});closeModal();toast("Đã tải ảnh. URL: "+r.url);adminMedia(document.getElementById("adminMain"));}catch(err){toast(errorText(err),"bad")}}};
-window.copyMediaUrl=async url=>{try{await navigator.clipboard.writeText(location.origin+url);toast("Đã sao chép URL ảnh.")}catch{prompt("Sao chép URL:",location.origin+url)}};
-window.deleteSiteImage=key=>{if(!confirm("Xóa ảnh này khỏi R2?"))return;api(`/api/admin/media/${encodeURIComponent(key)}`,{method:"DELETE"}).then(()=>{toast("Đã xóa ảnh.");adminMedia(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"))};
+window.uploadSiteImage=()=>{modal(`<div class="admin-dialog-head"><span class="eyebrow">THƯ VIỆN HÌNH ẢNH</span><button type="button" class="admin-modal-close" onclick="closeModal()" aria-label="Đóng">×</button><h2>Tải ảnh lên R2</h2><p class="muted">Chỉ nhận ảnh JPG, PNG, WEBP hoặc GIF tối đa 15 MB. Không tải SVG hoặc nội dung có thể thực thi.</p></div><form id="siteImageForm" class="admin-dialog-form"><div class="field"><label for="siteImageFile">Chọn ảnh</label><input id="siteImageFile" name="file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" required><small class="muted">Dùng ảnh thật mà bà có quyền sử dụng.</small></div><div class="admin-dialog-actions"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button class="primary" id="siteImageSubmit">Tải lên</button></div></form>`);document.getElementById("siteImageForm").onsubmit=async e=>{e.preventDefault();const form=e.currentTarget,file=form.elements.file.files?.[0],submit=document.getElementById("siteImageSubmit");if(!file)return;if(!["image/jpeg","image/png","image/webp","image/gif"].includes(file.type)){toast("Chỉ hỗ trợ JPG, PNG, WEBP hoặc GIF.","bad");return}if(file.size>15*1024*1024){toast("Ảnh vượt quá giới hạn 15 MB.","bad");return}const fd=new FormData(form);submit.disabled=true;submit.textContent="Đang tải lên…";try{const r=await api("/api/admin/media",{method:"POST",body:fd});closeModal();toast("Đã tải ảnh lên R2. URL: "+r.url);adminMedia(document.getElementById("adminMain"));}catch(err){toast(errorText(err),"bad");submit.disabled=false;submit.textContent="Thử tải lại"}}};
+window.copyMediaUrl=async url=>{const value=location.origin+url;try{await navigator.clipboard.writeText(value);toast("Đã sao chép URL ảnh.")}catch{modal(`<div class="admin-dialog-head"><span class="eyebrow">THƯ VIỆN HÌNH ẢNH</span><button type="button" class="admin-modal-close" onclick="closeModal()" aria-label="Đóng">×</button><h2>URL ảnh</h2><p class="muted">Trình duyệt không cho phép sao chép tự động. Hãy chọn và sao chép đường dẫn bên dưới.</p></div><div class="field"><label for="mediaUrlFallback">Đường dẫn đầy đủ</label><input id="mediaUrlFallback" value="${E(value)}" readonly></div><div class="admin-dialog-actions"><button type="button" class="secondary" onclick="closeModal()">Đóng</button><button type="button" class="primary" id="selectMediaUrl">Chọn đường dẫn</button></div>`);document.getElementById("selectMediaUrl")?.addEventListener("click",()=>{const input=document.getElementById("mediaUrlFallback");input?.focus();input?.select();});}};
+window.deleteSiteImage=async key=>{if(!await adminConfirm("Ảnh chỉ có thể xóa khi không còn được dùng trong nội dung hoặc cấu hình. Thao tác này không thể hoàn tác.",{title:"Xóa ảnh khỏi thư viện R2",confirmText:"Xóa ảnh",danger:true}))return;api(`/api/admin/media/${encodeURIComponent(key)}`,{method:"DELETE"}).then(()=>{toast("Đã xóa ảnh.");adminMedia(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"))};
 
 async function adminModules(main){
   const d=await api("/api/admin/modules");
@@ -1855,47 +2081,15 @@ window.saveModules=()=>{
 
 async function adminSettings(main){
   const d=await api("/api/admin/settings");
-  const map=Object.fromEntries(
-    (d.items||[]).map(x=>[x.key,x.value])
-  );
-  state.admin.settings=map;
-
-  main.innerHTML=`<h1>Cài đặt hệ thống</h1><div class="card"><div class="field"><label>Tên hệ thống</label><input id="sAppName" value="${E(map.app_name||"")}"></div><div class="field"><label>Email nhận toàn bộ đăng ký</label><input id="sReceiver" value="${E(map.receiver_email||"skyfirst.ec@gmail.com")}"></div><div class="field"><label>Hotline/Zalo</label><input id="sHotline" value="${E(map.hotline||"0924 910 210")}"></div><div class="field"><label>Website</label><input id="sWebsite" value="${E(map.website||"")}"></div><div class="field"><label>Châm ngôn</label><input id="sSlogan" value="${E(map.brand_slogan||"")}"></div><div class="field"><label>Tiêu đề Hero</label><input id="sHeroTitle" value="${E(map.hero_title||"CỔNG THÔNG TIN SỐ SKY FIRST")}"></div><div class="field"><label>Mô tả Hero</label><textarea id="sHeroText">${E(map.hero_text||"Khám phá thông tin, chương trình, hoạt động, tài nguyên và các tiện ích số trong hệ sinh thái Sky First Network.")}</textarea></div><div class="field"><label>Ảnh bìa Hero (URL hoặc /api/files/...)</label><input id="sHeroCover" value="${E(map.hero_cover_url||"/assets/sfn-cover.png")}"></div><div class="field"><label>Thời hạn lưu hồ sơ không phù hợp (ngày)</label><input id="sRetention" type="number" value="${E(map.rejected_application_retention_days||365)}"></div><hr><h2>Số liệu thống kê trang chủ</h2><p class="muted">Chọn nguồn D1 hoặc nhập số thủ công. Hoạt ảnh chỉ chạy trên trình duyệt, không ghi lặp vào cơ sở dữ liệu.</p><div class="field"><label>Nguồn số liệu</label><select id="sStatsSource"><option value="d1" ${(map.home_stats?.source||"d1")==="d1"?"selected":""}>Lấy tự động từ D1</option><option value="manual" ${(map.home_stats?.source||"d1")==="manual"?"selected":""}>Nhập thủ công</option></select></div><div class="row2"><div class="field"><label>Chương trình &amp; sự kiện</label><input id="sStatPrograms" type="number" min="0" value="${E(map.home_stats?.values?.programs??1200)}"></div><div class="field"><label>Thành viên cộng đồng</label><input id="sStatMembers" type="number" min="0" value="${E(map.home_stats?.values?.members??50000)}"></div><div class="field"><label>Chứng nhận đã phát hành</label><input id="sStatCertificates" type="number" min="0" value="${E(map.home_stats?.values?.certificates??10000)}"></div><div class="field"><label>Đối tác &amp; đơn vị đồng hành</label><input id="sStatPartners" type="number" min="0" value="${E(map.home_stats?.values?.partners??100)}"></div></div><div class="row2"><div class="field"><label>Thời lượng mỗi lượt đếm (giây)</label><input id="sStatDuration" type="number" min="0.25" max="30" step="0.25" value="${E((map.home_stats?.duration_ms??1800)/1000)}"></div><div class="field"><label>Số lượt chạy (tối đa 100)</label><input id="sStatCycles" type="number" min="1" max="100" value="${E(map.home_stats?.cycles??100)}"></div></div><div class="notice">Khi hoàn tất số lượt, bộ đếm giữ nguyên giá trị đích. Chế độ D1 chỉ lấy số liệu thực tế từ các bảng đã được cấu hình.</div><div class="check"><input id="sMaintenance" type="checkbox" ${map.maintenance_mode?"checked":""}><label>Bật chế độ bảo trì trang công khai</label></div><button class="primary" onclick="saveSettings()">Lưu cài đặt</button></div>`;
+  const map=Object.fromEntries((d.items||[]).map(x=>[x.key,x.value]));state.admin.settings=map;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">CẤU HÌNH HỆ THỐNG</span><h1>Cài đặt hệ thống</h1><p class="muted">Quản lý thông tin vận hành. Bảng thống kê trang chủ đã được tách thành mục riêng để dễ tìm và không lưu nhầm.</p></div></div><form id="adminSystemSettings" class="admin-system-settings"><section class="card admin-card-premium"><div class="admin-card-heading"><div><span class="eyebrow">01 / NHẬN DIỆN</span><h2>Thông tin hệ thống</h2></div></div><div class="row2"><div class="field"><label for="sAppName">Tên hệ thống</label><input id="sAppName" value="${E(map.app_name||"")}" required></div><div class="field"><label for="sReceiver">Email nhận đăng ký</label><input id="sReceiver" type="email" value="${E(map.receiver_email||"skyfirst.ec@gmail.com")}" required></div><div class="field"><label for="sHotline">Hotline / Zalo</label><input id="sHotline" value="${E(map.hotline||"0924 910 210")}"></div><div class="field"><label for="sWebsite">Website chính</label><input id="sWebsite" type="url" value="${E(map.website||"https://skyfirst.io.vn")}"></div><div class="field"><label for="sSlogan">Châm ngôn</label><input id="sSlogan" value="${E(map.brand_slogan||"")}"></div><div class="field"><label for="sRetention">Thời hạn lưu hồ sơ không phù hợp (ngày)</label><input id="sRetention" type="number" min="1" max="36500" value="${E(map.rejected_application_retention_days||365)}" required></div></div></section><section class="card admin-card-premium"><div class="admin-card-heading"><div><span class="eyebrow">02 / VẬN HÀNH</span><h2>Trạng thái website</h2></div></div><label class="admin-toggle-row"><input id="sMaintenance" type="checkbox" ${map.maintenance_mode?"checked":""}><span><b>Bật chế độ bảo trì công khai</b><small>Khi bật, khách truy cập sẽ thấy trang thông báo bảo trì. Quản trị viên vẫn có thể đăng nhập.</small></span></label><div class="notice warn">Chỉ bật bảo trì khi thật sự cần thiết; nhớ tắt sau khi hoàn tất triển khai.</div></section><div class="admin-sticky-save"><span>Không thay đổi cấu trúc D1 hay dữ liệu nghiệp vụ.</span><button type="submit" class="primary" id="saveSystemSettings">Lưu cài đặt</button></div></form>`;
+  document.getElementById("adminSystemSettings").addEventListener("submit",async e=>{
+    e.preventDefault();const btn=document.getElementById("saveSystemSettings");
+    const retention=Number(document.getElementById("sRetention").value);if(!Number.isInteger(retention)||retention<1||retention>36500){toast("Thời hạn lưu phải từ 1 đến 36.500 ngày.","bad");return;}
+    btn.disabled=true;btn.textContent="Đang lưu…";
+    try{await api("/api/admin/settings",{method:"PUT",body:{items:{app_name:document.getElementById("sAppName").value.trim(),receiver_email:document.getElementById("sReceiver").value.trim(),hotline:document.getElementById("sHotline").value.trim(),website:document.getElementById("sWebsite").value.trim(),brand_slogan:document.getElementById("sSlogan").value.trim(),rejected_application_retention_days:retention,maintenance_mode:document.getElementById("sMaintenance").checked}}});await loadConfig();toast("Đã lưu cài đặt hệ thống.");await adminSettings(main);}catch(err){toast(errorText(err),"bad");btn.disabled=false;btn.textContent="Lưu cài đặt";}
+  });
 }
-
-window.saveSettings=()=>api("/api/admin/settings",{
-  method:"PUT",
-  body:{
-    items:{
-      app_name:document.getElementById("sAppName").value,
-      receiver_email:document.getElementById("sReceiver").value,
-      hotline:document.getElementById("sHotline").value,
-      website:document.getElementById("sWebsite").value,
-      brand_slogan:document.getElementById("sSlogan").value,
-      hero_title:document.getElementById("sHeroTitle").value,
-      hero_text:document.getElementById("sHeroText").value,
-      hero_cover_url:document.getElementById("sHeroCover").value,
-      rejected_application_retention_days:
-        Number(document.getElementById("sRetention").value)||365,
-      maintenance_mode:
-        document.getElementById("sMaintenance").checked,
-      home_stats:{
-        source:document.getElementById("sStatsSource").value==="d1"?"d1":"manual",
-        values:{
-          programs:Math.max(0,Number(document.getElementById("sStatPrograms").value)||0),
-          members:Math.max(0,Number(document.getElementById("sStatMembers").value)||0),
-          certificates:Math.max(0,Number(document.getElementById("sStatCertificates").value)||0),
-          partners:Math.max(0,Number(document.getElementById("sStatPartners").value)||0)
-        },
-        duration_ms:Math.max(250,Math.min(30000,(Number(document.getElementById("sStatDuration").value)||1.8)*1000)),
-        cycles:Math.max(1,Math.min(100,Math.floor(Number(document.getElementById("sStatCycles").value)||100)))
-      }
-    }
-  }
-}).then(async()=>{
-  toast("Đã lưu cài đặt.");
-  await loadConfig();
-}).catch(e=>toast(errorText(e),"bad"));
 
 async function adminSearch(main){
   main.innerHTML=`<h1>Tìm kiếm toàn hệ thống</h1><div class="card"><div class="field"><label>Từ khóa</label><input id="globalSearch" placeholder="Mã hồ sơ, họ tên, GCN, văn bản, ticket…"></div><button class="primary" onclick="runSearch()">Tìm</button><div id="searchResults" class="search-results"></div></div>`;
@@ -1930,15 +2124,11 @@ async function adminBackup(main){
   main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Sao lưu</h1><button class="primary" onclick="createBackup()">Tạo backup ngay</button></div><div class="notice">Hệ thống còn có lịch cleanup hằng ngày và backup cấu hình/nghiệp vụ tự động vào Chủ nhật khi cron được bật.</div><div class="card">${(d.items||[]).map(x=>`<p><b>${E(x.id)}</b> — ${Math.round((x.size||0)/1024)} KB — ${fmt(x.created_at)} <button class="danger" onclick="restoreBackup('${E(x.id)}')">Phục hồi</button></p>`).join("")||"<p>Chưa có backup.</p>"}</div>`;
 }
 
-window.restoreBackup=idb=>{
-  if(!confirm("Phục hồi sẽ ghi đè các bảng nghiệp vụ trong backup. Chỉ Super Admin được thực hiện. Tiếp tục?"))return;
-
-  api(`/api/admin/backups/${encodeURIComponent(idb)}/restore`,{
-    method:"POST"
-  }).then(()=>{
-    toast("Đã phục hồi backup.");
-    adminBackup(document.getElementById("adminMain"));
-  }).catch(e=>toast(errorText(e),"bad"));
+window.restoreBackup=async idb=>{
+  if(!await adminConfirm("Phục hồi sẽ ghi đè dữ liệu nghiệp vụ bằng bản sao lưu đã chọn. Chỉ thực hiện khi đã xác minh đúng bản backup.",{title:"Phục hồi bản sao lưu",confirmText:"Phục hồi dữ liệu",danger:true}))return;
+  api(`/api/admin/backups/${encodeURIComponent(idb)}/restore`,{method:"POST"})
+    .then(()=>{toast("Đã phục hồi backup.");adminBackup(document.getElementById("adminMain"));})
+    .catch(e=>toast(errorText(e),"bad"));
 };
 
 window.createBackup=()=>api("/api/admin/backup",{
@@ -2065,8 +2255,4 @@ window.addEventListener("hashchange",router);
   }
 
   await router();
-
-  if("serviceWorker" in navigator){
-    navigator.serviceWorker.register("/sw.js").catch(()=>{});
-  }
 })();

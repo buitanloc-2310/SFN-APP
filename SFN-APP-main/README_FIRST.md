@@ -1,52 +1,35 @@
-# CTT V5 — LƯU Ý BẢN GIAO GIAO DIỆN (10/10/2026)
+# CTT V6 — ADMIN REVIEW & REPAIR (10/10/2026)
 
-> **Bản V5:** xem `CTT_V5_REFERENCE_IMPLEMENTATION_REPORT.md` để biết thay đổi, kiểm thử và giới hạn. V5 bổ sung giao diện theo 5 ảnh tham chiếu, liên kết chi tiết chương trình/sự kiện/tin tức, trang tiện ích và phiên bản cache mới.
+> **Bản V6 Admin Review:** xem `CTT_V6_ADMIN_AUDIT_REPORT.md` để biết các hạng mục quản trị được rà soát, kết quả kiểm thử và giới hạn còn lại. V6 bổ sung bảng riêng cho 4 thẻ thống kê trang chủ, CMS tin tức có tải/đổi ảnh đại diện thật, cải thiện điều hướng/menu Admin và thay các hộp thoại native bằng hộp thoại trong giao diện.
 >
-> **Không phải gói HTML tĩnh để chỉ upload vào `public_html` iNET.** Mã nguồn này tiếp tục dùng Cloudflare Workers + D1 + R2 và các API hiện tại. Chuyển riêng phần frontend sang hosting tĩnh không tự chuyển backend/API/cơ sở dữ liệu.
+> **Kiến trúc không thay đổi:** mã nguồn tiếp tục dùng Cloudflare Workers + D1 + R2 và các API hiện tại. Không thể chỉ upload ZIP vào `public_html` iNET rồi mặc định toàn bộ backend/database chạy.
 >
-> **V5 không có migration SQL mới.** Không chạy `npm run db:migrate` chỉ để áp dụng bản giao diện V5; giữ nguyên D1 đang dùng. Hãy kiểm tra staging/preview và bindings hiện tại trước khi deploy. Chưa có deploy production trong bản bàn giao này.
+> **V6 không thêm migration SQL.** Không chạy SQL/migration chỉ để áp dụng bản sửa Admin. Giữ nguyên D1/R2 hiện tại; xác minh binding `DB` và `FILES` trên staging/preview trước khi deploy. Bản này chưa deploy lên production và chưa test API upload/R2 live.
 
 ---
 
-# CỔNG THÔNG TIN SỐ SKY FIRST — MASTER UPGRADE V2
+# CỔNG THÔNG TIN SỐ SKY FIRST — MASTER UPGRADE
 
 **SKY FIRST DIGITAL INFORMATION PORTAL**  
 Production domain: `https://ctt.skyfirst.io.vn`
 
-Đây là source Cloudflare Worker + D1 + R2 được nâng cấp theo mô hình **Sky First Digital Information Infrastructure**. Public side là Information Hub/Discovery/Digital Services; hệ thống tài khoản công khai Học viên/Thành viên/TNV đã bị tắt. Chỉ **Administrator** được đăng nhập qua route quản trị riêng.
+## Những điểm cần đọc trước
 
-## Kiến trúc chính
-
-- **Public Portal:** Home discovery-first, Mega Menu, Search Center, chương trình, hoạt động, tin tức, tài nguyên.
-- **Credential Registry:** GCN/GXN/BK dùng registry chung; mã mới `SFN-GCN|GXN|BK-#####` ngẫu nhiên 5 số; mã legacy giữ nguyên.
-- **Digital Case Center:** mã hồ sơ + lớp xác minh bổ sung, timeline, next action, result.
-- **Form Center:** form builder, revision, conditional logic, multi-step/guided, upload, signature, minor mode, review trước submit, digital receipt.
-- **Storage:** D1 chỉ giữ metadata/relationship/status/audit; R2 giữ file, ảnh, chữ ký, PDF/media.
-- **Upload:** upload session → stream vào R2 → finalize metadata vào D1; file quan trọng có SHA-256 reference.
-- **Admin:** Command Center, content, programs/activities, forms/cases, credentials, resources/media, support/system.
-- **Resilience:** PWA-lite, offline shell, local draft recovery, semantic fallback, dedicated error states.
-- **Performance:** public/admin code split; cache public API ở Cloudflare Cache API và invalidation khi CMS cập nhật.
-
-## Route public
-
-`/` · `/tra-cuu` · `/gcn` · `/gcn/{id}` · `/ho-so` · `/bieu-mau`
-
-Admin không xuất hiện trong navigation public. Route quản trị: `/admin` và `/admin/login`.
+- Trang quản trị có các mục riêng cho **Thống kê trang chủ** và **Quản lý tin tức**.
+- Số liệu công khai ưu tiên D1; nếu nguồn D1 thiếu, giao diện hiển thị **“Chưa có dữ liệu”**, không bịa số mẫu. Số thủ công chỉ áp dụng khi quản trị viên chủ động chọn chế độ thủ công.
+- Ảnh đại diện tin tức phải do quản trị viên tải lên/chọn từ tài nguyên thật có quyền sử dụng. Không có chức năng sinh ảnh AI. Nếu chưa có ảnh hoặc ảnh hỏng, giao diện báo rõ và dùng minh họa mặc định đã ghi nhãn.
+- Logo `public/assets/sfn-logo.png` được giữ nguyên; SHA-256 trùng với file logo gốc bà cung cấp.
+- V6 giữ nguyên backend, API, D1, R2, auth, RBAC và các migration; không tự động thay đổi dữ liệu production.
 
 ## Trước khi deploy
 
 1. `npm install`
 2. `npm run validate`
 3. Kiểm tra bindings `DB` và `FILES` trong `wrangler.jsonc`.
-4. Chạy `npm run db:migrate` để áp dụng toàn bộ migration, đặc biệt `0005_digital_information_infrastructure.sql`.
-5. Cấu hình secret email/OAuth/Turnstile nếu sử dụng.
-6. Deploy staging trước, chạy checklist tại `docs/PRODUCTION_CHECKLIST.md`.
-7. Chỉ sau khi staging pass mới đưa custom domain `ctt.skyfirst.io.vn` vào production.
+4. **V6 không yêu cầu migration SQL mới.** Nếu đây là môi trường D1 mới hoàn toàn, chỉ làm theo hướng dẫn khởi tạo môi trường trong docs hiện có; không chạy migration trên production chỉ để cập nhật giao diện Admin.
+5. Kiểm tra quyền `file.manage` cho upload media; API vẫn phải từ chối người dùng không có quyền.
+6. Deploy staging/preview, xác minh save settings, CRUD tin tức, upload R2 thật, xác thực/RBAC và cache trước khi phát hành production.
 
-## Lưu ý Administrator
+## Phạm vi xác minh
 
-Migration không phát sinh tài khoản public mới. Nếu đang nâng từ D1 hiện hữu, tài khoản quản trị hiện hữu được giữ nguyên. Nếu dựng D1 hoàn toàn mới, hãy thiết lập/reset mật khẩu quản trị bằng quy trình nội bộ an toàn trước khi công bố; **không đặt mật khẩu plaintext trong `public/`, source hoặc ZIP dùng để chia sẻ công khai**.
-
-## Nguyên tắc phát hành
-
-Không gọi bản deploy là **Production PASS** chỉ vì `npm run validate` thành công. Static validation chỉ xác nhận cấu trúc/syntax. D1/R2, upload thật, mobile signature, email, credential issue/revoke/supersede, case privacy, accessibility và performance phải được kiểm thử trên Cloudflare staging.
+Đã chạy static validation và các smoke test trình duyệt cục bộ với API được mock, bao gồm 31 route Admin, menu responsive/modal, lưu thống kê và luồng chọn/tải ảnh mô phỏng. Đây **không phải** kiểm thử D1/R2/API live, không phải production E2E, và chưa deploy lên `ctt.skyfirst.io.vn`.
