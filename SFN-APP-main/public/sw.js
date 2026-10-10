@@ -1,10 +1,10 @@
 /* Sky First CTT service worker — versioned assets and update-first strategy. */
-const CACHE='sfn-digital-shell-2026-10-v4';
+const CACHE='sfn-digital-shell-2026-10-v5';
 const SHELL=[
   '/','/index.html',
-  '/styles.css?v=20261010-v4','/digital.css?v=20261010-v4',
-  '/digital-portal.js?v=20261010-v4','/bootstrap.js?v=20261010-v4',
-  '/manifest.webmanifest','/assets/sfn-logo.png','/assets/sfn-wordmark.png'
+  '/styles.css?v=20261010-v5','/digital.css?v=20261010-v5',
+  '/digital-portal.js?v=20261010-v5','/bootstrap.js?v=20261010-v5',
+  '/manifest.webmanifest','/assets/sfn-logo-tight.png','/assets/sfn-logo.png'
 ];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).catch(()=>{}).then(()=>self.skipWaiting()));

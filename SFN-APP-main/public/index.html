@@ -9,20 +9,20 @@
   <meta name="description" content="Hạ tầng thông tin và điểm truy cập số tập trung của Sky First Network: chương trình, hoạt động, biểu mẫu, hồ sơ, tài nguyên và xác thực GCN/GXN/BK.">
   <meta property="og:title" content="Cổng Thông tin Số Sky First">
   <meta property="og:description" content="Cổng Thông tin Số — điểm truy cập thông tin và tiện ích số của Sky First Network.">
-  <meta property="og:image" content="/assets/sfn-wordmark.png">
-  <link rel="icon" type="image/png" href="/assets/sfn-logo.png">
-  <link rel="apple-touch-icon" href="/assets/sfn-logo.png">
+  <meta property="og:image" content="/assets/sfn-logo-tight.png">
+  <link rel="icon" type="image/png" href="/assets/sfn-logo-tight.png">
+  <link rel="apple-touch-icon" href="/assets/sfn-logo-tight.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css?v=20261010-v4">
-  <link rel="stylesheet" href="/digital.css?v=20261010-v4">
+  <link rel="stylesheet" href="/styles.css?v=20261010-v5">
+  <link rel="stylesheet" href="/digital.css?v=20261010-v5">
 </head>
 <body>
 <a class="skip-link" href="#app">Bỏ qua điều hướng</a>
 <header class="dip-header" id="portalHeader">
   <div class="dip-header-inner">
     <a class="dip-brand" id="siteBrand" href="/" aria-label="Cổng Thông tin Số Sky First">
-      <img src="/assets/sfn-logo.png" alt="" width="44" height="44">
-      <span><b>SKY FIRST</b><small>CỔNG THÔNG TIN SỐ</small></span>
+      <img class="brand-signature" src="/assets/sfn-logo-tight.png" alt="Logo Sky First" width="116" height="68">
+      <span class="brand-subline"><small>CỔNG THÔNG TIN SỐ</small></span>
     </a>
     <button class="menu-toggle" id="menuToggle" type="button" aria-label="Mở menu" aria-expanded="false"><span></span><span></span><span></span></button>
     <nav class="dip-nav" id="mainNav" aria-label="Điều hướng chính">
@@ -38,7 +38,7 @@
 
 <main id="app" class="dip-main">
   <section class="static-hero" aria-labelledby="staticTitle">
-    <div class="static-hero-grid"><div><span class="hero-eyebrow">CỔNG THÔNG TIN SỐ SKY FIRST</span><h1 id="staticTitle">CỔNG THÔNG TIN SỐ<br><strong>SKY FIRST</strong></h1><p>Khám phá thông tin, chương trình, hoạt động, tài nguyên và các tiện ích số trong hệ sinh thái Sky First Network.</p><form class="hero-search" action="/" onsubmit="return false"><label for="staticSearch">Bạn đang tìm kiếm điều gì?</label><div><input id="staticSearch" placeholder="Nhập nội dung tại đây..." autocomplete="off"><button type="button" onclick="document.getElementById('searchOpen')?.click()">Tìm kiếm</button></div></form></div><div class="hero-visual" aria-hidden="true"><div class="data-orbit orbit-a"></div><div class="data-orbit orbit-b"></div><div class="portal-mark"><img src="/assets/sfn-logo.png" alt=""><span>ONE SKY FIRST</span><b>DIGITAL<br>INFRASTRUCTURE</b></div><div class="data-card dc1">XÁC THỰC <i></i></div><div class="data-card dc2">KHÁM PHÁ <i></i></div><div class="data-card dc3">KẾT NỐI <i></i></div></div></div>
+    <div class="static-hero-grid"><div><span class="hero-eyebrow">CỔNG THÔNG TIN SỐ SKY FIRST</span><h1 id="staticTitle">CỔNG THÔNG TIN SỐ<br><strong>SKY FIRST</strong></h1><p>Khám phá thông tin, chương trình, hoạt động, tài nguyên và các tiện ích số trong hệ sinh thái Sky First Network.</p><form class="hero-search" action="/" onsubmit="return false"><label for="staticSearch">Bạn đang tìm kiếm điều gì?</label><div><input id="staticSearch" placeholder="Nhập nội dung tại đây..." autocomplete="off"><button type="button" onclick="document.getElementById('searchOpen')?.click()">Tìm kiếm</button></div></form></div><div class="hero-visual" aria-hidden="true"><div class="data-orbit orbit-a"></div><div class="data-orbit orbit-b"></div><div class="portal-mark"><img src="/assets/sfn-logo-tight.png" alt=""><span>ONE SKY FIRST</span><b>DIGITAL<br>INFRASTRUCTURE</b></div><div class="data-card dc1">XÁC THỰC <i></i></div><div class="data-card dc2">KHÁM PHÁ <i></i></div><div class="data-card dc3">KẾT NỐI <i></i></div></div></div>
   </section>
   <section class="static-actions" aria-label="Truy cập nhanh"><a href="/gcn">TRA CỨU GIẤY ĐÃ PHÁT HÀNH</a><a href="/ho-so">TRA CỨU HỒ SƠ</a><a href="/bieu-mau">BIỂU MẪU</a><a href="/#programs">CHƯƠNG TRÌNH</a><a href="/#events">SỰ KIỆN</a><a href="/#resources">TÀI LIỆU</a></section>
   <noscript><section class="noscript-card"><h2>Nội dung cốt lõi vẫn khả dụng</h2><p>JavaScript đang tắt. Bạn vẫn có thể truy cập các trung tâm chính bằng các liên kết phía trên. Một số chức năng tìm kiếm tức thời, biểu mẫu động và tra cứu tương tác cần JavaScript.</p></section></noscript>
@@ -46,13 +46,13 @@
 <div id="modalRoot"></div>
 
 <div class="search-center" id="searchCenter" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
-  <div class="search-top"><a class="dip-brand compact" href="/"><img src="/assets/sfn-logo.png" alt=""><span><b>SKY FIRST</b><small>TÌM KIẾM</small></span></a><button id="searchClose" type="button" aria-label="Đóng tìm kiếm">✕</button></div>
+  <div class="search-top"><a class="dip-brand compact" href="/"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><span><b>SKY FIRST</b><small>TÌM KIẾM</small></span></a><button id="searchClose" type="button" aria-label="Đóng tìm kiếm">✕</button></div>
   <div class="search-body"><span class="hero-eyebrow">TÌM KIẾM TOÀN CỔNG</span><h2 id="searchTitle">Tìm trong Sky First</h2><div class="search-box"><span>⌕</span><input id="globalSearch" type="search" placeholder="Nhập nội dung tại đây..." autocomplete="off" aria-describedby="searchHint"><kbd>ESC</kbd></div><p id="searchHint">Dùng ↑ ↓ để di chuyển, Enter để mở kết quả.</p><div class="search-filters" id="searchFilters" aria-label="Lọc kết quả"></div><div class="recent-searches" id="recentSearches"></div><div class="global-results" id="globalResults" aria-live="polite"></div></div>
 </div>
 
-<footer class="dip-footer" id="connect"><div class="dip-footer-grid"><div><a class="dip-brand footer-logo" href="/"><img src="/assets/sfn-logo.png" alt=""><span><b>SKY FIRST NETWORK</b><small>Cổng Thông tin Số</small></span></a><p id="footerDescription">Hạ tầng thông tin và điểm truy cập số tập trung của Sky First Network.</p></div><div><b>Khám phá</b><a href="/#programs">Chương trình</a><a href="/#activities">Hoạt động</a><a href="/#news">Tin tức</a><a href="/#resources">Tài nguyên</a></div><div><b>Cổng số</b><a href="/gcn">Giấy đã phát hành</a><a href="/ho-so">Hồ sơ</a><a href="/bieu-mau">Biểu mẫu</a><a href="/tra-cuu">Tra cứu</a></div><div><b>Minh bạch & hỗ trợ</b><a href="/#privacy">Quyền riêng tư</a><a href="/#terms">Điều khoản</a><a href="mailto:support@skyfirst.io.vn" id="footerSupportLink">Bảo mật & báo lỗi</a><a href="mailto:ctt@skyfirst.io.vn" id="footerPortalEmailLink"><span id="footerPortalEmailText">ctt@skyfirst.io.vn</span></a></div></div><div class="dip-footer-bottom"><span id="footerCopyright">© 2026 Sky First Network</span><span class="footer-mission">KẾT NỐI TRI THỨC · LAN TỎA GIÁ TRỊ · VÌ CỘNG ĐỒNG PHÁT TRIỂN</span><a class="footer-domain" href="https://ctt.skyfirst.io.vn">CỔNG THÔNG TIN SỐ SKY FIRST · ctt.skyfirst.io.vn</a><button class="footer-top" type="button" aria-label="Lên đầu trang" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button></div></footer>
+<footer class="dip-footer" id="connect"><div class="dip-footer-grid"><div><a class="dip-brand footer-logo" href="/"><img src="/assets/sfn-logo-tight.png" alt=""><span><b>SKY FIRST NETWORK</b><small>Cổng Thông tin Số</small></span></a><p id="footerDescription">Hạ tầng thông tin và điểm truy cập số tập trung của Sky First Network.</p></div><div><b>Khám phá</b><a href="/#programs">Chương trình</a><a href="/#activities">Hoạt động</a><a href="/#news">Tin tức</a><a href="/#resources">Tài nguyên</a></div><div><b>Cổng số</b><a href="/gcn">Giấy đã phát hành</a><a href="/ho-so">Hồ sơ</a><a href="/bieu-mau">Biểu mẫu</a><a href="/tra-cuu">Tra cứu</a></div><div><b>Minh bạch & hỗ trợ</b><a href="/#privacy">Quyền riêng tư</a><a href="/#terms">Điều khoản</a><a href="mailto:ctt@skyfirst.io.vn" id="footerSupportLink">Bảo mật & báo lỗi</a><a href="mailto:ctt@skyfirst.io.vn" id="footerPortalEmailLink"><span id="footerPortalEmailText">ctt@skyfirst.io.vn</span></a></div></div><div class="dip-footer-bottom"><span id="footerCopyright">© 2026 Sky First Network</span><span class="footer-mission">KẾT NỐI TRI THỨC · LAN TỎA GIÁ TRỊ · VÌ CỘNG ĐỒNG PHÁT TRIỂN</span><a class="footer-domain" href="https://ctt.skyfirst.io.vn">CỔNG THÔNG TIN SỐ SKY FIRST · ctt.skyfirst.io.vn</a><button class="footer-top" type="button" aria-label="Lên đầu trang" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button></div></footer>
 
-<script type="module" src="/digital-portal.js?v=20261010-v4"></script>
-<script type="module" src="/bootstrap.js?v=20261010-v4"></script>
+<script type="module" src="/digital-portal.js?v=20261010-v5"></script>
+<script type="module" src="/bootstrap.js?v=20261010-v5"></script>
 </body>
 </html>

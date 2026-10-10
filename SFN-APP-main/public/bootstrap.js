@@ -3,7 +3,8 @@ let appBundleLoaded=false;
 
 function currentRoute(){
   const hash=(location.hash||'#home').slice(1);
-  const [route,param]=hash.split('/');
+  const [route,rawParam]=hash.split('/');
+  let param=rawParam;try{if(param)param=decodeURIComponent(param)}catch{}
   return {path:location.pathname.replace(/\/+$/,'/')||'/',route,param};
 }
 
@@ -14,7 +15,7 @@ function needsAppBundle({path,route}){
 async function loadAppBundle(){
   if(appBundleLoaded)return;
   appBundleLoaded=true;
-  await import('/app.js?v=20261010-v4');
+  await import('/app.js?v=20261010-v5');
 }
 
 async function renderPublic(){
@@ -40,15 +41,15 @@ window.addEventListener('hashchange',()=>{if(!appBundleLoaded)renderPublic()});
 renderPublic();
 
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/sw.js?v=20261010-v4',{updateViaCache:'none'}).then(reg=>{
+  navigator.serviceWorker.register('/sw.js?v=20261010-v5',{updateViaCache:'none'}).then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
   let hadController=!!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
     if(!hadController){hadController=true;return;}
     try{
-      if(sessionStorage.getItem('sfn_sw_reloaded_v4')==='1')return;
-      sessionStorage.setItem('sfn_sw_reloaded_v4','1');
+      if(sessionStorage.getItem('sfn_sw_reloaded_v5')==='1')return;
+      sessionStorage.setItem('sfn_sw_reloaded_v5','1');
     }catch{}
     location.reload();
   });

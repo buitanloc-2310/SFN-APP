@@ -1,3 +1,13 @@
+# CTT V5 — LƯU Ý BẢN GIAO GIAO DIỆN (10/10/2026)
+
+> **Bản V5:** xem `CTT_V5_REFERENCE_IMPLEMENTATION_REPORT.md` để biết thay đổi, kiểm thử và giới hạn. V5 bổ sung giao diện theo 5 ảnh tham chiếu, liên kết chi tiết chương trình/sự kiện/tin tức, trang tiện ích và phiên bản cache mới.
+>
+> **Không phải gói HTML tĩnh để chỉ upload vào `public_html` iNET.** Mã nguồn này tiếp tục dùng Cloudflare Workers + D1 + R2 và các API hiện tại. Chuyển riêng phần frontend sang hosting tĩnh không tự chuyển backend/API/cơ sở dữ liệu.
+>
+> **V5 không có migration SQL mới.** Không chạy `npm run db:migrate` chỉ để áp dụng bản giao diện V5; giữ nguyên D1 đang dùng. Hãy kiểm tra staging/preview và bindings hiện tại trước khi deploy. Chưa có deploy production trong bản bàn giao này.
+
+---
+
 # CỔNG THÔNG TIN SỐ SKY FIRST — MASTER UPGRADE V2
 
 **SKY FIRST DIGITAL INFORMATION PORTAL**  
