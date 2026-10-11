@@ -151,6 +151,15 @@ export async function adminRoute(request,env,url,ctx){
     }});
   }
 
+  if(p==="/api/admin/xanh-submissions"&&request.method==="GET"){
+    const deny=requirePermission(user,"submission.view");if(deny)return deny;
+    const q=String(url.searchParams.get("q")||"").trim().slice(0,120);
+    let sql="SELECT id,source,external_code,full_name,email,form_name,external_status,source_submitted_at,source_tracking_url,received_at,updated_at FROM xanh_external_submissions WHERE 1=1",vals=[];
+    if(q){sql+=" AND (external_code LIKE ? OR full_name LIKE ? OR email LIKE ?)";vals.push(`%${q}%`,`%${q}%`,`%${q}%`)}
+    sql+=" ORDER BY received_at DESC LIMIT 500";
+    const rs=await env.DB.prepare(sql).bind(...vals).all();return json({items:rs.results||[]});
+  }
+
   if(p==="/api/admin/submissions"&&request.method==="GET"){
     const deny=requirePermission(user,"submission.view");if(deny)return deny;
     const status=url.searchParams.get("status"),form=url.searchParams.get("form"),q=url.searchParams.get("q");

@@ -130,7 +130,7 @@ async function scheduledBackup(env){
 async function handle(request,env,ctx){
   const url=new URL(request.url);
 
-  if(isStateChanging(request) && url.pathname.startsWith("/api/")){
+  if(isStateChanging(request) && url.pathname.startsWith("/api/") && url.pathname!=="/api/integrations/xanh/submissions"){
     const appUrl=env.APP_URL||url.origin;
     if(!sameOrigin(request,appUrl)) return json({error:"BAD_ORIGIN"},403);
   }

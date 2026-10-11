@@ -84,3 +84,7 @@ Public form dùng upload session: browser xin session → Worker stream request 
 ## 9. Rollback
 
 Trước thay đổi production lớn, tạo backup nghiệp vụ và giữ bản deploy trước. Migration `0005` là additive; không rollback bằng cách xóa cột trên D1 production. Nếu cần rollback app, deploy source trước đó nhưng giữ database và kiểm tra compatibility.
+
+
+## Liên thông hồ sơ Xanh Sky First
+Xem `docs/XANH_CTT_INTEGRATION.md`. Áp dụng migration 0007 và cấu hình secret `XANH_CTT_SHARED_SECRET` trước khi bật gửi hồ sơ từ Xanh.

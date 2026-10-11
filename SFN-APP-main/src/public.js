@@ -316,6 +316,46 @@ async function lookupCredential(env,rawCode){
 export async function publicRoute(request,env,url,ctx){
   const p=url.pathname;
 
+  // Authenticated server-to-server intake from Xanh Sky First. No browser/session auth is accepted.
+  if(p==="/api/integrations/xanh/submissions"){
+    if(request.method!=="POST") return json({error:"METHOD_NOT_ALLOWED"},405,{"Allow":"POST","Cache-Control":"no-store"});
+    const secret=String(env.XANH_CTT_SHARED_SECRET||"");
+    if(secret.length<32) return json({error:"INTEGRATION_NOT_CONFIGURED"},503,{"Cache-Control":"no-store"});
+    const ts=String(request.headers.get("x-sfn-timestamp")||""),nonce=String(request.headers.get("x-sfn-nonce")||""),sig=String(request.headers.get("x-sfn-signature")||"");
+    if(!/^\d{10,13}$/.test(ts)||!/^[A-Za-z0-9_-]{20,100}$/.test(nonce)||!/^v1=[a-f0-9]{64}$/.test(sig)) return json({error:"INVALID_SIGNATURE_HEADERS"},401,{"Cache-Control":"no-store"});
+    const tsNum=Number(ts.length===13?Math.floor(Number(ts)/1000):Number(ts));
+    if(!Number.isFinite(tsNum)||Math.abs(Math.floor(Date.now()/1000)-tsNum)>300) return json({error:"SIGNATURE_EXPIRED"},401,{"Cache-Control":"no-store"});
+    const raw=await request.text();
+    if(raw.length>32768) return json({error:"PAYLOAD_TOO_LARGE"},413,{"Cache-Control":"no-store"});
+    const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+    const signed=new TextEncoder().encode(`${ts}.${nonce}.${raw}`);
+    const digest=Array.from(new Uint8Array(await crypto.subtle.sign("HMAC",key,signed))).map(b=>b.toString(16).padStart(2,"0")).join("");
+    const expected=`v1=${digest}`;
+    if(sig.length!==expected.length||[...sig].reduce((acc,ch,i)=>acc|(ch.charCodeAt(0)^expected.charCodeAt(i)),0)!==0) return json({error:"INVALID_SIGNATURE"},401,{"Cache-Control":"no-store"});
+    // The signature covers the raw body; reserve nonce only after successful authentication.
+    const hashBytes=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(raw));
+    const payloadHash=Array.from(new Uint8Array(hashBytes)).map(b=>b.toString(16).padStart(2,"0")).join("");
+    let body; try{body=JSON.parse(raw)}catch{return json({error:"INVALID_JSON"},400,{"Cache-Control":"no-store"});}
+    const source=String(body.source||"");
+    const code=String(body.code||"").trim();
+    const fullName=String(body.full_name||"").trim().slice(0,200);
+    const email=String(body.email||"").trim().toLowerCase().slice(0,254);
+    const formName=String(body.form_name||"").trim().slice(0,200);
+    const status=String(body.status||"Đã tiếp nhận").trim().slice(0,80);
+    const submittedAt=String(body.submitted_at||"").slice(0,40);
+    const tracking=String(body.tracking_url||"").slice(0,500);
+    if(source!=="xanh-sky-first"||!/^XSF-[A-Z0-9-]{5,100}$/i.test(code)||!fullName||!/^\S+@\S+\.\S+$/.test(email)) return json({error:"INVALID_SUBMISSION"},400,{"Cache-Control":"no-store"});
+    try{
+      await env.DB.prepare("INSERT INTO integration_nonces(nonce,source,created_at) VALUES(?,?,?)").bind(nonce,source,tsNum).run();
+    }catch{return json({error:"REPLAY_DETECTED"},409,{"Cache-Control":"no-store"});}
+    try{
+      await env.DB.prepare(`INSERT INTO xanh_external_submissions(source,external_code,full_name,email,form_name,external_status,source_submitted_at,source_tracking_url,payload_hash,received_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+        ON CONFLICT(source,external_code) DO UPDATE SET full_name=excluded.full_name,email=excluded.email,form_name=excluded.form_name,external_status=excluded.external_status,source_submitted_at=excluded.source_submitted_at,source_tracking_url=excluded.source_tracking_url,payload_hash=excluded.payload_hash,updated_at=CURRENT_TIMESTAMP`).bind(source,code,fullName,email,formName,status,submittedAt,tracking,payloadHash).run();
+      await env.DB.prepare("DELETE FROM integration_nonces WHERE created_at < ?").bind(Math.floor(Date.now()/1000)-86400).run();
+      return json({ok:true,source,external_code:code,received:true,duplicate_safe:true,received_at:new Date().toISOString()},200,{"Cache-Control":"no-store"});
+    }catch(err){console.error("XANH_INTEGRATION_STORE_FAILED",String(err?.message||err));return json({error:"STORE_FAILED"},500,{"Cache-Control":"no-store"});}
+  }
+
   if(p==="/api/config"&&request.method==="GET"){
     let mods={results:[]},forms={results:[]};
     try{
