@@ -1,10 +1,14 @@
-
 import {
   json, readJson, uid, randomToken, sha256, ageFromDob, flattenFields, sanitizeFilename,
   requestIp, ipHash, rateLimit, escapeHtml, safeEq
 } from "./utils.js";
 import {getAuthUser} from "./auth.js";
 import {sendTemplatedEmail, answersToEmail} from "./email.js";
+
+export const LOOKUP_POLICY_NOTICE_VI = "Hệ thống chỉ cung cấp các thông tin được phép công khai theo chính sách dữ liệu của Sky First Network. Thông tin cá nhân và dữ liệu nội bộ không thuộc phạm vi công khai phải được bảo vệ, không trả về trong phản hồi tra cứu hoặc hiển thị trên giao diện người dùng.";
+export const LOOKUP_QUERY_TIME_NOTICE_VI = "Kết quả tra cứu phản ánh trạng thái của bản ghi trong cơ sở dữ liệu Hệ thống Thông tin Số Sky First tại thời điểm thực hiện truy vấn.";
+export const LOOKUP_POLICY_NOTICE_EN = "The system only provides information permitted for public disclosure under Sky First Network's data policy. Personal information and non-public internal data are protected and never returned in lookup responses or displayed on the user interface.";
+export const LOOKUP_QUERY_TIME_NOTICE_EN = "The lookup result reflects the state of the record in the Sky First Digital Information System database at the exact time of the query.";
 
 async function getSetting(env,key,fallback=null){
   try{
@@ -241,21 +245,87 @@ async function tableExists(env,table){
     const ok=!!row;schemaCache.set(key,ok);return ok;
   }catch{return false}
 }
-function normalizeCredentialStatus(value){
+
+/*
+ * Mục 1: Chuẩn hóa trạng thái chứng nhận (Có hiệu lực, Hết hiệu lực, Đã thu hồi, Đã được thay thế, Chưa phát hành)
+ */
+function normalizeCredentialStatus(value, metadata = {}){
   const raw=String(value||"").trim();
   const s=raw.toLowerCase();
-  if(!s) return {status:"issued",text:"CÓ HIỆU LỰC",public:true};
-  if(s.includes("supersed")||s.includes("thay thế")||s.includes("thay the")) return {status:"superseded",text:"ĐÃ ĐƯỢC THAY THẾ",public:true};
-  if(s.includes("revoke")||s.includes("thu hồi")||s.includes("thu hoi")||s.includes("hủy")||s.includes("huy")) return {status:"revoked",text:"ĐÃ THU HỒI",public:true};
-  if(["issued","active","valid","có hiệu lực","co hieu luc","đã cấp","da cap","đã phát hành","da phat hanh","còn hiệu lực","con hieu luc"].includes(s)) return {status:"issued",text:"CÓ HIỆU LỰC",public:true};
-  if(s.includes("pending")||s.includes("draft")||s.includes("approved")||s.includes("chờ")||s.includes("cho ")||s.includes("nháp")||s.includes("nhap")) return {status:s,text:raw||"CHƯA PHÁT HÀNH",public:false};
-  return {status:raw||"issued",text:raw||"CÓ HIỆU LỰC",public:true};
+  if(!s) return {status:"issued",text:"CÓ HIỆU LỰC",text_en:"VALID",public:true};
+  if(s.includes("supersed")||s.includes("thay thế")||s.includes("thay the")) return {status:"superseded",text:"ĐÃ ĐƯỢC THAY THẾ",text_en:"SUPERSEDED",public:true};
+  if(s.includes("revoke")||s.includes("thu hồi")||s.includes("thu hoi")||s.includes("hủy")||s.includes("huy")) return {status:"revoked",text:"ĐÃ THU HỒI",text_en:"REVOKED",public:true};
+  if(s.includes("expir")||s.includes("hết hiệu lực")||s.includes("het hieu luc")||s.includes("hết hạn")){
+    return {status:"expired",text:"HẾT HIỆU LỰC",text_en:"EXPIRED",public:true};
+  }
+  if(["issued","active","valid","có hiệu lực","co hieu luc","đã cấp","da cap","đã phát hành","da phat hanh","còn hiệu lực","con hieu luc"].includes(s)){
+    if(metadata?.expires_at && new Date(metadata.expires_at).getTime() < Date.now()){
+      return {status:"expired",text:"HẾT HIỆU LỰC",text_en:"EXPIRED",public:true};
+    }
+    return {status:"issued",text:"CÓ HIỆU LỰC",text_en:"VALID",public:true};
+  }
+  if(s.includes("pending")||s.includes("draft")||s.includes("approved")||s.includes("hidden")||s.includes("ẩn")||s.includes("chờ")||s.includes("cho ")||s.includes("nháp")||s.includes("nhap")) return {status:s,text:raw||"CHƯA PHÁT HÀNH",text_en:"NOT PUBLISHED",public:false};
+  return {status:raw||"issued",text:raw||"CÓ HIỆU LỰC",text_en:"VALID",public:true};
 }
 
-async function lookupCredential(env,rawCode){
-  const code=normalizeCredentialCode(rawCode);
-  if(!code||!env.DB) return null;
+function formatPublicCertificateRow(row, registry = null, fallbackCode = "", replacement = null) {
+  let metadata={}; try{metadata=JSON.parse(row.metadata_json||"{}")}catch{}
+  const normalized=normalizeCredentialStatus(row.status, metadata);
+  if(!normalized.public) return null;
+  // Tuyệt đối không trả về email cá nhân, số điện thoại, ngày sinh, CCCD hay ghi chú nội bộ trong phản hồi tra cứu công khai
+  return {
+    code:row.public_id||row.code||row.legacy_code||registry?.lookup_code||fallbackCode,
+    legacy_code:row.legacy_code||(/^\d{3}-|\/(GCN|GXN|BK)-SFN\//i.test(row.code||"")?row.code:null),
+    type:row.cert_type||registry?.document_type||"Giấy đã phát hành",
+    full_name:row.full_name||"",
+    content:row.content||"",
+    issued_at:row.issued_at||row.created_at||"",
+    expires_at:metadata.expires_at||"",
+    status:normalized.status,
+    status_text:normalized.text,
+    status_text_en:normalized.text_en,
+    revoked_at:row.revoked_at||"",
+    revocation_reason:row.revocation_reason||"",
+    unit_name:metadata.unit_name||metadata.issuer||"Sky First Network",
+    role:metadata.role||metadata.position||"",
+    program:metadata.program||metadata.activity||metadata.event||"",
+    file_url:metadata.file_url||metadata.url||"",
+    replacement_code:replacement?.public_id||replacement?.code||replacement?.legacy_code||metadata.replacement_code||""
+  };
+}
 
+async function lookupCredential(env,rawInput){
+  const trimmed=String(rawInput||"").trim();
+  if(!trimmed||!env.DB) return null;
+
+  // Hỗ trợ tra cứu chứng nhận bằng địa chỉ email hoặc số điện thoại khi cần thiết (Mục 1), nhưng ẩn toàn bộ thông tin nhạy cảm
+  const isEmailQuery = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+  const isPhoneQuery = /^(?:\+?84|0)\d{8,10}$/.test(trimmed.replace(/[\s.-]/g,""));
+
+  if((isEmailQuery || isPhoneQuery) && await tableExists(env,"certificates")){
+    const cols=await tableColumns(env,"certificates");
+    let rs={results:[]};
+    if(isEmailQuery && (cols.has("email") || cols.has("recipient_email"))){
+      const emailCol = cols.has("email") ? "email" : "recipient_email";
+      rs=await env.DB.prepare(`SELECT * FROM certificates WHERE lower(${emailCol})=lower(?) ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 20`).bind(trimmed).all();
+    }else if(isPhoneQuery){
+      const cleanPhone=trimmed.replace(/[\s.-]/g,"");
+      rs=await env.DB.prepare("SELECT * FROM certificates WHERE COALESCE(metadata_json,'') LIKE ? ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 20").bind(`%${cleanPhone}%`).all();
+    }
+    const items=[];
+    for(const r of rs.results||[]){
+      let rep=null;
+      if(r.superseded_by_id){
+        try{rep=await env.DB.prepare("SELECT * FROM certificates WHERE id=? LIMIT 1").bind(r.superseded_by_id).first()}catch{}
+      }
+      const formatted=formatPublicCertificateRow(r,null,r.code||"",rep);
+      if(formatted) items.push(formatted);
+    }
+    if(!items.length) return null;
+    return items[0];
+  }
+
+  const code=normalizeCredentialCode(trimmed);
   let registry=null;
   if(await tableExists(env,"issued_document_codes")){
     try{
@@ -287,36 +357,25 @@ async function lookupCredential(env,rawCode){
       full_name:"",
       content:"Mã giấy đã được ghi nhận trong hệ thống Sky First.",
       issued_at:registry.created_at||"",
+      expires_at:"",
       status:active?"issued":"revoked",
       status_text:active?"CÓ HIỆU LỰC":"ĐÃ THU HỒI",
+      status_text_en:active?"VALID":"REVOKED",
       revoked_at:"",revocation_reason:"",unit_name:"Sky First Network",role:"",program:"",file_url:"",replacement_code:""
     };
   }
   if(!row) return null;
 
-  const normalized=normalizeCredentialStatus(row.status);
-  if(!normalized.public) return null;
-  let metadata={}; try{metadata=JSON.parse(row.metadata_json||"{}")}catch{}
   let replacement=null;
   if(row.superseded_by_id){
     try{replacement=await env.DB.prepare("SELECT * FROM certificates WHERE id=? LIMIT 1").bind(row.superseded_by_id).first()}catch{}
   }
-  return {
-    code:row.public_id||row.code||row.legacy_code||registry?.lookup_code||code,
-    legacy_code:row.legacy_code||(/^\d{3}-|\/(GCN|GXN|BK)-SFN\//i.test(row.code||"")?row.code:null),
-    type:row.cert_type||registry?.document_type||"Giấy đã phát hành",
-    full_name:row.full_name||"",content:row.content||"",issued_at:row.issued_at||row.created_at||"",
-    status:normalized.status,status_text:normalized.text,revoked_at:row.revoked_at||"",revocation_reason:row.revocation_reason||"",
-    unit_name:metadata.unit_name||metadata.issuer||"Sky First Network",
-    role:metadata.role||metadata.position||"",program:metadata.program||metadata.activity||metadata.event||"",
-    file_url:metadata.file_url||metadata.url||"",replacement_code:replacement?.public_id||replacement?.code||replacement?.legacy_code||""
-  };
+  return formatPublicCertificateRow(row, registry, code, replacement);
 }
 
 export async function publicRoute(request,env,url,ctx){
   const p=url.pathname;
 
-  // Authenticated server-to-server intake from Xanh Sky First. No browser/session auth is accepted.
   if(p==="/api/integrations/xanh/submissions"){
     if(request.method!=="POST") return json({error:"METHOD_NOT_ALLOWED"},405,{"Allow":"POST","Cache-Control":"no-store"});
     const secret=String(env.XANH_CTT_SHARED_SECRET||"");
@@ -332,7 +391,6 @@ export async function publicRoute(request,env,url,ctx){
     const digest=Array.from(new Uint8Array(await crypto.subtle.sign("HMAC",key,signed))).map(b=>b.toString(16).padStart(2,"0")).join("");
     const expected=`v1=${digest}`;
     if(sig.length!==expected.length||[...sig].reduce((acc,ch,i)=>acc|(ch.charCodeAt(0)^expected.charCodeAt(i)),0)!==0) return json({error:"INVALID_SIGNATURE"},401,{"Cache-Control":"no-store"});
-    // The signature covers the raw body; reserve nonce only after successful authentication.
     const hashBytes=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(raw));
     const payloadHash=Array.from(new Uint8Array(hashBytes)).map(b=>b.toString(16).padStart(2,"0")).join("");
     let body; try{body=JSON.parse(raw)}catch{return json({error:"INVALID_JSON"},400,{"Cache-Control":"no-store"});}
@@ -357,11 +415,20 @@ export async function publicRoute(request,env,url,ctx){
   }
 
   if(p==="/api/config"&&request.method==="GET"){
-    let mods={results:[]},forms={results:[]};
+    let mods={results:[]},forms={results:[]},navItems={results:[]},folders={results:[]},sysLinks={results:[]};
     try{
       if(env.DB){
         mods=await env.DB.prepare("SELECT key,name,category,enabled,sort_order,description FROM modules ORDER BY sort_order").all();
         forms=await env.DB.prepare("SELECT id,name,prefix,description,audience,min_age,version FROM forms WHERE enabled=1 ORDER BY rowid").all();
+        if(await tableExists(env,"navigation_items")){
+          navItems=await env.DB.prepare("SELECT id,location,parent_id,label_vi,label_en,url,target,icon,sort_order,visible,status FROM navigation_items WHERE visible=1 AND status='published' ORDER BY sort_order ASC, id ASC").all();
+        }
+        if(await tableExists(env,"content_folders")){
+          folders=await env.DB.prepare("SELECT id,parent_id,name_vi,name_en,slug,module_scope,description,sort_order FROM content_folders WHERE status='active' ORDER BY sort_order ASC").all();
+        }
+        if(await tableExists(env,"system_links")){
+          sysLinks=await env.DB.prepare("SELECT id,link_key,label_vi,label_en,usage_location,target_url,domain_role,status,is_external FROM system_links WHERE status='active'").all();
+        }
       }
     }catch(err){ console.error("PUBLIC_CONFIG_DB_FALLBACK",err); }
     const homeStatsDefaults={
@@ -372,11 +439,11 @@ export async function publicRoute(request,env,url,ctx){
         members:"Thành viên cộng đồng",
         certificates:"Chứng nhận đã phát hành",
         partners:"Đối tác & đơn vị đồng hành",
-        sponsorship:"Tổng tiền tài trợ (thực nhận)"
+        sponsorship:"Tổng tiền tài trợ"
       },
       sponsorship_basis:"received",
       sponsorship_unit:"VND",
-      duration_ms:1200,
+      duration_ms:0,
       cycles:1
     };
     const storedHomeStats=await getSetting(env,"home_stats",homeStatsDefaults);
@@ -391,7 +458,7 @@ export async function publicRoute(request,env,url,ctx){
       if(env.DB){
         const hasSponsorship=await tableExists(env,"sponsorship_campaigns");
         const queries=[
-          env.DB.prepare("SELECT (SELECT COUNT(*) FROM classes WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn','Đã hủy'))+(SELECT COUNT(*) FROM events WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn','Đã hủy')) AS n"),
+          env.DB.prepare("SELECT (SELECT COUNT(*) FROM classes WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn','Đã hủy','Đã thu hồi'))+(SELECT COUNT(*) FROM events WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn','Đã hủy','Đã thu hồi')) AS n"),
           env.DB.prepare("SELECT CASE WHEN (SELECT COUNT(*) FROM people WHERE status='Đang hoạt động') > 0 THEN (SELECT COUNT(*) FROM people WHERE status='Đang hoạt động') ELSE (SELECT COUNT(*) FROM users WHERE status='active' AND email_verified=1) END AS n"),
           env.DB.prepare("SELECT COUNT(*) AS n FROM certificates WHERE lower(status)='issued' AND issued_at IS NOT NULL"),
           env.DB.prepare("SELECT COUNT(*) AS n FROM units WHERE status='Đang hoạt động'")
@@ -407,9 +474,9 @@ export async function publicRoute(request,env,url,ctx){
           members:Number(counts[1]?.results?.[0]?.n||0),
           certificates:Number(counts[2]?.results?.[0]?.n||0),
           partners:Number(counts[3]?.results?.[0]?.n||0),
-          sponsorship:spCampaignCount>0?Number(spRow.received||0):null,
-          sponsorship_pledged:spCampaignCount>0?Number(spRow.pledged||0):null,
-          sponsorship_disbursed:spCampaignCount>0?Number(spRow.disbursed||0):null,
+          sponsorship:spCampaignCount>0?Number(spRow.received||0):0,
+          sponsorship_pledged:spCampaignCount>0?Number(spRow.pledged||0):0,
+          sponsorship_disbursed:spCampaignCount>0?Number(spRow.disbursed||0):0,
           sponsorship_campaigns:spCampaignCount,
           updated_at:new Date().toISOString()
         };
@@ -421,11 +488,14 @@ export async function publicRoute(request,env,url,ctx){
       app_name_en:await getSetting(env,"app_name_en","Sky First Digital Information System"),
       app_short_name:await getSetting(env,"app_short_name","Sky First"),
       app_url:env.APP_URL||await getSetting(env,"app_url","https://app.skyfirst.io.vn"),
+      admin_login_url:await getSetting(env,"admin_login_url","https://app.skyfirst.io.vn/admin/login"),
       website:await getSetting(env,"website","https://skyfirst.io.vn"),
       hotline:await getSetting(env,"hotline","0924 910 210"),
       system_email:await getSetting(env,"system_email","app@skyfirst.io.vn"),
       contact_email:await getSetting(env,"contact_email","lienhe@skyfirst.io.vn"),
       support_email:await getSetting(env,"support_email","support@skyfirst.io.vn"),
+      password_reset_contact_email:await getSetting(env,"password_reset_contact_email","support@skyfirst.io.vn"),
+      allow_self_service_password_reset:await getSetting(env,"allow_self_service_password_reset",false),
       receiver_email:await getSetting(env,"receiver_email","app@skyfirst.io.vn"),
       slogan:await getSetting(env,"brand_slogan","Kết nối tri thức • Lan tỏa giá trị • Vì cộng đồng bền vững"),
       hero_title:await getSetting(env,"hero_title","Hệ thống Thông tin Số Sky First"),
@@ -433,20 +503,28 @@ export async function publicRoute(request,env,url,ctx){
       hero_cover_url:await getSetting(env,"hero_cover_url",""),
       maintenance_mode:await getSetting(env,"maintenance_mode",false),
       header_show_brand:await getSetting(env,"header_show_brand",true),
-      header_show_theme:await getSetting(env,"header_show_theme",true),
-      header_show_account:await getSetting(env,"header_show_account",true),
-      header_account_label:await getSetting(env,"header_account_label","Đăng nhập"),
-      footer_description:await getSetting(env,"footer_description","Hệ thống thông tin và dịch vụ số phục vụ tra cứu, đăng ký chương trình, biểu mẫu, chứng nhận và minh bạch hoạt động."),
+      header_show_theme:await getSetting(env,"header_show_theme",false),
+      header_show_account:await getSetting(env,"header_show_account",false),
+      footer_description:await getSetting(env,"footer_description","Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First."),
+      footer_description_en:await getSetting(env,"footer_description_en","Explore, verify, register, and manage community programs, events, documents, digital forms, certificates, and support services of Sky First."),
       footer_email:await getSetting(env,"footer_email","lienhe@skyfirst.io.vn"),
       footer_support_email:await getSetting(env,"footer_support_email","support@skyfirst.io.vn"),
       footer_portal_email:await getSetting(env,"footer_portal_email","app@skyfirst.io.vn"),
+      footer_copyright:await getSetting(env,"footer_copyright","© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền."),
+      footer_copyright_en:await getSetting(env,"footer_copyright_en","© 2026 Sky First Digital Information System. All rights reserved."),
+      footer_citation:await getSetting(env,"footer_citation","Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân."),
+      footer_citation_en:await getSetting(env,"footer_citation_en","All cited information, data, documents, and content from the System must clearly credit the source: Sky First Digital Information System, with a link to the original content when possible; citations must not distort original meaning and must comply with copyright, intellectual property, and personal data protection regulations."),
+      lookup_policy_notice:await getSetting(env,"lookup_policy_notice",LOOKUP_POLICY_NOTICE_VI),
+      lookup_query_time_notice:await getSetting(env,"lookup_query_time_notice",LOOKUP_QUERY_TIME_NOTICE_VI),
       portal_main_label:await getSetting(env,"portal_main_label","Trang Thông tin Điện tử Sky First"),
       portal_main_url:await getSetting(env,"portal_main_url","https://skyfirst.io.vn"),
       portal_tnv_url:await getSetting(env,"portal_tnv_url","https://tnv.skyfirst.io.vn"),
       portal_sfec_url:await getSetting(env,"portal_sfec_url","https://sfec.skyfirst.io.vn"),
       portal_slc_url:await getSetting(env,"portal_slc_url","https://slc.skyfirst.io.vn"),
       portal_member_url:await getSetting(env,"portal_member_url","https://member.skyfirst.io.vn"),
-      footer_copyright:await getSetting(env,"footer_copyright","© 2026 Hệ thống Thông tin Số Sky First (app.skyfirst.io.vn)"),
+      navigation:navItems.results||[],
+      folders:folders.results||[],
+      system_links:sysLinks.results||[],
       modules:mods.results||[],
       forms:forms.results||[],
       google_oauth:!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_REDIRECT_URI),
@@ -460,11 +538,11 @@ export async function publicRoute(request,env,url,ctx){
     const like=`%${q}%`;
     const batchQueries=[
       env.DB.prepare("SELECT 'news' type,title,slug ref,substr(body,1,180) description,published_at date FROM news WHERE status='published' AND (title LIKE ? OR body LIKE ?) ORDER BY COALESCE(published_at,created_at) DESC LIMIT 12").bind(like,like),
-      env.DB.prepare("SELECT 'event' type,title,id ref,COALESCE(status,'') description,start_at date FROM events WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn') AND (title LIKE ? OR COALESCE(data_json,'') LIKE ?) ORDER BY COALESCE(start_at,created_at) DESC LIMIT 12").bind(like,like),
+      env.DB.prepare("SELECT 'event' type,title,id ref,COALESCE(status,'') description,start_at date FROM events WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn','Đã thu hồi') AND (title LIKE ? OR COALESCE(data_json,'') LIKE ?) ORDER BY COALESCE(start_at,created_at) DESC LIMIT 12").bind(like,like),
       env.DB.prepare("SELECT 'unit' type,name title,code ref,COALESCE(unit_type,'') description,NULL date FROM units WHERE status!='Đã giải thể' AND (name LIKE ? OR code LIKE ?) ORDER BY name LIMIT 12").bind(like,like),
       env.DB.prepare("SELECT 'form' type,name title,id ref,COALESCE(description,'') description,NULL date FROM forms WHERE enabled=1 AND (name LIKE ? OR COALESCE(description,'') LIKE ?) ORDER BY rowid LIMIT 12").bind(like,like),
       env.DB.prepare("SELECT 'resource' type,title,id ref,COALESCE(doc_type,'') description,issued_at date FROM documents WHERE visibility='public' AND status='Có hiệu lực' AND (title LIKE ? OR code LIKE ? OR COALESCE(metadata_json,'') LIKE ?) ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 12").bind(like,like,like),
-      env.DB.prepare("SELECT 'program' type,title,id ref,trim(COALESCE(level,'') || ' ' || COALESCE(status,'')) description,NULL date FROM classes WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn') AND (title LIKE ? OR COALESCE(level,'') LIKE ? OR COALESCE(unit_code,'') LIKE ?) ORDER BY created_at DESC LIMIT 12").bind(like,like,like)
+      env.DB.prepare("SELECT 'program' type,title,id ref,trim(COALESCE(level,'') || ' ' || COALESCE(status,'')) description,NULL date FROM classes WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn','Đã thu hồi') AND (title LIKE ? OR COALESCE(level,'') LIKE ? OR COALESCE(unit_code,'') LIKE ?) ORDER BY created_at DESC LIMIT 12").bind(like,like,like)
     ];
     const hasSp=await tableExists(env,"sponsorship_campaigns");
     const hasCms=await tableExists(env,"cms_pages");
@@ -478,12 +556,12 @@ export async function publicRoute(request,env,url,ctx){
       {type:"page",title:"Hệ thống Thông tin Số Sky First",ref:"/",description:"Điểm truy cập tập trung các chức năng và dịch vụ số Sky First"},
       {type:"page",title:"Chương trình đào tạo & cộng đồng",ref:"/chuong-trinh",description:"Danh mục chương trình và lớp học thực tế"},
       {type:"page",title:"Sự kiện & Hoạt động",ref:"/su-kien",description:"Lịch sự kiện và hoạt động công khai"},
-      {type:"page",title:"Thư viện Tài liệu & PDF",ref:"/tai-lieu",description:"Tài liệu, văn bản và hướng dẫn được phân loại"},
+      {type:"page",title:"Tài liệu & Hướng dẫn",ref:"/tai-lieu",description:"Thư viện tài liệu và văn bản công khai"},
       {type:"page",title:"Biểu mẫu điện tử",ref:"/bieu-mau",description:"Gửi thông tin và hồ sơ trực tuyến"},
-      {type:"page",title:"Tra cứu Chứng nhận",ref:"/gcn",description:"Tra cứu Giấy chứng nhận, Giấy xác nhận, Bằng khen bằng mã"},
+      {type:"page",title:"Tra cứu Chứng nhận",ref:"/gcn",description:"Xác thực trạng thái hiệu lực, thu hồi hoặc thay thế của Giấy chứng nhận"},
       {type:"page",title:"Tra cứu Hồ sơ",ref:"/ho-so",description:"Theo dõi tiến trình xử lý hồ sơ đã gửi"},
-      {type:"page",title:"Minh bạch Tài trợ",ref:"/tai-tro",description:"Công khai mục tiêu, số tiền cam kết, thực nhận, giải ngân và chứng từ"},
-      {type:"page",title:"An toàn & Bảo mật số",ref:"/an-toan",description:"Hướng dẫn bảo vệ tài khoản, cảnh báo giả mạo và báo cáo sự cố"}
+      {type:"page",title:"Công khai Tài trợ",ref:"/tai-tro",description:"Công khai mục tiêu, số tiền cam kết, thực nhận, đã chi và số tiền còn lại"},
+      {type:"page",title:"An toàn & Bảo mật số",ref:"/an-toan",description:"Hướng dẫn bảo vệ tài khoản, cảnh báo mạo danh và báo cáo sự cố"}
     ].filter(x=>(x.title+' '+x.description).toLowerCase().includes(q.toLowerCase()));
     const items=[...pages,...spRes,...cmsRes,...(news.results||[]),...(events.results||[]),...(programs.results||[]),...(units.results||[]),...(forms.results||[]),...(docs.results||[])].slice(0,40);
     if(/^(SFN-(GCN|GXN|BK)-\d{5,8}|\d{8}|\d{3}-(GCN|GXN|BK)-SFN\/\d{4})$/i.test(q)){
@@ -502,6 +580,13 @@ export async function publicRoute(request,env,url,ctx){
         for(const v of vrs.results||[]) versionsMap[v.document_id]=v;
       }catch{}
     }
+    let foldersList=[];
+    if(await tableExists(env,"content_folders")){
+      try{
+        const frs=await env.DB.prepare("SELECT id,parent_id,name_vi,name_en,slug FROM content_folders WHERE module_scope='documents' AND status='active' ORDER BY sort_order ASC").all();
+        foldersList=frs.results||[];
+      }catch{}
+    }
     const items=docs.map(d=>{
       let meta={}; try{meta=JSON.parse(d.metadata_json||"{}")}catch{}
       const ver=versionsMap[d.id]||null;
@@ -509,6 +594,7 @@ export async function publicRoute(request,env,url,ctx){
       return {
         ...d,
         file_id:fid,
+        folder_id:meta.folder_id||"",
         category:meta.category||d.doc_type||"Tài liệu",
         description:meta.description||"",
         keywords:meta.keywords||"",
@@ -521,7 +607,7 @@ export async function publicRoute(request,env,url,ctx){
         download_url:(fid&&meta.allow_download!==false)?`/api/files/${encodeURIComponent(fid)}?download=1`:""
       };
     });
-    return json({items},200,publicCacheHeaders(180));
+    return json({items, folders:foldersList},200,publicCacheHeaders(180));
   }
 
   if(p==="/api/public/sponsorship"&&request.method==="GET"){
@@ -618,9 +704,11 @@ export async function publicRoute(request,env,url,ctx){
     await env.DB.prepare("INSERT INTO ticket_messages(ticket_id,sender_type,body) VALUES(?,'public',?)")
       .bind(ticketId,`${description}${affectedUrl?`\nURL liên quan: ${affectedUrl}`:""}`).run();
     if(reporterEmail){
-      const sendTask=sendTemplatedEmail(env,"support_ticket_received",reporterEmail,{
+      const sendTask=sendTemplatedEmail(env,"support_ticket_updated",reporterEmail,{
         full_name:reporterName||reporterEmail,
+        request_id:code,
         ticket_code:code,
+        registration_type:`Báo cáo an toàn · ${category}`,
         subject:title,
         status:"Đã tiếp nhận"
       });
@@ -655,10 +743,10 @@ export async function publicRoute(request,env,url,ctx){
     return json(await safePublicList(env,"SELECT id,title,slug,body,published_at,tags_json,cover_file_id FROM news WHERE status='published' ORDER BY COALESCE(published_at,created_at) DESC LIMIT 100"),200,publicCacheHeaders(180));
   }
   if(p==="/api/public/classes"&&request.method==="GET"){
-    return json(await safePublicList(env,"SELECT id,unit_code,title,level,status,schedule_json,capacity,data_json FROM classes ORDER BY created_at DESC"),200,publicCacheHeaders(180));
+    return json(await safePublicList(env,"SELECT id,unit_code,title,level,status,schedule_json,capacity,data_json FROM classes WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn','Đã thu hồi') ORDER BY created_at DESC"),200,publicCacheHeaders(180));
   }
   if(p==="/api/public/events"&&request.method==="GET"){
-    return json(await safePublicList(env,"SELECT id,unit_code,title,start_at,end_at,status,capacity,data_json FROM events ORDER BY COALESCE(start_at,created_at) DESC"),200,publicCacheHeaders(180));
+    return json(await safePublicList(env,"SELECT id,unit_code,title,start_at,end_at,status,capacity,data_json FROM events WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn','Đã thu hồi') ORDER BY COALESCE(start_at,created_at) DESC"),200,publicCacheHeaders(180));
   }
   if(p==="/api/public/units"&&request.method==="GET"){
     return json(await safePublicList(env,"SELECT code,name,unit_type,manager_name,email,status,data_json FROM units WHERE status!='Đã giải thể' ORDER BY name"),200,publicCacheHeaders(300));
@@ -745,7 +833,7 @@ export async function publicRoute(request,env,url,ctx){
         const file=formData.get(`file:${f.key}`);
         if(file && typeof file==="object" && "size" in file && file.size>0){
           try{
-            const stored=await storeFile(env,file,{ownerUserId:user?.id||null,submissionCode:code,fieldKey:f.key,emailVisible:!!f.is_profile_photo});
+            const stored=await storeFile(env,file,{ownerUserId:user?.id||null,submissionCode:code,fieldKey:f.key,emailVisible:true});
             fileIds[f.key]=stored;
           }catch(err){
             await env.DB.prepare("DELETE FROM submissions WHERE code=?").bind(code).run();
@@ -756,7 +844,7 @@ export async function publicRoute(request,env,url,ctx){
     }
     for(const f of activeFields(config,answers)){
       if(!["file","signature"].includes(f.type)||!uploadedSessions[f.key])continue;
-      try{fileIds[f.key]=await finalizeUploadSession(env,uploadedSessions[f.key],{ownerUserId:user?.id||null,submissionCode:code,fieldKey:f.key,emailVisible:!!f.is_profile_photo});}
+      try{fileIds[f.key]=await finalizeUploadSession(env,uploadedSessions[f.key],{ownerUserId:user?.id||null,submissionCode:code,fieldKey:f.key,emailVisible:true});}
       catch(err){await env.DB.prepare("DELETE FROM submissions WHERE code=?").bind(code).run();return json({error:String(err.message||err)},400);}
     }
     if(Object.keys(fileIds).length){
@@ -785,9 +873,16 @@ export async function publicRoute(request,env,url,ctx){
     }
 
     const labeledAnswers={};
+    const attachmentItems=[];
     for(const f of activeFields(config,answers)){
-      if(f.type==="file"||f.type==="signature"){ if(fileIds[f.key]) labeledAnswers[f.label]=`${env.APP_URL}/api/files/${fileIds[f.key].id}`; }
-      else labeledAnswers[f.label]=answers[f.key]??"";
+      if(f.type==="file"||f.type==="signature"){
+        if(fileIds[f.key]){
+          labeledAnswers[f.label]=`${env.APP_URL||"https://app.skyfirst.io.vn"}/api/files/${fileIds[f.key].id}`;
+          attachmentItems.push({file_id:fileIds[f.key].id, submission_code:code, mode:"link"});
+        }
+      } else {
+        labeledAnswers[f.label]=answers[f.key]??"";
+      }
     }
     const emailParts=answersToEmail(labeledAnswers);
     const submittedAt=new Intl.DateTimeFormat("vi-VN",{
@@ -798,26 +893,35 @@ export async function publicRoute(request,env,url,ctx){
       return f?.is_profile_photo || k==="profile_photo" || k==="photo";
     });
     const profile=profileKey?fileIds[profileKey]:null;
-    const profileImageUrl=profile?.email_token?`${env.APP_URL}/api/email-files/${encodeURIComponent(profile.id)}?token=${encodeURIComponent(profile.email_token)}`:"";
+    const profileImageUrl=profile?.email_token?`${env.APP_URL||"https://app.skyfirst.io.vn"}/api/email-files/${encodeURIComponent(profile.id)}?token=${encodeURIComponent(profile.email_token)}`:"";
     const profileImageBlock=profileImageUrl?`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:20px;background:linear-gradient(120deg,#faf4ff,#fff7f2);border:1px solid #eadcf0;border-radius:18px;"><tr><td align="center" style="padding:20px"><div style="font-size:12px;font-weight:800;letter-spacing:1.1px;color:#765d7c;text-transform:uppercase;margin-bottom:12px">ẢNH CÁ NHÂN</div><img src="${escapeHtml(profileImageUrl)}" alt="Ảnh cá nhân" width="132" style="display:block;width:132px;height:164px;object-fit:cover;border-radius:14px;border:4px solid #fff;box-shadow:0 8px 22px rgba(89,40,101,.16)"></td></tr></table>`:"";
     const vars={
-      code,form_name:row.name,full_name:fullName,email,...emailParts,
-      FULL_NAME:escapeHtml(fullName),EMAIL:escapeHtml(email),APPLICATION_ID:escapeHtml(code),
-      APPLICATION_TYPE:escapeHtml(row.name),SUBMITTED_AT:escapeHtml(submittedAt),STATUS:"ĐÃ TIẾP NHẬN",
-      PROFILE_IMAGE_BLOCK:profileImageBlock
+      code,
+      request_id:code,
+      form_name:row.name,
+      registration_type:row.name,
+      full_name:fullName,
+      recipient_name:fullName,
+      email,
+      ...emailParts,
+      FULL_NAME:fullName,
+      EMAIL:email,
+      APPLICATION_ID:code,
+      APPLICATION_TYPE:row.name,
+      SUBMITTED_AT:submittedAt,
+      STATUS:"Đã tiếp nhận",
+      PROFILE_IMAGE_BLOCK:profileImageBlock,
+      language:payload.language||"vi"
     };
     const receiver=row.recipient_email||await getSetting(env,"receiver_email","app@skyfirst.io.vn");
     const programName=String(answers.course||answers.event_name||row.name||"");
     const enrichVars={...vars,submitted_at:submittedAt,status:"Đã tiếp nhận",program_name:programName,ticket_code:code,subject:answers.request_type||row.name};
     let confirmation={ok:false},emailQueued=false;
     const sendSubmissionEmails=async()=>{
-      await sendTemplatedEmail(env,"submission_internal",receiver,enrichVars);
+      await sendTemplatedEmail(env,"admin_new_request_alert",receiver,enrichVars,{attachments:attachmentItems});
       if(email){
-        const tplKey=(idForm==="class"||idForm==="event")?"registration_confirmation":(idForm==="support"?"support_ticket_received":"submission_confirmation");
-        confirmation=await sendTemplatedEmail(env,tplKey,email,enrichVars);
-        if(!confirmation.ok && tplKey!=="submission_confirmation"){
-          confirmation=await sendTemplatedEmail(env,"submission_confirmation",email,enrichVars);
-        }
+        const tplKey=(idForm==="class"||idForm==="event")?"submission_received":(idForm==="support"?"support_ticket_updated":"submission_received");
+        confirmation=await sendTemplatedEmail(env,tplKey,email,enrichVars,{attachments:attachmentItems});
       }
     };
     if(ctx?.waitUntil){ctx.waitUntil(sendSubmissionEmails());emailQueued=!!email;} else await sendSubmissionEmails();
@@ -825,6 +929,10 @@ export async function publicRoute(request,env,url,ctx){
     await audit(env,request,user,"Tiếp nhận hồ sơ","submission",code,{form_id:idForm,email_queued:emailQueued,email_sent:!!confirmation.ok});
     return json({ok:true,code,status:"Đã tiếp nhận",received_at:new Date().toISOString(),form_name:row.name,next_action:"Theo dõi trạng thái hồ sơ và bổ sung thông tin khi được yêu cầu",tracking_url:`/ho-so?code=${encodeURIComponent(code)}`,email_queued:emailQueued,email_sent:!!confirmation.ok});
   }
+
+  /*
+   * Mục 1: Rà soát và hoàn thiện chức năng tra cứu hồ sơ & chứng nhận
+   */
   if(p==="/api/lookup/submission"&&(request.method==="GET"||request.method==="POST")){
     const rl=await rateLimit(env,`case-lookup:${await ipHash(request)}`,12,300);if(!rl.ok)return json({error:"RATE_LIMIT",message:"Bạn đang tra cứu quá nhanh. Vui lòng thử lại sau."},429,{"Cache-Control":"no-store"});
     const body=request.method==="POST"?(await readJson(request)||{}):{};
@@ -854,7 +962,10 @@ export async function publicRoute(request,env,url,ctx){
     if(!row){
       return json({
         error:"NOT_FOUND",
-        message:"Không tìm thấy hồ sơ phù hợp với mã và email đã nhập."
+        message:"Không tìm thấy hồ sơ phù hợp với mã và email đã nhập.",
+        policy_notice:LOOKUP_POLICY_NOTICE_VI,
+        query_time_notice:LOOKUP_QUERY_TIME_NOTICE_VI,
+        queried_at:new Date().toISOString()
       },404);
     }
 
@@ -869,18 +980,40 @@ export async function publicRoute(request,env,url,ctx){
         code:row.code,full_name:row.full_name||"",form_id:row.form_id||"",form_name:row.form_name||"",audience:row.audience||"",
         status:row.status||"",submitted_at:row.created_at||"",updated_at:row.updated_at||"",
         next_action:row.next_action||"Theo dõi cập nhật từ Sky First.",result:row.result_summary||"",timeline
-      }
+      },
+      policy_notice:LOOKUP_POLICY_NOTICE_VI,
+      policy_notice_en:LOOKUP_POLICY_NOTICE_EN,
+      query_time_notice:LOOKUP_QUERY_TIME_NOTICE_VI,
+      query_time_notice_en:LOOKUP_QUERY_TIME_NOTICE_EN,
+      queried_at:new Date().toISOString()
     },200,{"Cache-Control":"private, no-store"});
   }
 
   const credentialPath=p.match(/^\/api\/public\/credentials\/(.+)$/);
-  if((p==="/api/lookup/certificate"||credentialPath)&&request.method==="GET"){
+  if((p==="/api/lookup/certificate"||credentialPath)&&(request.method==="GET"||request.method==="POST")){
     const rl=await rateLimit(env,`credential-lookup:${await ipHash(request)}`,90,60);if(!rl.ok)return json({error:"RATE_LIMIT",message:"Quá nhiều yêu cầu xác thực. Vui lòng thử lại sau."},429,{"Cache-Control":"no-store"});
-    const code=credentialPath?decodeURIComponent(credentialPath[1]):String(url.searchParams.get("code")||"").trim();
-    if(!code) return json({error:"MISSING_FIELDS",message:"Vui lòng nhập mã GCN/GXN/BK cần xác thực."},400,{"Cache-Control":"no-store"});
+    const body=request.method==="POST"?(await readJson(request)||{}):{};
+    const code=credentialPath?decodeURIComponent(credentialPath[1]):String(body.code||body.email||body.phone||url.searchParams.get("code")||url.searchParams.get("email")||url.searchParams.get("phone")||"").trim();
+    if(!code || code.length > 160) return json({error:"MISSING_FIELDS",message:"Vui lòng nhập mã chứng nhận (GCN/GXN/BK), email hoặc số điện thoại cần xác thực."},400,{"Cache-Control":"no-store"});
     const item=await lookupCredential(env,code);
-    if(!item) return json({error:"NOT_FOUND",message:"Không tìm thấy thông tin xác thực phù hợp với mã đã nhập."},404,{"Cache-Control":"no-store"});
-    return json({item,verified:item.status==="issued"},200,{"Cache-Control":"no-store"});
+    if(!item) return json({
+      error:"NOT_FOUND",
+      message:"Không tìm thấy thông tin chứng nhận phù hợp với dữ liệu truy vấn.",
+      policy_notice:LOOKUP_POLICY_NOTICE_VI,
+      query_time_notice:LOOKUP_QUERY_TIME_NOTICE_VI,
+      queried_at:new Date().toISOString()
+    },404,{"Cache-Control":"no-store"});
+    return json({
+      item,
+      items:[{...item, certificate_code:item.code}],
+      state:item.status,
+      verified:item.status==="issued",
+      policy_notice:LOOKUP_POLICY_NOTICE_VI,
+      policy_notice_en:LOOKUP_POLICY_NOTICE_EN,
+      query_time_notice:LOOKUP_QUERY_TIME_NOTICE_VI,
+      query_time_notice_en:LOOKUP_QUERY_TIME_NOTICE_EN,
+      queried_at:new Date().toISOString()
+    },200,{"Cache-Control":"no-store"});
   }
 
   if(p==="/api/public/analytics"&&request.method==="POST"){

@@ -1,8 +1,8 @@
 
-import {json, readJson, uid, sha256, ipHash, escapeHtml, pbkdf2, newSalt} from "./utils.js";
+import {json, readJson, uid, sha256, ipHash, escapeHtml, pbkdf2, newSalt, isSafeSkyFirstUrl} from "./utils.js";
 import {getAuthUser, requirePermission, createInvitedAccount} from "./auth.js";
 import {hasPermission, hasAnyPermission, highestRoleLevel, roleLevel, canAccessScope} from "./permissions.js";
-import {sendTemplatedEmail, renderEmailContent} from "./email.js";
+import {sendTemplatedEmail, renderEmailContent, EMAIL_EVENT_CATALOG, classifyEmailEvent, renderUniversalEmail, validateAndPrepareAttachments} from "./email.js";
 
 async function audit(env,request,user,action,entityType="",entityId="",details={}){
   await env.DB.prepare("INSERT INTO audit_log(actor_user_id,actor_email,action,entity_type,entity_id,details_json,ip_hash) VALUES(?,?,?,?,?,?,?)")
@@ -157,7 +157,7 @@ export async function adminRoute(request,env,url,ctx){
     let sql="SELECT id,source,external_code,full_name,email,form_name,external_status,source_submitted_at,source_tracking_url,received_at,updated_at FROM xanh_external_submissions WHERE 1=1",vals=[];
     if(q){sql+=" AND (external_code LIKE ? OR full_name LIKE ? OR email LIKE ?)";vals.push(`%${q}%`,`%${q}%`,`%${q}%`)}
     sql+=" ORDER BY received_at DESC LIMIT 500";
-    const rs=await env.DB.prepare(sql).bind(...vals).all();return json({items:rs.results||[]});
+    const rs=await env.DB.prepare(sql).bind(...vals).all();return json({items:rs.results||[], history:rs.results||[]});
   }
 
   if(p==="/api/admin/submissions"&&request.method==="GET"){
@@ -218,13 +218,19 @@ export async function adminRoute(request,env,url,ctx){
         result_summary:body.result_summary||body.note||`Hồ sơ đã chuyển sang trạng thái: ${body.status}.`,
         note_block:body.note?`<p>${escapeHtml(body.note)}</p>`:""
       };
-      if(body.status==="Cần bổ sung"){
-        await sendTemplatedEmail(env,"information_required",current.email,emailVars);
-      }else if(["Đã duyệt","Hoàn tất","Đã hoàn tất","Không phù hợp"].includes(body.status)){
-        await sendTemplatedEmail(env,"application_result",current.email,emailVars);
-      }else{
-        await sendTemplatedEmail(env,"status_update",current.email,emailVars);
-      }
+      const autoEventKey = classifyEmailEvent("submission_status", body.status);
+      await sendTemplatedEmail(env, autoEventKey, current.email, {
+        ...emailVars,
+        request_id: code,
+        recipient_name: current.full_name || current.email,
+        registration_type: current.form_id || "Hồ sơ đăng ký",
+        additional_info: body.note || body.result_summary || "",
+        next_steps: body.next_action || emailVars.requirement_note,
+        language: body.language || "vi"
+      }, {
+        attachments: Array.isArray(body.attachments) ? body.attachments : [],
+        actorUserId: user.id
+      });
       if(current.user_id) await notifyUser(env,current.user_id,`Hồ sơ ${code}: ${body.status}`,body.note||"","submission",`/ho-so?code=${encodeURIComponent(code)}`);
     }
     return json({ok:true});
@@ -583,7 +589,7 @@ export async function adminRoute(request,env,url,ctx){
     if(!body.full_name||!body.content||!body.cert_type)return json({error:"INVALID_INPUT"},400);
     const idC=uid("cert"),token=uid("verify");
     await env.DB.prepare("INSERT INTO certificates(id,cert_type,full_name,email,content,status,requested_by,verification_token,metadata_json) VALUES(?,?,?,?,?,'pending_approval',?,?,?)")
-      .bind(idC,body.cert_type,body.full_name,body.email||"",body.content,user.id,token,JSON.stringify(body.metadata||{})).run();
+      .bind(idC,body.cert_type,body.full_name,body.email||"",body.content,user.id,token,JSON.stringify({...(body.metadata||{}), ...(body.expires_at?{expires_at:body.expires_at}:{}), ...(body.phone?{phone:body.phone}:{})})).run();
     const idA=uid("approval");
     await env.DB.prepare("INSERT INTO approvals(id,entity_type,entity_id,action,requested_by,assigned_role,status,due_at) VALUES(?,'certificate',?,'Phê duyệt cấp GCN/GXN',?,'network_secretary','pending',datetime('now','+7 days'))")
       .bind(idA,idC,user.id).run();
@@ -1254,6 +1260,13 @@ export async function adminRoute(request,env,url,ctx){
     const tagsJson=body.tags!==undefined?JSON.stringify(body.tags):curr.tags_json;
     // If content was already approved/published and edited by regular editor, require re-approval unless user has cms.publish
     const nextStatus=(["approved","published"].includes(curr.status)&&!hasPermission(user,"cms.publish"))?"draft":curr.status;
+    if (slug && curr.slug && slug !== curr.slug && await adminTableExists(env, "url_redirects")) {
+      try {
+        await env.DB.prepare(
+          "INSERT INTO url_redirects(id,source_path,target_path,http_code,enabled,notes,created_by) VALUES(?,?,?,301,1,?,?) ON CONFLICT(source_path) DO UPDATE SET target_path=excluded.target_path, enabled=1, updated_at=CURRENT_TIMESTAMP"
+        ).bind(uid("red"), "/trang/" + curr.slug, "/trang/" + slug, "Tự động chuyển hướng khi đổi slug trang " + id, user.id).run();
+      } catch {}
+    }
     await env.DB.batch([
       env.DB.prepare("UPDATE cms_pages SET slug=?,title=?,summary=?,cover_file_id=?,category=?,tags_json=?,seo_json=?,blocks_json=?,status=?,version=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
         .bind(slug,title,body.summary??curr.summary,body.cover_file_id??curr.cover_file_id,body.category||curr.category,tagsJson,seoJson,blocksJson,nextStatus,nextVersion,id),
@@ -1341,6 +1354,452 @@ export async function adminRoute(request,env,url,ctx){
     ]);
     await audit(env,request,user,"Khôi phục phiên bản trang CMS","cms_page",id,{from_version:rev.version,new_version:nextVer});
     return json({ok:true,version:nextVer});
+  }
+
+
+  // === V8 ADMIN ROUTES: NAVIGATION, REDIRECTS, SYSTEM LINKS, FOLDERS, LIFECYCLE & UNIVERSAL EMAIL ===
+
+  // 1) PHỤ LỤC EMAIL-01: Danh mục 16 sự kiện nghiệp vụ & Gửi email từ giao diện quản trị (Điều 3, Điều 6, Điều 9, Điều 10, Điều 11)
+  if(p==="/api/admin/email-events"&&request.method==="GET"){
+    if(!hasAnyPermission(user,["email.view","email.manage","email.send_manual"])) return json({error:"FORBIDDEN"},403);
+    return json({items:Object.values(EMAIL_EVENT_CATALOG)});
+  }
+
+  if(p==="/api/admin/email/send"&&request.method==="POST"){
+    if(!hasAnyPermission(user,["email.send_manual","email.manage"])) return json({error:"FORBIDDEN",permission:"email.send_manual"},403);
+    const body=await readJson(request)||{};
+    const eventKey=String(body.event_key||body.template_key||"system_authorized_notice").trim();
+    const lang=String(body.language||"vi").toLowerCase()==="en"?"en":"vi";
+    const recipientsRaw=Array.isArray(body.recipients)?body.recipients:(body.to_email?String(body.to_email).split(/[,;\s]+/):[]);
+    const recipients=[...new Set(recipientsRaw.map(x=>String(x||"").trim().toLowerCase()).filter(Boolean))];
+    if(!recipients.length) return json({error:"MISSING_RECIPIENT",message:"Vui lòng nhập ít nhất một địa chỉ email người nhận."},400);
+    if(recipients.length>50) return json({error:"TOO_MANY_RECIPIENTS",message:"Giới hạn tối đa 50 người nhận mỗi lần gửi thủ công để bảo vệ an toàn hệ thống."},400);
+    for(const r of recipients){
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r)){
+        return json({error:"INVALID_EMAIL",message:`Địa chỉ email không hợp lệ: ${r}`},400);
+      }
+    }
+    const vars={
+      recipient_name:body.recipient_name||"Quý vị",
+      request_id:body.request_id||body.code||"",
+      registration_type:body.registration_type||"",
+      submitted_at:body.submitted_at||new Date().toLocaleString("vi-VN",{timeZone:"Asia/Ho_Chi_Minh"}),
+      status:body.status||"",
+      additional_info:body.additional_info||"",
+      email_category:body.email_category||"",
+      email_heading:body.email_heading||"",
+      intro_text:body.intro_text||"",
+      body_html:body.body_html||"",
+      next_steps:body.next_steps||"",
+      action_url:body.action_url||"",
+      action_label:body.action_label||"",
+      subject_override:body.subject||"",
+      language:lang,
+      ...(body.vars||{})
+    };
+    const attachments=Array.isArray(body.attachments)?body.attachments:[];
+    const prep=await validateAndPrepareAttachments(env,attachments,{requestId:vars.request_id,recipientEmail:recipients.length===1?recipients[0]:""});
+    if(!prep.ok){
+      return json({error:prep.error,message:prep.message},400);
+    }
+    if(body.dry_run===true || body.preview===true){
+      const preview=renderUniversalEmail(vars,{eventKey,language:lang,linkItems:prep.linkItems});
+      return json({ok:true,preview,recipients_count:recipients.length,attachments:prep.summaryMeta});
+    }
+    // Gửi riêng biệt từng người nhận để bảo vệ danh sách địa chỉ email (ĐIỀU 9: Không để lộ danh sách email của nhiều người nhận cho nhau)
+    const results=[];
+    for(const rcpt of recipients){
+      const res=await sendTemplatedEmail(env,eventKey,rcpt,vars,{
+        attachments,
+        strictRequired:!!body.strict_required,
+        actorUserId:user.id,
+        useUniversal:true
+      });
+      results.push({to:rcpt,ok:res.ok,pending:!!res.pending,deduped:!!res.deduped,delivery_state:res.delivery_state||"",error:res.error||null});
+    }
+    await audit(env,request,user,"Gửi email quản trị","email_dispatch",eventKey,{recipients_count:recipients.length,language:lang,attachments_count:prep.summaryMeta.length});
+    return json({ok:results.every(x=>x.ok||x.pending),results});
+  }
+
+  const emailRetryMatch=p.match(/^\/api\/admin\/email-logs\/(\d+)\/retry$/);
+  if(emailRetryMatch&&request.method==="POST"){
+    if(!hasAnyPermission(user,["email.manage","email.send_manual"])) return json({error:"FORBIDDEN"},403);
+    const logId=Number(emailRetryMatch[1]);
+    const row=await env.DB.prepare("SELECT * FROM email_logs WHERE id=?").bind(logId).first();
+    if(!row) return json({error:"NOT_FOUND"},404);
+    if(Number(row.retry_count||0)>=3) return json({error:"MAX_RETRIES_EXCEEDED",message:"Bản ghi email này đã vượt quá giới hạn thử lại (tối đa 3 lần)."},409);
+    const res=await sendTemplatedEmail(env,row.template_key||"system_authorized_notice",row.to_email,{
+      request_id:row.reference_code||"",
+      subject_override:row.subject||"",
+      language:row.language||"vi"
+    },{skipDedupe:true,actorUserId:user.id});
+    try{
+      await env.DB.prepare("UPDATE email_logs SET retry_count=COALESCE(retry_count,0)+1 WHERE id=?").bind(logId).run();
+    }catch{}
+    await audit(env,request,user,"Thử gửi lại email","email_log",String(logId),{to:row.to_email,ok:res.ok});
+    return json({ok:res.ok,pending:!!res.pending,delivery_state:res.delivery_state||"",error:res.error||null});
+  }
+
+  // 2) MỤC V.1: Quản trị Menu & Điều hướng (Header, Menu con, Truy cập nhanh, Footer, CTA)
+  if(p==="/api/admin/navigation"&&request.method==="GET"){
+    if(!hasAnyPermission(user,["navigation.view","navigation.manage","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const rs=await env.DB.prepare("SELECT * FROM navigation_items ORDER BY location ASC, sort_order ASC, id ASC").all();
+    return json({items:rs.results||[]});
+  }
+
+  if(p==="/api/admin/navigation"&&request.method==="POST"){
+    if(!hasAnyPermission(user,["navigation.manage","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const body=await readJson(request)||{};
+    const labelVi=String(body.label_vi||"").trim();
+    const labelEn=String(body.label_en||labelVi).trim();
+    const targetUrl=String(body.url||"").trim();
+    const location=String(body.location||"header").trim();
+    if(!labelVi||!targetUrl) return json({error:"INVALID_INPUT",message:"Nhãn hiển thị và đường dẫn URL là bắt buộc."},400);
+    if(!targetUrl.startsWith("mailto:") && !targetUrl.startsWith("tel:") && !isSafeSkyFirstUrl(targetUrl, env.APP_URL||"https://app.skyfirst.io.vn")){
+      return json({error:"UNSAFE_URL",message:"Không cho phép cấu hình URL dẫn tới tên miền không tin cậy hoặc nguy hiểm."},400);
+    }
+    const id=body.id?String(body.id).trim():uid("nav");
+    const target=body.target==="_blank"?"_blank":"_self";
+    const sortOrder=Number(body.sort_order||50);
+    const visible=body.visible===false||body.visible===0?0:1;
+    const status=body.status==="draft"?"draft":"published";
+    await env.DB.prepare(
+      "INSERT INTO navigation_items(id,location,parent_id,label_vi,label_en,url,target,icon,sort_order,visible,status,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET location=excluded.location,parent_id=excluded.parent_id,label_vi=excluded.label_vi,label_en=excluded.label_en,url=excluded.url,target=excluded.target,icon=excluded.icon,sort_order=excluded.sort_order,visible=excluded.visible,status=excluded.status,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP"
+    ).bind(id,location,body.parent_id||null,labelVi,labelEn,targetUrl,target,String(body.icon||""),sortOrder,visible,status,user.id).run();
+    await audit(env,request,user,"Cập nhật mục điều hướng","navigation_item",id,{location,label_vi:labelVi,url:targetUrl,status});
+    invalidatePublicCache(url,["/api/config"],ctx);
+    return json({ok:true,id},201);
+  }
+
+  const navItemMatch=p.match(/^\/api\/admin\/navigation\/([^/]+)$/);
+  if(navItemMatch&&request.method==="PATCH"){
+    if(!hasAnyPermission(user,["navigation.manage","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const id=decodeURIComponent(navItemMatch[1]),body=await readJson(request)||{};
+    const curr=await env.DB.prepare("SELECT * FROM navigation_items WHERE id=?").bind(id).first();
+    if(!curr) return json({error:"NOT_FOUND"},404);
+    const nextUrl=body.url!==undefined?String(body.url).trim():curr.url;
+    if(!nextUrl.startsWith("mailto:") && !nextUrl.startsWith("tel:") && !isSafeSkyFirstUrl(nextUrl, env.APP_URL||"https://app.skyfirst.io.vn")){
+      return json({error:"UNSAFE_URL",message:"URL đích không hợp lệ hoặc không thuộc tên miền an toàn."},400);
+    }
+    await env.DB.prepare(
+      "UPDATE navigation_items SET location=?,parent_id=?,label_vi=?,label_en=?,url=?,target=?,icon=?,sort_order=?,visible=?,status=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?"
+    ).bind(
+      body.location||curr.location,
+      body.parent_id!==undefined?body.parent_id:curr.parent_id,
+      body.label_vi||curr.label_vi,
+      body.label_en??curr.label_en,
+      nextUrl,
+      body.target==="_blank"?"_blank":(body.target==="_self"?"_self":curr.target),
+      body.icon??curr.icon,
+      body.sort_order!==undefined?Number(body.sort_order):curr.sort_order,
+      body.visible!==undefined?(body.visible?1:0):curr.visible,
+      body.status||curr.status,
+      user.id,
+      id
+    ).run();
+    await audit(env,request,user,"Chỉnh sửa mục điều hướng","navigation_item",id,body);
+    invalidatePublicCache(url,["/api/config"],ctx);
+    return json({ok:true});
+  }
+
+  if(navItemMatch&&request.method==="DELETE"){
+    if(!hasAnyPermission(user,["navigation.manage","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const id=decodeURIComponent(navItemMatch[1]);
+    await env.DB.prepare("DELETE FROM navigation_items WHERE id=? OR parent_id=?").bind(id,id).run();
+    await audit(env,request,user,"Xóa mục điều hướng","navigation_item",id,{});
+    invalidatePublicCache(url,["/api/config"],ctx);
+    return json({ok:true});
+  }
+
+  // 3) MỤC V.2: Quản lý URL, đường dẫn trang và chuyển hướng an toàn (chống Open Redirect & vòng lặp)
+  if(p==="/api/admin/redirects"&&request.method==="GET"){
+    if(!hasAnyPermission(user,["redirect.manage","navigation.view","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const rs=await env.DB.prepare("SELECT * FROM url_redirects ORDER BY created_at DESC").all();
+    return json({items:rs.results||[]});
+  }
+
+  if(p==="/api/admin/redirects"&&request.method==="POST"){
+    if(!hasAnyPermission(user,["redirect.manage","navigation.manage","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const body=await readJson(request)||{};
+    const sourcePath=String(body.source_path||"").trim();
+    const targetPath=String(body.target_path||body.target_url||"").trim();
+    if(!sourcePath.startsWith("/") || sourcePath.startsWith("//") || !targetPath){
+      return json({error:"INVALID_PATH",message:"Đường dẫn nguồn phải bắt đầu bằng '/' và có đích hợp lệ."},400);
+    }
+    if(sourcePath===targetPath){
+      return json({error:"REDIRECT_LOOP",message:"Đường dẫn nguồn và đường dẫn đích không được trùng nhau (gây vòng lặp)."},400);
+    }
+    if(!isSafeSkyFirstUrl(targetPath, env.APP_URL||"https://app.skyfirst.io.vn")){
+      return json({error:"UNSAFE_REDIRECT_TARGET",message:"Chặn cấu hình chuyển hướng mở (Open Redirect) tới tên miền ngoài hệ sinh thái Sky First."},400);
+    }
+    // Kiểm tra vòng lặp chuyển hướng bậc 2
+    const reverse=await env.DB.prepare("SELECT id FROM url_redirects WHERE source_path=? AND target_path=? AND enabled=1").bind(targetPath,sourcePath).first();
+    if(reverse){
+      return json({error:"REDIRECT_CHAIN_LOOP",message:"Phát hiện vòng lặp chuyển hướng qua lại giữa hai đường dẫn."},400);
+    }
+    const id=body.id?String(body.id).trim():uid("red");
+    const code=Number(body.http_code)===302?302:301;
+    await env.DB.prepare(
+      "INSERT INTO url_redirects(id,source_path,target_path,http_code,enabled,notes,created_by) VALUES(?,?,?,?,?,?,?) ON CONFLICT(source_path) DO UPDATE SET target_path=excluded.target_path,http_code=excluded.http_code,enabled=excluded.enabled,notes=excluded.notes,updated_at=CURRENT_TIMESTAMP"
+    ).bind(id,sourcePath,targetPath,code,body.enabled===false?0:1,String(body.notes||""),user.id).run();
+    await audit(env,request,user,"Cấu hình chuyển hướng URL","url_redirect",id,{source_path:sourcePath,target_path:targetPath,http_code:code});
+    return json({ok:true,id},201);
+  }
+
+  const redirectMatch=p.match(/^\/api\/admin\/redirects\/([^/]+)$/);
+  if(redirectMatch&&request.method==="DELETE"){
+    if(!hasAnyPermission(user,["redirect.manage","navigation.manage","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const id=decodeURIComponent(redirectMatch[1]);
+    await env.DB.prepare("DELETE FROM url_redirects WHERE id=?").bind(id).run();
+    await audit(env,request,user,"Xóa chuyển hướng URL","url_redirect",id,{});
+    return json({ok:true});
+  }
+
+  // 4) MỤC V.3 & MỤC 16: Quản trị Liên kết toàn hệ thống & Rà soát tên miền (app.skyfirst.io.vn vs ctt.skyfirst.io.vn)
+  if(p==="/api/admin/system-links"&&request.method==="GET"){
+    if(!hasAnyPermission(user,["navigation.view","navigation.manage","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const rs=await env.DB.prepare("SELECT * FROM system_links ORDER BY usage_location ASC, link_key ASC").all();
+    return json({items:rs.results||[]});
+  }
+
+  if(p==="/api/admin/system-links"&&request.method==="POST"){
+    if(!hasAnyPermission(user,["navigation.manage","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const body=await readJson(request)||{};
+    const linkKey=String(body.link_key||"").trim();
+    const labelVi=String(body.label_vi||"").trim();
+    const targetUrl=String(body.target_url||"").trim();
+    if(!linkKey||!labelVi||!targetUrl) return json({error:"INVALID_INPUT"},400);
+    if(!targetUrl.startsWith("mailto:") && !targetUrl.startsWith("tel:") && !isSafeSkyFirstUrl(targetUrl, env.APP_URL||"https://app.skyfirst.io.vn")){
+      return json({error:"UNSAFE_URL",message:"Liên kết hệ thống phải trỏ tới đường dẫn nội bộ hoặc tên miền được phép trong hệ sinh thái Sky First."},400);
+    }
+    const id=body.id?String(body.id).trim():uid("lnk");
+    await env.DB.prepare(
+      "INSERT INTO system_links(id,link_key,label_vi,label_en,usage_location,target_url,domain_role,status,is_external,notes,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(link_key) DO UPDATE SET label_vi=excluded.label_vi,label_en=excluded.label_en,usage_location=excluded.usage_location,target_url=excluded.target_url,domain_role=excluded.domain_role,status=excluded.status,notes=excluded.notes,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP"
+    ).bind(id,linkKey,labelVi,String(body.label_en||labelVi),String(body.usage_location||"global"),targetUrl,String(body.domain_role||"app.skyfirst.io.vn"),String(body.status||"active"),targetUrl.startsWith("http")?1:0,String(body.notes||""),user.id).run();
+    await audit(env,request,user,"Cập nhật liên kết toàn hệ thống","system_link",linkKey,{target_url:targetUrl});
+    invalidatePublicCache(url,["/api/config"],ctx);
+    return json({ok:true,id},201);
+  }
+
+  if(p==="/api/admin/system-links/audit"&&(request.method==="GET"||request.method==="POST")){
+    if(!hasAnyPermission(user,["navigation.view","navigation.manage","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const validInternalRoutes=new Set(["/","/chuong-trinh","/su-kien","/tai-lieu","/bieu-mau","/gcn","/ho-so","/tai-tro","/an-toan","/tra-cuu","/tim-kiem","/admin","/admin/login"]);
+    const [navRs,lnkRs,pageRs,redRs]=await env.DB.batch([
+      env.DB.prepare("SELECT id,label_vi,url,location FROM navigation_items"),
+      env.DB.prepare("SELECT id,link_key,target_url,domain_role FROM system_links"),
+      env.DB.prepare("SELECT slug FROM cms_pages WHERE status='published'"),
+      env.DB.prepare("SELECT source_path FROM url_redirects WHERE enabled=1")
+    ]);
+    for(const pg of pageRs.results||[]) validInternalRoutes.add("/trang/"+pg.slug);
+    for(const rd of redRs.results||[]) validInternalRoutes.add(rd.source_path);
+    const issues=[];
+    const urlCounter=new Map();
+    for(const n of navRs.results||[]){
+      const u=String(n.url||"");
+      urlCounter.set(n.location+":"+u,(urlCounter.get(n.location+":"+u)||0)+1);
+      if(u.startsWith("/") && !validInternalRoutes.has(u) && !u.startsWith("/trang/")){
+        issues.push({type:"broken_internal_path",source:"navigation_items",id:n.id,url:u,message:`Đường dẫn nội bộ '${u}' chưa có trang đích hoặc chuyển hướng.`});
+      }
+    }
+    for(const [k,cnt] of urlCounter.entries()){
+      if(cnt>1) issues.push({type:"duplicate_link_in_location",source:"navigation_items",key:k,count:cnt,message:`Phát hiện ${cnt} liên kết trùng nhau trong cùng vị trí (${k}).`});
+    }
+    return json({
+      ok:true,
+      summary:{
+        navigation_count:(navRs.results||[]).length,
+        system_links_count:(lnkRs.results||[]).length,
+        published_pages_count:(pageRs.results||[]).length,
+        active_redirects_count:(redRs.results||[]).length,
+        issues_count:issues.length
+      },
+      domain_separation:{
+        "app.skyfirst.io.vn":"Hệ thống Thông tin Số Sky First (Cổng trung tâm)",
+        "ctt.skyfirst.io.vn":"Hệ thống CTT riêng biệt trong hệ sinh thái (tương thích liên kết tích hợp)",
+        "skyfirst.io.vn":"Trang Thông tin Điện tử Sky First"
+      },
+      issues
+    });
+  }
+
+  // 5) MỤC V.4: Quản lý Thư mục, Danh mục nội dung & Kiểm tra tham chiếu trước khi xóa/di chuyển
+  if(p==="/api/admin/folders"&&request.method==="GET"){
+    if(!hasAnyPermission(user,["folder.manage","document.view","document.manage","cms.view"])) return json({error:"FORBIDDEN"},403);
+    const [fldRs,docRs,cmsRs]=await env.DB.batch([
+      env.DB.prepare("SELECT * FROM content_folders ORDER BY module_scope ASC, sort_order ASC"),
+      env.DB.prepare("SELECT id,metadata_json,doc_type FROM documents"),
+      env.DB.prepare("SELECT id,category FROM cms_pages")
+    ]);
+    const docs=docRs.results||[], pages=cmsRs.results||[];
+    const items=(fldRs.results||[]).map(f=>{
+      const docCount=docs.filter(d=>{
+        try{const m=JSON.parse(d.metadata_json||"{}");return m.folder_id===f.id||m.category===f.slug||d.doc_type===f.name_vi;}catch{return false}
+      }).length;
+      const pageCount=pages.filter(pg=>pg.category===f.slug||pg.category===f.id).length;
+      return {...f, reference_count:docCount+pageCount, documents_count:docCount, pages_count:pageCount};
+    });
+    return json({items});
+  }
+
+  if(p==="/api/admin/folders"&&request.method==="POST"){
+    if(!hasAnyPermission(user,["folder.manage","document.manage","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const body=await readJson(request)||{};
+    const nameVi=String(body.name_vi||"").trim();
+    const slug=String(body.slug||nameVi).trim().toLowerCase().replace(/[^a-z0-9-]+/g,"-").replace(/^-+|-+$/g,"");
+    if(!nameVi||!slug) return json({error:"INVALID_INPUT",message:"Tên thư mục và mã đường dẫn (slug) là bắt buộc."},400);
+    const id=body.id?String(body.id).trim():uid("fld");
+    await env.DB.prepare(
+      "INSERT INTO content_folders(id,parent_id,name_vi,name_en,slug,module_scope,description,sort_order,status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET parent_id=excluded.parent_id,name_vi=excluded.name_vi,name_en=excluded.name_en,slug=excluded.slug,module_scope=excluded.module_scope,description=excluded.description,sort_order=excluded.sort_order,status=excluded.status,updated_at=CURRENT_TIMESTAMP"
+    ).bind(id,body.parent_id||null,nameVi,String(body.name_en||nameVi),slug,String(body.module_scope||"documents"),String(body.description||""),Number(body.sort_order||10),String(body.status||"active"),user.id).run();
+    await audit(env,request,user,"Tạo/Cập nhật thư mục nội dung","content_folder",id,{name_vi:nameVi,slug});
+    invalidatePublicCache(url,["/api/config","/api/public/resources"],ctx);
+    return json({ok:true,id,slug},201);
+  }
+
+  const folderMatch=p.match(/^\/api\/admin\/folders\/([^/]+)$/);
+  if(folderMatch&&request.method==="DELETE"){
+    if(!hasAnyPermission(user,["folder.manage","document.manage","settings.manage"])) return json({error:"FORBIDDEN"},403);
+    const id=decodeURIComponent(folderMatch[1]);
+    const folder=await env.DB.prepare("SELECT * FROM content_folders WHERE id=?").bind(id).first();
+    if(!folder) return json({error:"NOT_FOUND"},404);
+    const child=await env.DB.prepare("SELECT COUNT(*) AS c FROM content_folders WHERE parent_id=?").bind(id).first();
+    const docRefs=await env.DB.prepare("SELECT COUNT(*) AS c FROM documents WHERE COALESCE(metadata_json,'') LIKE ? OR doc_type=?").bind(`%${id}%`,folder.name_vi).first();
+    const totalRefs=Number(child?.c||0)+Number(docRefs?.c||0);
+    if(totalRefs>0 && url.searchParams.get("force")!=="1"){
+      return json({
+        error:"FOLDER_HAS_REFERENCES",
+        reference_count:totalRefs,
+        message:`Thư mục "${folder.name_vi}" đang được tham chiếu bởi ${totalRefs} tài nguyên/thư mục con. Vui lòng chuyển tài nguyên sang thư mục khác trước khi xóa để không làm hỏng liên kết.`
+      },409);
+    }
+    await env.DB.prepare("DELETE FROM content_folders WHERE id=?").bind(id).run();
+    await audit(env,request,user,"Xóa thư mục nội dung","content_folder",id,{name_vi:folder.name_vi});
+    invalidatePublicCache(url,["/api/config","/api/public/resources"],ctx);
+    return json({ok:true});
+  }
+
+  // 6) MỤC 10: Quản lý vòng đời dữ liệu và bản ghi sau khi công bố trên toàn hệ thống
+  const lifecycleHistoryMatch=p.match(/^\/api\/admin\/lifecycle\/([a-z_]+)\/([^/]+)(?:\/history)?$/);
+  if(lifecycleHistoryMatch&&request.method==="GET"){
+    if(!hasAnyPermission(user,["lifecycle.manage","audit.view","certificate.view","document.view","submission.view"])) return json({error:"FORBIDDEN"},403);
+    const entityType=lifecycleHistoryMatch[1];
+    const entityId=decodeURIComponent(lifecycleHistoryMatch[2]);
+    const rs=await env.DB.prepare("SELECT * FROM entity_lifecycle_history WHERE entity_type=? AND entity_id=? ORDER BY created_at DESC, rowid DESC").bind(entityType,entityId).all();
+    return json({items:rs.results||[]});
+  }
+
+  const lifecycleActionMatch=p.match(/^\/api\/admin\/lifecycle\/([a-z_]+)\/([^/]+)$/);
+  if(lifecycleActionMatch&&request.method==="POST"){
+    const entityType=lifecycleActionMatch[1];
+    const entityId=decodeURIComponent(lifecycleActionMatch[2]);
+    const body=await readJson(request)||{};
+    const action=String(body.action||"").trim().toLowerCase();
+    const reason=String(body.reason||"").trim();
+
+    const entityConfig={
+      certificates:{table:"certificates",pk:"id",perm:"certificate.approve",statusCol:"status"},
+      documents:{table:"documents",pk:"id",perm:"document.manage",statusCol:"status"},
+      submissions:{table:"submissions",pk:"code",perm:"submission.manage",statusCol:"status"},
+      classes:{table:"classes",pk:"id",perm:"class.manage",statusCol:"status"},
+      events:{table:"events",pk:"id",perm:"event.manage",statusCol:"status"},
+      news:{table:"news",pk:"id",perm:"news.manage",statusCol:"status"},
+      forms:{table:"forms",pk:"id",perm:"form.manage",statusCol:"enabled"},
+      sponsorship_campaigns:{table:"sponsorship_campaigns",pk:"id",perm:"sponsorship.approve",statusCol:"status"},
+      cms_pages:{table:"cms_pages",pk:"id",perm:"cms.publish",statusCol:"status"}
+    }[entityType];
+
+    if(!entityConfig) return json({error:"UNSUPPORTED_ENTITY_TYPE"},400);
+    if(!hasAnyPermission(user,[entityConfig.perm,"lifecycle.manage"])) return json({error:"FORBIDDEN",permission:entityConfig.perm},403);
+    if(["revoke","replace","reissue","restore"].includes(action) && reason.length<3){
+      return json({error:"REASON_REQUIRED",message:"Thao tác thu hồi, thay thế, cấp lại hoặc khôi phục bắt buộc phải ghi rõ lý do kiểm toán."},400);
+    }
+
+    const row=await env.DB.prepare(`SELECT * FROM ${entityConfig.table} WHERE ${entityConfig.pk}=?`).bind(entityId).first();
+    if(!row) return json({error:"NOT_FOUND",message:"Không tìm thấy bản ghi cần thao tác vòng đời."},404);
+
+    const prevStatus=String(row[entityConfig.statusCol]??"");
+    const isRevoked=/revoked|thu hồi|đã thu hồi|vô hiệu/i.test(prevStatus);
+
+    // Mục 10: Việc khôi phục không được làm sống lại dữ liệu đã bị thu hồi nếu không có quy trình phê duyệt cho phép
+    if(action==="restore" && isRevoked){
+      const canReapprove=hasPermission(user,"approval.decide") || (user.roles||[]).some(r=>["owner","super_admin"].includes(r.role_id));
+      if(!canReapprove || body.approved_reinstatement!==true){
+        return json({
+          error:"REVOKED_RESTORE_FORBIDDEN",
+          message:"Bản ghi đã bị thu hồi chính thức không được tự ý khôi phục nếu chưa qua quy trình phê duyệt cấp lại (approved_reinstatement)."
+        },409);
+      }
+    }
+
+    let nextStatus=prevStatus;
+    let replacementId=String(body.replacement_id||"").trim();
+
+    if(entityType==="certificates"){
+      if(action==="hide") nextStatus="hidden";
+      else if(action==="revoke"){
+        nextStatus="revoked";
+        await env.DB.prepare("UPDATE certificates SET status='revoked',revoked_by=?,revoked_at=CURRENT_TIMESTAMP,revocation_reason=? WHERE id=?").bind(user.id,reason,entityId).run();
+        await env.DB.prepare("UPDATE issued_document_codes SET is_active=0 WHERE document_id=?").bind(entityId).run().catch(()=>{});
+      }else if(action==="replace"){
+        nextStatus="superseded";
+        await env.DB.prepare("UPDATE certificates SET status='superseded',superseded_by_id=?,revocation_reason=? WHERE id=?").bind(replacementId||null,reason,entityId).run();
+      }else if(action==="reissue" || action==="restore"){
+        nextStatus="issued";
+        await env.DB.prepare("UPDATE certificates SET status='issued',issued_at=COALESCE(issued_at,CURRENT_TIMESTAMP),revoked_at=NULL WHERE id=?").bind(entityId).run();
+        await env.DB.prepare("UPDATE issued_document_codes SET is_active=1 WHERE document_id=?").bind(entityId).run().catch(()=>{});
+      }
+    }else if(entityType==="documents"){
+      if(action==="hide"){
+        nextStatus="Ngừng công bố";
+        await env.DB.prepare("UPDATE documents SET visibility='private',status='Ngừng công bố',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(entityId).run();
+      }else if(action==="revoke"){
+        nextStatus="Đã thu hồi";
+        await env.DB.prepare("UPDATE documents SET visibility='private',status='Đã thu hồi',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(entityId).run();
+      }else if(action==="replace"){
+        nextStatus="Đã thay thế";
+        let meta={}; try{meta=JSON.parse(row.metadata_json||"{}")}catch{}
+        meta.superseded_by_id=replacementId; meta.lifecycle_reason=reason;
+        await env.DB.prepare("UPDATE documents SET status='Đã thay thế',metadata_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(JSON.stringify(meta),entityId).run();
+      }else if(action==="restore" || action==="reissue"){
+        nextStatus="Có hiệu lực";
+        await env.DB.prepare("UPDATE documents SET visibility='public',status='Có hiệu lực',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(entityId).run();
+      }
+    }else if(entityType==="forms"){
+      const en=(action==="hide"||action==="revoke")?0:1;
+      nextStatus=String(en);
+      await env.DB.prepare("UPDATE forms SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(en,entityId).run();
+    }else{
+      const statusMap={
+        hide: entityType==="cms_pages"?"archived":"ẩn",
+        revoke: "Đã thu hồi",
+        replace: "Đã thay thế",
+        reissue: entityType==="cms_pages"?"published":(entityType==="news"?"published":"Đang mở"),
+        restore: entityType==="cms_pages"?"published":(entityType==="news"?"published":"Đang hoạt động"),
+        edit: body.new_status||prevStatus
+      };
+      nextStatus=statusMap[action]||body.new_status||prevStatus;
+      await env.DB.prepare(`UPDATE ${entityConfig.table} SET ${entityConfig.statusCol}=? WHERE ${entityConfig.pk}=?`).bind(nextStatus,entityId).run();
+    }
+
+    const histId=uid("lfh");
+    await env.DB.prepare(
+      "INSERT INTO entity_lifecycle_history(id,entity_type,entity_id,action,previous_status,new_status,replacement_id,reason,actor_user_id,actor_email,snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
+    ).bind(histId,entityType,entityId,action,prevStatus,nextStatus,replacementId,reason,user.id,user.email||"",JSON.stringify(row)).run();
+
+    await audit(env,request,user,`Vòng đời bản ghi: ${action}`,entityType,entityId,{previous_status:prevStatus,new_status:nextStatus,replacement_id:replacementId,reason});
+    invalidatePublicCache(url,["/api/config","/api/public/resources","/api/public/classes","/api/public/events","/api/public/news","/api/public/sponsorship","/api/public/pages"],ctx);
+
+    if(body.notify_email){
+      await sendTemplatedEmail(env,"record_lifecycle_changed",String(body.notify_email),{
+        recipient_name:row.full_name||row.title||"Quý vị",
+        request_id:row.code||entityId,
+        registration_type:entityType,
+        status:nextStatus,
+        additional_info:reason
+      },{actorUserId:user.id});
+    }
+
+    return json({ok:true,id:histId,entity_type:entityType,entity_id:entityId,action,previous_status:prevStatus,new_status:nextStatus,replacement_id:replacementId});
   }
 
   return json({error:"ADMIN_ROUTE_NOT_FOUND"},404);

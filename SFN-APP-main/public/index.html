@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0759b8">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="light">
   <title>Hệ thống Thông tin Số Sky First</title>
   <meta name="description" content="Hệ thống Thông tin Số Sky First (Sky First Digital Information System): Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First.">
   <link rel="canonical" href="https://app.skyfirst.io.vn/">
@@ -17,37 +17,37 @@
   <link rel="icon" type="image/png" href="/assets/sfn-logo-tight.png">
   <link rel="apple-touch-icon" href="/assets/sfn-logo-tight.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css?v=20261022-v7">
-  <link rel="stylesheet" href="/digital.css?v=20261022-v7">
+  <link rel="stylesheet" href="/styles.css?v=20261022-v8">
+  <link rel="stylesheet" href="/digital.css?v=20261022-v8">
 </head>
 <body class="public-digital">
-<a class="skip-link" href="#app">Bỏ qua điều hướng</a>
+<a class="skip-link" href="#app" data-i18n="skip_nav">Bỏ qua điều hướng</a>
 <header class="dip-header sfn-ref-header" id="portalHeader">
   <div class="dip-header-inner">
     <a class="dip-brand" id="siteBrand" href="/" aria-label="Hệ thống Thông tin Số Sky First">
-      <img class="brand-signature" src="/assets/sfn-logo-tight.png" alt="Logo Sky First" width="112" height="64">
+      <img class="brand-signature" src="/assets/sfn-logo-tight.png" alt="Logo Sky First" width="96" height="56">
       <span class="brand-wordmark"><b>SKY FIRST</b><small data-i18n="brand_sub">HỆ THỐNG THÔNG TIN SỐ</small></span>
     </a>
     <button class="menu-toggle" id="menuToggle" type="button" aria-label="Mở menu điều hướng" aria-expanded="false"><span></span><span></span><span></span></button>
-    <nav class="dip-nav sfn-pill-nav" id="mainNav" aria-label="Điều hướng chính">
-      <a class="nav-pill is-active" href="/" data-nav-match="home"><i aria-hidden="true">⌂</i><span data-i18n="nav_home">Trang chủ</span></a>
-      <a class="nav-pill" href="/chuong-trinh" data-nav-match="programs"><i aria-hidden="true">◫</i><span data-i18n="nav_programs">Chương trình</span></a>
-      <a class="nav-pill" href="/su-kien" data-nav-match="events"><i aria-hidden="true">📅</i><span data-i18n="nav_events">Sự kiện</span></a>
-      <a class="nav-pill" href="/tai-lieu" data-nav-match="resources"><i aria-hidden="true">📁</i><span data-i18n="nav_docs">Tài liệu</span></a>
-      <a class="nav-pill" href="/bieu-mau" data-nav-match="forms"><i aria-hidden="true">▤</i><span data-i18n="nav_forms">Biểu mẫu</span></a>
-      <a class="nav-pill" href="/gcn" data-nav-match="gcn"><i aria-hidden="true">✓</i><span data-i18n="nav_certs">Chứng nhận</span></a>
-      <a class="nav-pill" href="/ho-so" data-nav-match="hoso"><i aria-hidden="true">⌁</i><span data-i18n="nav_cases">Hồ sơ</span></a>
-      <a class="nav-pill" href="/tai-tro" data-nav-match="sponsorship"><i aria-hidden="true">♡</i><span data-i18n="nav_sponsorship">Tài trợ</span></a>
-      <a class="nav-pill" href="/an-toan" data-nav-match="safety"><i aria-hidden="true">🛡️</i><span data-i18n="nav_safety">An toàn</span></a>
+    <nav class="dip-nav sfn-text-nav" id="mainNav" aria-label="Điều hướng chính">
+      <a class="nav-pill is-active" href="/" data-nav-match="home"><span data-i18n="nav_home">Trang chủ</span></a>
+      <a class="nav-pill" href="/chuong-trinh" data-nav-match="programs"><span data-i18n="nav_programs">Chương trình</span></a>
+      <a class="nav-pill" href="/su-kien" data-nav-match="events"><span data-i18n="nav_events">Sự kiện</span></a>
+      <a class="nav-pill" href="/tai-lieu" data-nav-match="resources"><span data-i18n="nav_docs">Tài liệu</span></a>
+      <a class="nav-pill" href="/bieu-mau" data-nav-match="forms"><span data-i18n="nav_forms">Biểu mẫu</span></a>
+      <a class="nav-pill" href="/gcn" data-nav-match="gcn"><span data-i18n="nav_certs">Chứng nhận</span></a>
+      <a class="nav-pill" href="/ho-so" data-nav-match="hoso"><span data-i18n="nav_cases">Hồ sơ</span></a>
+      <a class="nav-pill" href="/tai-tro" data-nav-match="sponsorship"><span data-i18n="nav_sponsorship">Tài trợ</span></a>
+      <a class="nav-pill" href="/an-toan" data-nav-match="safety"><span data-i18n="nav_safety">An toàn</span></a>
     </nav>
     <div class="dip-actions">
-      <button class="search-open" id="searchOpen" type="button" aria-label="Mở tìm kiếm" title="Tìm kiếm (/)"><span aria-hidden="true">⌕</span></button>
+      <button class="search-open" id="searchOpen" type="button" aria-label="Mở tìm kiếm" title="Tìm kiếm (/)">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="20" y1="20" x2="16.2" y2="16.2"></line></svg>
+      </button>
       <div class="lang-switch" role="group" aria-label="Ngôn ngữ hiển thị">
         <button type="button" class="lang-btn is-active" data-lang="vi">VI</button>
         <button type="button" class="lang-btn" data-lang="en">EN</button>
       </div>
-      <button class="iconbtn" id="themeBtn" type="button" aria-label="Đổi giao diện sáng/tối" title="Đổi giao diện sáng/tối">◐</button>
-      <a class="header-login-btn" id="accountBtn" href="/admin/login"><span aria-hidden="true">👤</span> <span data-i18n="nav_login">Đăng nhập</span></a>
     </div>
   </div>
 </header>
@@ -55,24 +55,26 @@
 <main id="app" class="dip-main">
   <section class="sfn-clean-hero" aria-labelledby="staticTitle">
     <div class="sfn-clean-hero-inner">
-      <div class="sfn-hero-badge"><span>✦</span> <b data-i18n="hero_badge">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</b></div>
+      <div class="sfn-hero-badge"><span aria-hidden="true">+</span> <b data-i18n="hero_badge">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</b></div>
       <h1 id="staticTitle"><span data-i18n="hero_title_top">Hệ thống Thông tin Số</span><strong>SKY FIRST</strong></h1>
       <p class="sfn-hero-desc" data-i18n="hero_desc">Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First.</p>
       <form class="sfn-search-bar" action="/tim-kiem" onsubmit="return false">
         <label class="sr-only" for="staticSearch">Tìm kiếm trên Hệ thống Thông tin Số Sky First</label>
-        <span class="sfn-search-icon" aria-hidden="true">⌕</span>
+        <span class="sfn-search-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="20" y1="20" x2="16.2" y2="16.2"></line></svg>
+        </span>
         <input id="staticSearch" type="search" placeholder="Tìm kiếm chương trình, sự kiện, tài liệu, biểu mẫu, chứng nhận..." autocomplete="off">
         <button type="button" onclick="document.getElementById('searchOpen')?.click()"><span data-i18n="search_btn">Tìm kiếm</span> <span aria-hidden="true">→</span></button>
       </form>
-      <div class="sfn-quick-pills" aria-label="Truy cập nhanh">
+      <div class="sfn-quick-pills" id="quickAccessPills" aria-label="Truy cập nhanh">
         <span class="sfn-quick-label" data-i18n="quick_label">Truy cập nhanh:</span>
-        <a href="/chuong-trinh"><span>◫</span> <b data-i18n="nav_programs">Chương trình</b></a>
-        <a href="/su-kien"><span>📅</span> <b data-i18n="nav_events">Sự kiện</b></a>
-        <a href="/bieu-mau"><span>▤</span> <b data-i18n="nav_forms">Biểu mẫu</b></a>
-        <a href="/gcn"><span>✓</span> <b data-i18n="nav_certs">Chứng nhận</b></a>
-        <a href="/ho-so"><span>⌁</span> <b data-i18n="nav_cases">Hồ sơ</b></a>
-        <a href="/tai-tro"><span>♡</span> <b data-i18n="nav_sponsorship">Tài trợ</b></a>
-        <a href="/an-toan"><span>🛡️</span> <b data-i18n="nav_safety">An toàn</b></a>
+        <a href="/chuong-trinh"><b data-i18n="nav_programs">Chương trình</b></a>
+        <a href="/su-kien"><b data-i18n="nav_events">Sự kiện</b></a>
+        <a href="/bieu-mau"><b data-i18n="nav_forms">Biểu mẫu</b></a>
+        <a href="/gcn"><b data-i18n="nav_certs">Chứng nhận</b></a>
+        <a href="/ho-so"><b data-i18n="nav_cases">Hồ sơ</b></a>
+        <a href="/tai-tro"><b data-i18n="nav_sponsorship">Tài trợ</b></a>
+        <a href="/an-toan"><b data-i18n="nav_safety">An toàn</b></a>
       </div>
     </div>
   </section>
@@ -82,46 +84,77 @@
 
 <div class="search-center" id="searchCenter" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
   <div class="search-top"><a class="dip-brand compact" href="/"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><span><b>SKY FIRST</b><small data-i18n="search_header">TÌM KIẾM HỆ THỐNG</small></span></a><button id="searchClose" type="button" aria-label="Đóng tìm kiếm">✕</button></div>
-  <div class="search-body"><span class="hero-eyebrow" data-i18n="search_eyebrow">TÌM KIẾM TRÊN HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h2 id="searchTitle" data-i18n="search_title">Khám phá thông tin & dịch vụ số</h2><div class="search-box"><span>⌕</span><input id="globalSearch" type="search" placeholder="Nhập tên chương trình, sự kiện, tài liệu, biểu mẫu hoặc mã chứng nhận..." autocomplete="off" aria-describedby="searchHint"><kbd>ESC</kbd></div><p id="searchHint" data-i18n="search_hint">Chỉ tìm kiếm trên dữ liệu công khai. Dùng phím ↑ ↓ để chọn, Enter để mở.</p><div class="search-filters" id="searchFilters" aria-label="Lọc kết quả"></div><div class="recent-searches" id="recentSearches"></div><div class="global-results" id="globalResults" aria-live="polite"></div></div>
+  <div class="search-body"><span class="hero-eyebrow" data-i18n="search_eyebrow">TÌM KIẾM TRÊN HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h2 id="searchTitle" data-i18n="search_title">Khám phá thông tin & dịch vụ số</h2><div class="search-box"><span><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="20" y1="20" x2="16.2" y2="16.2"></line></svg></span><input id="globalSearch" type="search" placeholder="Nhập tên chương trình, sự kiện, tài liệu, biểu mẫu hoặc mã chứng nhận..." autocomplete="off" aria-describedby="searchHint"><kbd>ESC</kbd></div><p id="searchHint" data-i18n="search_hint">Chỉ tìm kiếm trên dữ liệu công khai. Dùng phím ↑ ↓ để chọn, Enter để mở.</p><div class="search-filters" id="searchFilters" aria-label="Lọc kết quả"></div><div class="recent-searches" id="recentSearches"></div><div class="global-results" id="globalResults" aria-live="polite"></div></div>
 </div>
 
-<footer class="dip-footer" id="connect">
+<footer class="dip-footer sfn-ref-footer" id="connect">
   <div class="dip-footer-grid">
-    <div>
-      <a class="dip-brand footer-logo" href="/"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><span><b>HỆ THỐNG THÔNG TIN SỐ SKY FIRST</b><small>Sky First Digital Information System</small></span></a>
-      <p id="footerDescription" data-i18n="footer_desc">Hệ thống thông tin và dịch vụ số phục vụ tra cứu, đăng ký chương trình, biểu mẫu, chứng nhận và minh bạch hoạt động.</p>
+    <div class="footer-col-brand">
+      <a class="dip-brand footer-logo" href="/">
+        <img src="/assets/sfn-logo-tight.png" alt="Logo Sky First" width="76" height="76">
+        <span>
+          <b class="footer-title-top" data-i18n="footer_brand_top">HỆ THỐNG THÔNG TIN SỐ</b>
+          <strong class="footer-title-main">SKY FIRST</strong>
+          <small>Sky First Digital Information System</small>
+        </span>
+      </a>
+      <span class="footer-brand-divider" aria-hidden="true"></span>
+      <p id="footerDescription" data-i18n="footer_desc">Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First.</p>
     </div>
-    <div>
-      <b data-i18n="footer_col_services">Chức năng số</b>
-      <a href="/chuong-trinh" data-i18n="nav_programs">Chương trình</a>
-      <a href="/su-kien" data-i18n="nav_events">Sự kiện</a>
-      <a href="/tai-lieu" data-i18n="nav_docs">Tài liệu</a>
-      <a href="/bieu-mau" data-i18n="nav_forms">Biểu mẫu</a>
+    <div class="footer-col-links" id="footerColDigital">
+      <div class="footer-col-head">
+        <span class="footer-col-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
+        </span>
+        <b data-i18n="footer_col_services">Chức năng số</b>
+      </div>
+      <span class="footer-col-divider" aria-hidden="true"></span>
+      <a href="/chuong-trinh"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"></rect><line x1="8" y1="8" x2="16" y2="8"></line><line x1="8" y1="12" x2="16" y2="12"></line><line x1="8" y1="16" x2="13" y2="16"></line></svg></span><span data-i18n="nav_programs">Chương trình</span></a>
+      <a href="/su-kien"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"></rect><line x1="8" y1="2" x2="8" y2="6"></line><line x1="16" y1="2" x2="16" y2="6"></line><line x1="3" y1="9" x2="21" y2="9"></line></svg></span><span data-i18n="nav_events">Sự kiện</span></a>
+      <a href="/tai-lieu"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z"></path></svg></span><span data-i18n="nav_docs">Tài liệu</span></a>
+      <a href="/bieu-mau"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"></rect><line x1="8" y1="8" x2="16" y2="8"></line><line x1="8" y1="12" x2="16" y2="12"></line><line x1="8" y1="16" x2="12" y2="16"></line></svg></span><span data-i18n="nav_forms">Biểu mẫu</span></a>
     </div>
-    <div>
-      <b data-i18n="footer_col_lookup">Tra cứu & Minh bạch</b>
-      <a href="/gcn" data-i18n="nav_certs">Chứng nhận (/gcn)</a>
-      <a href="/ho-so" data-i18n="nav_cases">Hồ sơ (/ho-so)</a>
-      <a href="/tai-tro" data-i18n="nav_sponsorship">Tài trợ (/tai-tro)</a>
-      <a href="/an-toan" data-i18n="nav_safety">An toàn (/an-toan)</a>
+    <div class="footer-col-links" id="footerColLookup">
+      <div class="footer-col-head">
+        <span class="footer-col-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"></circle><line x1="20" y1="20" x2="16.2" y2="16.2"></line></svg>
+        </span>
+        <b data-i18n="footer_col_lookup">Tra cứu & Minh bạch</b>
+      </div>
+      <span class="footer-col-divider" aria-hidden="true"></span>
+      <a href="/gcn"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 12 11 14 15 10"></polyline></svg></span><span data-i18n="nav_certs">Chứng nhận</span></a>
+      <a href="/ho-so"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"></rect><line x1="8" y1="8" x2="16" y2="8"></line><line x1="8" y1="12" x2="16" y2="12"></line><line x1="8" y1="16" x2="13" y2="16"></line></svg></span><span data-i18n="nav_cases">Hồ sơ</span></a>
+      <a href="/tai-tro"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21.2l7.8-7.7 1-1.1a5.5 5.5 0 0 0 0-7.8z"></path></svg></span><span data-i18n="nav_sponsorship">Tài trợ</span></a>
+      <a href="/an-toan"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 12 11 14 15 10"></polyline></svg></span><span data-i18n="nav_safety">An toàn</span></a>
     </div>
-    <div>
-      <b data-i18n="footer_col_contact">Liên hệ & Hỗ trợ</b>
-      <a href="mailto:app@skyfirst.io.vn" id="footerPortalEmailLink">Hệ thống: <span id="footerPortalEmailText">app@skyfirst.io.vn</span></a>
-      <a href="mailto:lienhe@skyfirst.io.vn" id="footerEmailLink">Liên hệ chung: <span id="footerEmailText">lienhe@skyfirst.io.vn</span></a>
-      <a href="mailto:support@skyfirst.io.vn" id="footerSupportLink">Hỗ trợ kỹ thuật: <span id="footerSupportText">support@skyfirst.io.vn</span></a>
-      <a href="/an-toan#privacy" data-i18n="footer_privacy">Quyền riêng tư & Bảo vệ dữ liệu</a>
+    <div class="footer-col-links" id="footerColContact">
+      <div class="footer-col-head">
+        <span class="footer-col-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>
+        </span>
+        <b data-i18n="footer_col_contact">Liên hệ & Hỗ trợ</b>
+      </div>
+      <span class="footer-col-divider" aria-hidden="true"></span>
+      <a href="mailto:app@skyfirst.io.vn" id="footerPortalEmailLink"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"></rect><polyline points="3 7 12 13 21 7"></polyline></svg></span><span id="footerPortalEmailText">app@skyfirst.io.vn</span></a>
+      <a href="mailto:lienhe@skyfirst.io.vn" id="footerEmailLink"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"></rect><polyline points="3 7 12 13 21 7"></polyline></svg></span><span id="footerEmailText">lienhe@skyfirst.io.vn</span></a>
+      <a href="mailto:support@skyfirst.io.vn" id="footerSupportLink"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"></rect><polyline points="3 7 12 13 21 7"></polyline></svg></span><span id="footerSupportText">support@skyfirst.io.vn</span></a>
+      <a href="/an-toan#privacy"><span class="footer-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="14" height="18" rx="2"></rect><path d="M16 13l3 1.5v3.5c0 2.2-3 3.5-3 3.5s-3-1.3-3-3.5v-3.5L16 13z"></path></svg></span><span data-i18n="footer_privacy">Quyền riêng tư & Bảo vệ dữ liệu</span></a>
     </div>
   </div>
   <div class="dip-footer-bottom">
-    <span id="footerCopyright">© 2026 Hệ thống Thông tin Số Sky First</span>
-    <span class="footer-mission" data-i18n="footer_tagline">Kết nối tri thức • Lan tỏa giá trị • Vì cộng đồng bền vững</span>
-    <a class="footer-domain" href="https://app.skyfirst.io.vn">HỆ THỐNG THÔNG TIN SỐ SKY FIRST · app.skyfirst.io.vn</a>
-    <button class="footer-top" type="button" aria-label="Lên đầu trang" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+    <div class="footer-copyright-col">
+      <span id="footerCopyright" data-i18n="footer_copyright">© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền.</span>
+    </div>
+    <div class="footer-citation-col">
+      <p id="footerCitation" data-i18n="footer_citation">Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân.</p>
+    </div>
+    <div class="footer-admin-link-col">
+      <a class="footer-admin-subtle-link" id="footerAdminLoginLink" href="https://app.skyfirst.io.vn/admin/login" data-i18n="footer_admin_login">Đăng Nhập Quản Trị</a>
+    </div>
   </div>
 </footer>
 
-<script type="module" src="/digital-portal.js?v=20261022-v7"></script>
-<script type="module" src="/bootstrap.js?v=20261022-v7"></script>
+<script type="module" src="/digital-portal.js?v=20261022-v8"></script>
+<script type="module" src="/bootstrap.js?v=20261022-v8"></script>
 </body>
 </html>
