@@ -13,18 +13,17 @@ async function getSetting(env,key,fallback=null){
   }catch{return fallback}
 }
 
-
 async function notFoundPage(env){
   const title=await getSetting(env,"not_found_title","Không tìm thấy nội dung");
   const text=await getSetting(env,"not_found_text","Trang bạn đang tìm có thể đã được di chuyển, ẩn hoặc không còn tồn tại.");
   const esc=x=>String(x||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
-  return new Response(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>404 — Sky First</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/digital.css"></head><body class="public-digital"><main class="system-state-shell"><section class="system-state"><img src="/assets/sfn-logo-tight.png" alt="Sky First"><span class="state-code">404 · NOT FOUND</span><h1>${esc(title)}</h1><p>${esc(text)}</p><div class="actions"><a class="portal-button" href="/">Về Cổng Thông tin →</a><a class="secondary" href="/tra-cuu">Mở Tra cứu</a></div></section></main></body></html>`,{status:404,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
+  return new Response(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>404 — Hệ thống Thông tin Số Sky First</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/digital.css"></head><body class="public-digital"><main class="system-state-shell"><section class="system-state"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><span class="state-code">404 · KHÔNG TÌM THẤY TRANG</span><h1>${esc(title)}</h1><p>${esc(text)}</p><div class="actions"><a class="portal-button" href="/">Về Trang chủ →</a><a class="secondary" href="/tra-cuu">Mở Tra cứu</a></div></section></main></body></html>`,{status:404,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
 }
 
 function secure(resp){
   const h=new Headers(resp.headers);
   h.set("x-content-type-options","nosniff");
-  h.set("x-frame-options","DENY");
+  h.set("x-frame-options","SAMEORIGIN");
   h.set("referrer-policy","strict-origin-when-cross-origin");
   h.set("permissions-policy","camera=(self), microphone=(), geolocation=(), payment=(), usb=()");
   h.set("strict-transport-security","max-age=31536000; includeSubDomains");
@@ -32,25 +31,24 @@ function secure(resp){
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https://quickchart.io",
+    "img-src 'self' data: blob: https://quickchart.io",
     "font-src 'self' data:",
     "connect-src 'self' https://challenges.cloudflare.com",
-    "frame-src https://challenges.cloudflare.com",
+    "frame-src 'self' https://challenges.cloudflare.com",
     "form-action 'self'",
     "base-uri 'self'",
-    "object-src 'none'"
+    "object-src 'self'"
   ].join("; "));
   return new Response(resp.body,{status:resp.status,statusText:resp.statusText,headers:h});
 }
 
-
 async function servePublicMedia(request,env,url){
   if(request.method!=="GET" || !url.pathname.startsWith("/media/")) return null;
-  if(!env.FILES) return json({error:"STORAGE_UNAVAILABLE"},503);
+  if(!env.FILES) return json({error:"STORAGE_UNAVAILABLE",message:"Dịch vụ lưu trữ tệp hiện tạm thời chưa khả dụng."},503);
   const key=decodeURIComponent(url.pathname.slice("/media/".length));
-  if(!key || key.includes("..")) return json({error:"INVALID_PATH"},400);
+  if(!key || key.includes("..")) return json({error:"INVALID_PATH",message:"Đường dẫn tài nguyên không hợp lệ."},400);
   const obj=await env.FILES.get(`public-media/${key}`);
-  if(!obj) return json({error:"MEDIA_NOT_FOUND"},404);
+  if(!obj) return json({error:"MEDIA_NOT_FOUND",message:"Không tìm thấy hình ảnh yêu cầu."},404);
   const h=new Headers();
   h.set("content-type",obj.httpMetadata?.contentType||"application/octet-stream");
   h.set("cache-control","public, max-age=86400");
@@ -60,14 +58,14 @@ async function servePublicMedia(request,env,url){
 async function serveEmailFile(request,env,url){
   const m=url.pathname.match(/^\/api\/email-files\/([^/]+)$/);
   if(!m||request.method!=="GET") return null;
-  if(!env.FILES) return json({error:"STORAGE_UNAVAILABLE"},503);
+  if(!env.FILES) return json({error:"STORAGE_UNAVAILABLE",message:"Dịch vụ lưu trữ tệp hiện tạm thời chưa khả dụng."},503);
   const id=decodeURIComponent(m[1]);
   const token=String(url.searchParams.get("token")||"");
-  if(!token) return json({error:"FORBIDDEN"},403);
+  if(!token) return json({error:"FORBIDDEN",message:"Bạn không có quyền truy cập tệp này."},403);
   const meta=await env.DB.prepare("SELECT * FROM files WHERE id=? AND email_token=?").bind(id,token).first();
-  if(!meta) return json({error:"FILE_NOT_FOUND"},404);
+  if(!meta) return json({error:"FILE_NOT_FOUND",message:"Không tìm thấy tệp hoặc liên kết đã hết hạn."},404);
   const obj=await env.FILES.get(meta.r2_key);
-  if(!obj) return json({error:"OBJECT_NOT_FOUND"},404);
+  if(!obj) return json({error:"OBJECT_NOT_FOUND",message:"Không tìm thấy nội dung tệp."},404);
   const headers=new Headers();
   headers.set("content-type",meta.mime||obj.httpMetadata?.contentType||"image/jpeg");
   headers.set("cache-control","private, max-age=604800");
@@ -78,18 +76,28 @@ async function serveEmailFile(request,env,url){
 async function serveFile(request,env,url){
   const m=url.pathname.match(/^\/api\/files\/([^/]+)$/);
   if(!m||request.method!=="GET") return null;
-  const id=decodeURIComponent(m[1]),meta=await env.DB.prepare("SELECT * FROM files WHERE id=?").bind(id).first();
-  if(!meta) return json({error:"FILE_NOT_FOUND"},404);
+  const id=decodeURIComponent(m[1]),meta=await env.DB.prepare("SELECT * FROM files WHERE id=? AND deleted_at IS NULL").bind(id).first();
+  if(!meta) return json({error:"FILE_NOT_FOUND",message:"Không tìm thấy tài liệu hoặc tệp yêu cầu."},404);
   const user=await getAuthUser(request,env);
   const own=user && meta.owner_user_id && Number(meta.owner_user_id)===Number(user.id);
-  const admin=user && hasPermission(user,"file.manage");
-  if(meta.visibility!=="public"&&!own&&!admin) return json({error:"FORBIDDEN"},403);
+  const admin=user && (hasPermission(user,"file.manage") || hasPermission(user,"document.view") || hasPermission(user,"document.manage"));
+  // Also allow if linked to a public document with active status
+  let isPublicDoc=false;
+  if(meta.visibility!=="public" && !own && !admin){
+    try{
+      const doc=await env.DB.prepare("SELECT id FROM documents WHERE file_id=? AND visibility='public' AND status='Có hiệu lực' LIMIT 1").bind(id).first();
+      if(doc) isPublicDoc=true;
+    }catch{}
+  }
+  if(meta.visibility!=="public"&&!isPublicDoc&&!own&&!admin) return json({error:"FORBIDDEN",message:"Bạn không có quyền truy cập tài liệu này."},403);
   const obj=await env.FILES.get(meta.r2_key);
-  if(!obj) return json({error:"OBJECT_NOT_FOUND"},404);
+  if(!obj) return json({error:"OBJECT_NOT_FOUND",message:"Không tìm thấy nội dung tệp lưu trữ."},404);
   const headers=new Headers();
+  const download=url.searchParams.get("download")==="1";
   headers.set("content-type",meta.mime||obj.httpMetadata?.contentType||"application/octet-stream");
-  headers.set("content-disposition",`inline; filename*=UTF-8''${encodeURIComponent(meta.filename)}`);
-  headers.set("cache-control",meta.visibility==="public"?"public, max-age=3600":"private, no-store");
+  headers.set("content-disposition",`${download?"attachment":"inline"}; filename*=UTF-8''${encodeURIComponent(meta.filename)}`);
+  headers.set("cache-control",(meta.visibility==="public"||isPublicDoc)?"public, max-age=3600":"private, no-store");
+  headers.set("x-content-type-options","nosniff");
   return new Response(obj.body,{headers});
 }
 
@@ -115,7 +123,7 @@ async function cleanup(env){
 }
 
 async function scheduledBackup(env){
-  const tables=["settings","modules","forms","form_revisions","terms","people","units","classes","events","news","documents","certificates","certificate_history","case_events","approvals","tasks"];
+  const tables=["settings","modules","forms","form_revisions","terms","people","units","classes","events","news","documents","document_versions","certificates","certificate_history","case_events","approvals","tasks","sponsorship_campaigns","sponsorship_transactions","sponsorship_reports","safety_reports","websites","cms_pages","cms_page_revisions","cms_shared_blocks","cms_templates"];
   const snapshot={created_at:new Date().toISOString(),kind:"automatic",tables:{}};
   for(const t of tables){
     try{const rs=await env.DB.prepare(`SELECT * FROM ${t}`).all();snapshot.tables[t]=rs.results||[]}catch(err){console.warn("AUTO_BACKUP_SKIP",t,String(err?.message||err))}
@@ -127,25 +135,41 @@ async function scheduledBackup(env){
     .bind(id,key,new TextEncoder().encode(raw).length).run();
 }
 
+const PORTAL_PATH_PREFIXES = [
+  "/tra-cuu","/gcn","/ho-so","/bieu-mau","/chuong-trinh","/su-kien",
+  "/tai-lieu","/tai-tro","/an-toan","/tim-kiem","/trang","/admin","/admin/login"
+];
+
+function isSpaRoute(pathname){
+  if(PORTAL_PATH_PREFIXES.includes(pathname)) return true;
+  return ["/gcn/","/chuong-trinh/","/su-kien/","/tai-lieu/","/tai-tro/","/trang/"].some(prefix=>pathname.startsWith(prefix));
+}
+
 async function handle(request,env,ctx){
   const url=new URL(request.url);
 
   if(isStateChanging(request) && url.pathname.startsWith("/api/") && url.pathname!=="/api/integrations/xanh/submissions"){
     const appUrl=env.APP_URL||url.origin;
-    if(!sameOrigin(request,appUrl)) return json({error:"BAD_ORIGIN"},403);
+    if(!sameOrigin(request,appUrl)) return json({error:"BAD_ORIGIN",message:"Yêu cầu không hợp lệ từ nguồn bên ngoài."},403);
   }
 
   if(url.pathname==="/api/health") return json({
-    ok:true,app:"Sky First Network",production:true,time:new Date().toISOString(),
-    database:!!env.DB,storage:!!env.FILES
+    ok:true,
+    app:"Hệ thống Thông tin Số Sky First",
+    app_en:"Sky First Digital Information System",
+    domain:"app.skyfirst.io.vn",
+    production:true,
+    time:new Date().toISOString(),
+    database:!!env.DB,
+    storage:!!env.FILES
   });
 
   const mediaResp=await servePublicMedia(request,env,url); if(mediaResp) return mediaResp;
   const emailFileResp=await serveEmailFile(request,env,url); if(emailFileResp) return emailFileResp;
   const fileResp=await serveFile(request,env,url); if(fileResp) return fileResp;
   const auth=await authRoute(request,env,url); if(auth) return auth;
-  const edgeCacheable=request.method==="GET"&&new Set(["/api/config","/api/public/news","/api/public/classes","/api/public/events","/api/public/units","/api/public/resources"]).has(url.pathname);
-  const edgeKey=edgeCacheable?new Request(url.origin+url.pathname,{method:"GET"}):null;
+  const edgeCacheable=request.method==="GET"&&new Set(["/api/config","/api/public/news","/api/public/classes","/api/public/events","/api/public/units","/api/public/resources","/api/public/sponsorship","/api/public/pages"]).has(url.pathname);
+  const edgeKey=edgeCacheable?new Request(url.origin+url.pathname+url.search,{method:"GET"}):null;
   if(edgeCacheable&&typeof caches!=="undefined"){const hit=await caches.default.match(edgeKey);if(hit)return hit}
   const pub=await publicRoute(request,env,url,ctx);
   if(pub){
@@ -158,24 +182,22 @@ async function handle(request,env,ctx){
   if(request.method==="GET" && (url.pathname==="/"||url.pathname==="/index.html")){
     const maintenance=await getSetting(env,"maintenance_mode",false);
     if(maintenance){
-      const title=await getSetting(env,"maintenance_title","Sky First đang được cập nhật");
-      const text=await getSetting(env,"maintenance_text","Hệ thống đang được nâng cấp để phục vụ bạn tốt hơn. Vui lòng quay lại sau.");
+      const title=await getSetting(env,"maintenance_title","Hệ thống Thông tin Số Sky First đang bảo trì");
+      const text=await getSetting(env,"maintenance_text","Hệ thống đang được nâng cấp định kỳ để phục vụ bạn tốt hơn. Vui lòng quay lại sau.");
       const esc=x=>String(x||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
-      return new Response(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/digital.css"></head><body class="public-digital"><main class="system-state-shell"><section class="system-state"><img src="/assets/sfn-logo-tight.png" alt="Sky First"><span class="state-code">MAINTENANCE</span><h1>${esc(title)}</h1><p>${esc(text)}</p><div class="actions"><a class="secondary" href="mailto:ctt@skyfirst.io.vn">Hỗ trợ</a></div></section></main></body></html>`,{status:503,headers:{"content-type":"text/html; charset=utf-8","retry-after":"600","cache-control":"no-store"}});
+      return new Response(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/digital.css"></head><body class="public-digital"><main class="system-state-shell"><section class="system-state"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><span class="state-code">BẢO TRÌ HỆ THỐNG</span><h1>${esc(title)}</h1><p>${esc(text)}</p><div class="actions"><a class="secondary" href="mailto:support@skyfirst.io.vn">Liên hệ hỗ trợ kỹ thuật</a></div></section></main></body></html>`,{status:503,headers:{"content-type":"text/html; charset=utf-8","retry-after":"600","cache-control":"no-store"}});
     }
   }
 
   const asset=await env.ASSETS.fetch(request);
   if(asset.status!==404) return asset;
-  const portalRoutes=["/tra-cuu","/gcn","/ho-so","/bieu-mau","/admin","/admin/login"];
-  const isPortalRoute=portalRoutes.includes(url.pathname)||url.pathname.startsWith("/gcn/");
-  if(request.method==="GET" && isPortalRoute){
+  if(request.method==="GET" && isSpaRoute(url.pathname)){
     const indexUrl=new URL("/index.html",url.origin);
     const shell=await env.ASSETS.fetch(new Request(indexUrl,{headers:request.headers}));
     if(shell.status!==404) return shell;
   }
   if(request.method==="GET" && !url.pathname.startsWith("/api/")) return notFoundPage(env);
-  return json({error:"NOT_FOUND"},404);
+  return json({error:"NOT_FOUND",message:"Không tìm thấy tài nguyên yêu cầu."},404);
 }
 
 export default {
@@ -191,7 +213,7 @@ export default {
           if(page.ok)return secure(new Response(page.body,{status:500,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}}));
         }catch{}
       }
-      return secure(json({error:"INTERNAL_ERROR",message:"Hệ thống gặp lỗi. Vui lòng thử lại sau.",request_id:requestId},500,{"Cache-Control":"no-store"}));
+      return secure(json({error:"INTERNAL_ERROR",message:"Hệ thống đang gặp sự cố khi xử lý yêu cầu. Vui lòng thử lại sau hoặc liên hệ bộ phận hỗ trợ.",request_id:requestId},500,{"Cache-Control":"no-store"}));
     }
   },
 

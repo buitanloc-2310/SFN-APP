@@ -2,10 +2,11 @@ const app=document.getElementById('app');
 let appBundleLoaded=false;
 
 function currentRoute(){
-  const hash=(location.hash||'#home').slice(1);
-  const [route,rawParam]=hash.split('/');
+  const rawHash=(location.hash||'').slice(1);
+  const [route,rawParam]=rawHash.split('/');
   let param=rawParam;try{if(param)param=decodeURIComponent(param)}catch{}
-  return {path:location.pathname.replace(/\/+$/,'/')||'/',route,param};
+  const path=location.pathname.replace(/\/+$/,'/')||'/';
+  return {path,route:route||'',param:param||''};
 }
 
 function needsAppBundle({path,route}){
@@ -15,7 +16,7 @@ function needsAppBundle({path,route}){
 async function loadAppBundle(){
   if(appBundleLoaded)return;
   appBundleLoaded=true;
-  await import('/app.js?v=20261010-v6');
+  await import('/app.js?v=20261022-v7');
 }
 
 async function renderPublic(){
@@ -26,7 +27,7 @@ async function renderPublic(){
   }
   try{await window.SkyFirstDigital.render({app,...ctx});}
   catch(err){
-    app.innerHTML=`<section class="system-state"><span class="hero-eyebrow">SERVICE STATE</span><h1>Không thể tải nội dung lúc này</h1><p>${String(err?.message||'Vui lòng thử lại sau.').replace(/[&<>"']/g,'')}</p><a class="portal-button" href="/">Thử lại →</a></section>`;
+    app.innerHTML=`<section class="system-state"><span class="hero-eyebrow">TRẠNG THÁI DỊCH VỤ</span><h1>Hệ thống đang gặp sự cố khi xử lý yêu cầu</h1><p>Vui lòng thử lại sau hoặc liên hệ bộ phận hỗ trợ kỹ thuật tại support@skyfirst.io.vn.</p><a class="portal-button" href="/">Về Trang chủ →</a></section>`;
   }
 }
 
@@ -38,18 +39,19 @@ applyTheme((()=>{try{return localStorage.getItem('sfn_theme')||'light'}catch{ret
 document.getElementById('themeBtn')?.addEventListener('click',()=>applyTheme(document.body.classList.contains('dark')?'light':'dark'));
 
 window.addEventListener('hashchange',()=>{if(!appBundleLoaded)renderPublic()});
+window.addEventListener('popstate',()=>{if(!appBundleLoaded)renderPublic()});
 renderPublic();
 
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/sw.js?v=20261010-v6',{updateViaCache:'none'}).then(reg=>{
+  navigator.serviceWorker.register('/sw.js?v=20261022-v7',{updateViaCache:'none'}).then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
   let hadController=!!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
     if(!hadController){hadController=true;return;}
     try{
-      if(sessionStorage.getItem('sfn_sw_reloaded_v6')==='1')return;
-      sessionStorage.setItem('sfn_sw_reloaded_v6','1');
+      if(sessionStorage.getItem('sfn_sw_reloaded_v7')==='1')return;
+      sessionStorage.setItem('sfn_sw_reloaded_v7','1');
     }catch{}
     location.reload();
   });

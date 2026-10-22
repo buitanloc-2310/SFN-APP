@@ -1,14 +1,22 @@
 {
-  "name": "Cổng Thông tin Số Sky First",
+  "name": "Hệ thống Thông tin Số Sky First",
   "short_name": "Sky First",
-  "description": "Sky First Digital Information Portal",
+  "description": "Sky First Digital Information System (app.skyfirst.io.vn)",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f6f9fd",
   "theme_color": "#0759b8",
   "icons": [
-    {"src":"/assets/sfn-logo-tight.png","sizes":"192x192","type":"image/png"},
-    {"src":"/assets/sfn-logo-tight.png","sizes":"512x512","type":"image/png"}
+    {
+      "src": "/assets/sfn-logo-tight.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/sfn-logo-tight.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
   ]
 }

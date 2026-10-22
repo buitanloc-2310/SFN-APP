@@ -1,4 +1,3 @@
-
 import {renderTemplate, escapeHtml} from "./utils.js";
 
 async function logEmail(env,to,templateKey,subject,status,messageId="",error=""){
@@ -8,16 +7,34 @@ async function logEmail(env,to,templateKey,subject,status,messageId="",error="")
   }catch{}
 }
 
-export async function sendEmail(env,{to,subject,html,text,templateKey=""}){
-  if(!to) return {ok:false,error:"MISSING_RECIPIENT"};
+async function isDuplicateRecentEmail(env,to,templateKey,subject){
+  if(!to||!templateKey||!env?.DB) return false;
   try{
-    // 1) Resend API — phù hợp khi DNS chính không nằm tại Cloudflare.
+    const row=await env.DB.prepare(
+      "SELECT id FROM email_logs WHERE lower(to_email)=lower(?) AND template_key=? AND subject=? AND status IN ('sent','pending') AND created_at > datetime('now','-60 seconds') LIMIT 1"
+    ).bind(to,templateKey,subject||"").first();
+    return !!row;
+  }catch{
+    return false;
+  }
+}
+
+export async function sendEmail(env,{to,subject,html,text,templateKey="",skipDedupe=false}){
+  if(!to || !String(to).includes("@")) return {ok:false,error:"MISSING_OR_INVALID_RECIPIENT"};
+  if(!skipDedupe && await isDuplicateRecentEmail(env,to,templateKey,subject)){
+    return {ok:true,deduped:true};
+  }
+  const fromAddr = env.MAIL_FROM || "Hệ thống Thông tin Số Sky First <app@skyfirst.io.vn>";
+  const replyTo = env.MAIL_SUPPORT || "support@skyfirst.io.vn";
+  try{
+    // 1) Resend API
     if(env.RESEND_API_KEY){
       const r=await fetch("https://api.resend.com/emails",{
         method:"POST",
         headers:{"content-type":"application/json","authorization":`Bearer ${env.RESEND_API_KEY}`},
         body:JSON.stringify({
-          from:env.MAIL_FROM||"Sky First Network <noreply@skyfirst.io.vn>",
+          from:fromAddr,
+          reply_to:replyTo,
           to:[to],subject,html,text
         })
       });
@@ -27,18 +44,18 @@ export async function sendEmail(env,{to,subject,html,text,templateKey=""}){
       return {ok:true,id:data?.id||""};
     }
 
-    // 2) Cloudflare Email Service binding — chỉ dùng nếu binding EMAIL đã được cấu hình.
+    // 2) Cloudflare Email Service binding
     if(env.EMAIL?.send){
       const result=await env.EMAIL.send({
         to,
-        from:env.MAIL_FROM||"noreply@skyfirst.io.vn",
+        from:fromAddr,
         subject,html,text
       });
       await logEmail(env,to,templateKey,subject,"sent",result?.messageId||"","");
       return {ok:true,id:result?.messageId||""};
     }
 
-    await logEmail(env,to,templateKey,subject,"pending","","Email provider chưa được cấu hình.");
+    await logEmail(env,to,templateKey,subject,"pending","","Email provider chưa được cấu hình (cần RESEND_API_KEY hoặc EMAIL binding).");
     return {ok:false,pending:true,error:"EMAIL_PROVIDER_NOT_CONFIGURED"};
   }catch(err){
     await logEmail(env,to,templateKey,subject,"failed","",err?.message||String(err));
@@ -46,15 +63,32 @@ export async function sendEmail(env,{to,subject,html,text,templateKey=""}){
   }
 }
 
-export async function sendTemplatedEmail(env,key,to,vars={}){
+export function renderEmailContent(row, vars={}){
+  const safeVars = {
+    support_email: "support@skyfirst.io.vn",
+    contact_email: "lienhe@skyfirst.io.vn",
+    system_email: "app@skyfirst.io.vn",
+    ...vars
+  };
+  const rawKeys = new Set(["PROFILE_IMAGE_BLOCK","answers_table","note_block"]);
+  return {
+    subject: renderTemplate(row.subject_template, safeVars, {htmlEscape:false}),
+    html: renderTemplate(row.html_template, safeVars, {htmlEscape:true, rawKeys}),
+    text: renderTemplate(row.text_template||"", safeVars, {htmlEscape:false})
+  };
+}
+
+export async function sendTemplatedEmail(env,key,to,vars={},options={}){
   const row=await env.DB.prepare("SELECT * FROM email_templates WHERE key=? AND enabled=1").bind(key).first();
   if(!row) return {ok:false,error:"TEMPLATE_NOT_FOUND"};
+  const rendered = renderEmailContent(row, vars);
   return sendEmail(env,{
     to,
     templateKey:key,
-    subject:renderTemplate(row.subject_template,vars),
-    html:renderTemplate(row.html_template,vars),
-    text:renderTemplate(row.text_template||"",vars)
+    subject:rendered.subject,
+    html:rendered.html,
+    text:rendered.text,
+    skipDedupe:!!options.skipDedupe
   });
 }
 

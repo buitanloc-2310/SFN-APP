@@ -1,9 +1,9 @@
-/* Sky First CTT service worker — versioned assets and update-first strategy. */
-const CACHE='sfn-digital-shell-2026-10-v6';
+/* Hệ thống Thông tin Số Sky First — service worker v7 */
+const CACHE='sfn-digital-shell-2026-10-v7';
 const SHELL=[
   '/','/index.html',
-  '/styles.css?v=20261010-v6','/digital.css?v=20261010-v6',
-  '/digital-portal.js?v=20261010-v6','/bootstrap.js?v=20261010-v6',
+  '/styles.css?v=20261022-v7','/digital.css?v=20261022-v7',
+  '/digital-portal.js?v=20261022-v7','/bootstrap.js?v=20261022-v7',
   '/manifest.webmanifest','/assets/sfn-logo-tight.png','/assets/sfn-logo.png'
 ];
 self.addEventListener('install',event=>{

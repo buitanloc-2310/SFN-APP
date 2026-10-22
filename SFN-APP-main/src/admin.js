@@ -1,8 +1,8 @@
 
 import {json, readJson, uid, sha256, ipHash, escapeHtml, pbkdf2, newSalt} from "./utils.js";
 import {getAuthUser, requirePermission, createInvitedAccount} from "./auth.js";
-import {hasPermission, highestRoleLevel, roleLevel} from "./permissions.js";
-import {sendTemplatedEmail} from "./email.js";
+import {hasPermission, hasAnyPermission, highestRoleLevel, roleLevel, canAccessScope} from "./permissions.js";
+import {sendTemplatedEmail, renderEmailContent} from "./email.js";
 
 async function audit(env,request,user,action,entityType="",entityId="",details={}){
   await env.DB.prepare("INSERT INTO audit_log(actor_user_id,actor_email,action,entity_type,entity_id,details_json,ip_hash) VALUES(?,?,?,?,?,?,?)")
@@ -74,7 +74,7 @@ async function listUserRoles(env,userId){
   return rs.results||[];
 }
 
-const PUBLIC_CACHE_PATH={news:"/api/public/news",classes:"/api/public/classes",events:"/api/public/events",units:"/api/public/units",documents:"/api/public/resources"};
+const PUBLIC_CACHE_PATH={news:"/api/public/news",classes:"/api/public/classes",events:"/api/public/events",units:"/api/public/units",documents:"/api/public/resources",sponsorship:"/api/public/sponsorship",pages:"/api/public/pages"};
 function invalidatePublicCache(url,paths,ctx){
   if(typeof caches==="undefined") return;
   const unique=[...new Set((paths||[]).filter(Boolean))];if(!unique.length)return;
@@ -164,6 +164,9 @@ export async function adminRoute(request,env,url,ctx){
     const deny=requirePermission(user,"submission.view");if(deny)return deny;
     const status=url.searchParams.get("status"),form=url.searchParams.get("form"),q=url.searchParams.get("q");
     let sql="SELECT code,form_id,full_name,email,status,assigned_to,score,internal_note,created_at,updated_at FROM submissions WHERE 1=1",vals=[];
+    if(!hasPermission(user,"submission.manage")&&!hasPermission(user,"approval.decide")&&hasPermission(user,"submission.manage_assigned")){
+      sql+=" AND assigned_to=?";vals.push(user.id);
+    }
     if(status){sql+=" AND status=?";vals.push(status)}
     if(form){sql+=" AND form_id=?";vals.push(form)}
     if(q){sql+=" AND (code LIKE ? OR full_name LIKE ? OR email LIKE ?)";vals.push(`%${q}%`,`%${q}%`,`%${q}%`)}
@@ -177,32 +180,52 @@ export async function adminRoute(request,env,url,ctx){
     const deny=requirePermission(user,"submission.view");if(deny)return deny;
     const row=await env.DB.prepare("SELECT * FROM submissions WHERE code=?").bind(decodeURIComponent(subMatch[1])).first();
     if(!row)return json({error:"NOT_FOUND"},404);
+    if(!hasPermission(user,"submission.manage")&&!hasPermission(user,"approval.decide")&&hasPermission(user,"submission.manage_assigned")&&Number(row.assigned_to)!==Number(user.id)){
+      return json({error:"FORBIDDEN",message:"Bạn chỉ được xem hồ sơ được phân công xử lý."},403);
+    }
     const files=await env.DB.prepare("SELECT id,field_key,filename,mime,size,created_at FROM files WHERE submission_code=?").bind(row.code).all();
     return json({item:{...row,answers:parseBodyJson(row,"answers_json"),terms:JSON.parse(row.terms_snapshot_json||"[]")},files:files.results||[]});
   }
 
   if(subMatch&&request.method==="PATCH"){
-    const deny=requirePermission(user,"submission.manage");if(deny)return deny;
     const code=decodeURIComponent(subMatch[1]),body=await readJson(request)||{};
     const current=await env.DB.prepare("SELECT * FROM submissions WHERE code=?").bind(code).first();
     if(!current)return json({error:"NOT_FOUND"},404);
-    const allowed=["status","assigned_to","score","internal_note","next_action","result_summary"],sets=[],vals=[];
+    const canManageAll=hasPermission(user,"submission.manage");
+    const canManageAssigned=hasPermission(user,"submission.manage_assigned")&&Number(current.assigned_to)===Number(user.id);
+    if(!canManageAll&&!canManageAssigned) return json({error:"FORBIDDEN",permission:"submission.manage"},403);
+    const allowed=canManageAll?["status","assigned_to","score","internal_note","next_action","result_summary"]:["status","score","internal_note","next_action","result_summary"];
+    const sets=[],vals=[];
     for(const k of allowed) if(k in body){sets.push(`${k}=?`);vals.push(body[k])}
     if(sets.length){
       vals.push(code); await env.DB.prepare(`UPDATE submissions SET ${sets.join(",")},updated_at=CURRENT_TIMESTAMP WHERE code=?`).bind(...vals).run();
     }
     if(body.status&&body.status!==current.status){
       const publicLabel={
-        "Đã tiếp nhận":"TIẾP NHẬN","Đang kiểm tra":"KIỂM TRA","Đang xử lý":"XỬ LÝ",
-        "Cần bổ sung":"CẦN BỔ SUNG","Hoàn tất":"HOÀN TẤT","Đã hoàn tất":"HOÀN TẤT"
+        "Đã tiếp nhận":"TIẾP NHẬN","Đang xem xét":"KIỂM TRA","Đang kiểm tra":"KIỂM TRA","Đang xử lý":"XỬ LÝ",
+        "Cần bổ sung":"CẦN BỔ SUNG","Mời phỏng vấn":"XỬ LÝ","Đang đánh giá":"XỬ LÝ","Đã duyệt":"HOÀN TẤT","Hoàn tất":"HOÀN TẤT","Đã hoàn tất":"HOÀN TẤT"
       }[body.status]||String(body.status).toUpperCase();
       await env.DB.prepare("INSERT INTO case_events(submission_code,event_type,public_label,public_note,status,created_by) VALUES(?,?,?,?,?,?)")
         .bind(code,"status",publicLabel,String(body.note||body.next_action||""),body.status,user.id).run();
     }
     await audit(env,request,user,"Cập nhật hồ sơ","submission",code,{status:body.status,assigned_to:body.assigned_to,score:body.score,next_action:body.next_action,result_summary:body.result_summary});
     if(body.status&&current.email&&body.status!==current.status){
-      await sendTemplatedEmail(env,"status_update",current.email,{code,status:body.status,note_block:body.note?`<p>${escapeHtml(body.note)}</p>`:""});
-      if(current.user_id) await notifyUser(env,current.user_id,`Hồ sơ ${code}: ${body.status}`,body.note||"","submission",`/?record=${encodeURIComponent(code)}`);
+      const emailVars={
+        code,
+        full_name:current.full_name||current.email,
+        status:body.status,
+        requirement_note:body.note||body.next_action||"Vui lòng kiểm tra thông tin hồ sơ trên hệ thống.",
+        result_summary:body.result_summary||body.note||`Hồ sơ đã chuyển sang trạng thái: ${body.status}.`,
+        note_block:body.note?`<p>${escapeHtml(body.note)}</p>`:""
+      };
+      if(body.status==="Cần bổ sung"){
+        await sendTemplatedEmail(env,"information_required",current.email,emailVars);
+      }else if(["Đã duyệt","Hoàn tất","Đã hoàn tất","Không phù hợp"].includes(body.status)){
+        await sendTemplatedEmail(env,"application_result",current.email,emailVars);
+      }else{
+        await sendTemplatedEmail(env,"status_update",current.email,emailVars);
+      }
+      if(current.user_id) await notifyUser(env,current.user_id,`Hồ sơ ${code}: ${body.status}`,body.note||"","submission",`/ho-so?code=${encodeURIComponent(code)}`);
     }
     return json({ok:true});
   }
@@ -283,9 +306,9 @@ export async function adminRoute(request,env,url,ctx){
     if(target.email.toLowerCase()==="skyfirst.ec@gmail.com")return json({error:"ROOT_SUPER_ADMIN_PROTECTED"},403);
     const chars="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#%",rnd=new Uint8Array(16);crypto.getRandomValues(rnd);
     let temp="SFN!";for(const b of rnd)temp+=chars[b%chars.length];
-    const salt=newSalt(),hash=await pbkdf2(temp,salt,150000);
+    const salt=newSalt(),hash=await pbkdf2(temp,salt,100000);
     await env.DB.batch([
-      env.DB.prepare("UPDATE users SET password_salt=?,password_hash=?,password_iterations=150000,must_change_password=1,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(salt,hash,targetId),
+      env.DB.prepare("UPDATE users SET password_salt=?,password_hash=?,password_iterations=100000,must_change_password=1,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(salt,hash,targetId),
       env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(targetId)
     ]);
     await sendTemplatedEmail(env,"account_invite",target.email,{full_name:target.full_name||target.email,email:target.email,temp_password:temp});
@@ -411,7 +434,7 @@ export async function adminRoute(request,env,url,ctx){
     if(typeof cfg.profile_photo_required!=="boolean") cfg.profile_photo_required=false;
     const cfgJson=JSON.stringify(cfg);
     await env.DB.prepare("INSERT INTO forms(id,name,prefix,description,audience,min_age,enabled,recipient_email,version,config_json,updated_by) VALUES(?,?,?,?,?,?,1,?,1,?,?)")
-      .bind(idForm,body.name,body.prefix,body.description||"",body.audience||"public",body.min_age??null,body.recipient_email||"skyfirst.ec@gmail.com",cfgJson,user.id).run();
+      .bind(idForm,body.name,body.prefix,body.description||"",body.audience||"public",body.min_age??null,body.recipient_email||"app@skyfirst.io.vn",cfgJson,user.id).run();
     try{await env.DB.prepare("INSERT INTO form_revisions(form_id,version,config_json,status,created_by) VALUES(?,1,?,'published',?)").bind(idForm,cfgJson,user.id).run();}catch{}
     await audit(env,request,user,"Tạo biểu mẫu","form",idForm,{name:body.name,version:1});invalidatePublicCache(url,["/api/config"],ctx);return json({ok:true,id:idForm});
   }
@@ -442,7 +465,9 @@ export async function adminRoute(request,env,url,ctx){
 
   const genericList=p.match(/^\/api\/admin\/content\/(news|classes|events|units|documents|tasks)$/);
   if(genericList&&request.method==="GET"){
-    const type=genericList[1],g=GENERIC[type],deny=requirePermission(user,g.permission);if(deny)return deny;
+    const type=genericList[1],g=GENERIC[type];
+    const canView=hasPermission(user,g.permission)||(type==="documents"&&hasPermission(user,"document.view"))||(type==="units"&&hasPermission(user,"unit.view"));
+    if(!canView) return json({error:"FORBIDDEN",permission:g.permission},403);
     const rs=await env.DB.prepare(`SELECT * FROM ${g.table} ORDER BY rowid DESC LIMIT 1500`).all();return json({items:rs.results||[]});
   }
   if(genericList&&request.method==="POST"){
@@ -452,6 +477,13 @@ export async function adminRoute(request,env,url,ctx){
     if(!idValue) return json({error:"MISSING_ID"},400);
     const ins=makeInsert(g.table,g.id,idValue,g.fields,data);
     await env.DB.prepare(ins.sql).bind(...ins.vals).run();
+    if(type==="documents" && data.file_id && await adminTableExists(env,"document_versions")){
+      try{
+        const fMeta=await env.DB.prepare("SELECT filename,mime,size,sha256 FROM files WHERE id=?").bind(data.file_id).first();
+        await env.DB.prepare("INSERT INTO document_versions(id,document_id,version_number,file_id,filename,mime,size,sha256,change_note,is_current,created_by) VALUES(?,?,1,?,?,?,?,?,'Phiên bản khởi tạo',1,?)")
+          .bind(uid("docver"),String(idValue),data.file_id,fMeta?.filename||"",fMeta?.mime||"application/pdf",fMeta?.size||0,fMeta?.sha256||null,user.id).run();
+      }catch{}
+    }
     await audit(env,request,user,`Tạo ${type}`,type,String(idValue),data);invalidatePublicCache(url,[PUBLIC_CACHE_PATH[type]],ctx);return json({ok:true,id:idValue});
   }
   const genericOne=p.match(/^\/api\/admin\/content\/(news|classes|events|units|documents|tasks)\/([^/]+)$/);
@@ -463,7 +495,12 @@ export async function adminRoute(request,env,url,ctx){
   }
   if(genericOne&&request.method==="DELETE"){
     const [_,type,idRaw]=genericOne,g=GENERIC[type],deny=requirePermission(user,g.permission);if(deny)return deny;
-    const idValue=decodeURIComponent(idRaw);await env.DB.prepare(`DELETE FROM ${g.table} WHERE ${g.id}=?`).bind(idValue).run();
+    const idValue=decodeURIComponent(idRaw);
+    if(type==="documents" && await adminTableExists(env,"cms_pages")){
+      const pageRef=await env.DB.prepare("SELECT COUNT(*) c FROM cms_pages WHERE blocks_json LIKE ?").bind(`%${idValue}%`).first();
+      if(Number(pageRef?.c||0)>0) return json({error:"DOCUMENT_IN_USE",message:"Tài liệu đang được nhúng trên trang nội dung CMS. Vui lòng gỡ khỏi trang trước khi xóa.",references:Number(pageRef.c)},409);
+    }
+    await env.DB.prepare(`DELETE FROM ${g.table} WHERE ${g.id}=?`).bind(idValue).run();
     await audit(env,request,user,`Xóa ${type}`,type,idValue,{});invalidatePublicCache(url,[PUBLIC_CACHE_PATH[type]],ctx);return json({ok:true});
   }
 
@@ -524,6 +561,10 @@ export async function adminRoute(request,env,url,ctx){
     const idA=decodeURIComponent(approvalMatch[1]),body=await readJson(request)||{},status=body.status;
     if(!["approved","rejected","needs_more_info"].includes(status))return json({error:"INVALID_STATUS"},400);
     const a=await env.DB.prepare("SELECT * FROM approvals WHERE id=?").bind(idA).first();if(!a)return json({error:"NOT_FOUND"},404);
+    const isRoot=(user.roles||[]).some(r=>["owner","super_admin"].includes(r.role_id));
+    if(status==="approved" && a.requested_by && Number(a.requested_by)===Number(user.id) && !isRoot){
+      return json({error:"SELF_APPROVAL_FORBIDDEN",message:"Nguyên tắc kiểm soát hai bước: Người tạo đề nghị không được tự phê duyệt yêu cầu do chính mình gửi."},403);
+    }
     await env.DB.prepare("UPDATE approvals SET status=?,note=?,decided_by=?,decided_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?")
       .bind(status,body.note||"",user.id,idA).run();
     if(a.entity_type==="certificate"&&status==="approved"){
@@ -589,6 +630,19 @@ export async function adminRoute(request,env,url,ctx){
         await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Được thay thế',?,?)")
           .bind(current.supersedes_id,`Thay thế bởi ${code}`,user.id).run();
       }
+      if(current.email){
+        const certUrl=`${env.APP_URL||"https://app.skyfirst.io.vn"}/gcn/${encodeURIComponent(code)}`;
+        const mailTask=sendTemplatedEmail(env,"certificate_issued",current.email,{
+          recipient_name:current.full_name,
+          full_name:current.full_name,
+          certificate_code:code,
+          code,
+          cert_type:current.cert_type,
+          content:current.content,
+          certificate_url:certUrl
+        });
+        if(ctx?.waitUntil) ctx.waitUntil(mailTask); else await mailTask;
+      }
       await audit(env,request,user,"Phát hành Credential","certificate",idC,{code,registry:"ONE_SKY_FIRST"});return json({ok:true,code});
     }
     if(body.action==="revoke"){
@@ -638,33 +692,122 @@ export async function adminRoute(request,env,url,ctx){
   }
 
   if(p==="/api/admin/tickets"&&request.method==="GET"){
-    const deny=requirePermission(user,"ticket.manage");if(deny)return deny;
-    const rs=await env.DB.prepare("SELECT * FROM tickets ORDER BY created_at DESC LIMIT 1000").all();return json({items:rs.results||[]});
+    if(!hasAnyPermission(user,["ticket.manage","ticket.manage_assigned"])) return json({error:"FORBIDDEN",permission:"ticket.manage"},403);
+    const onlyAssigned=!hasPermission(user,"ticket.manage")&&hasPermission(user,"ticket.manage_assigned");
+    const rs=onlyAssigned
+      ? await env.DB.prepare("SELECT * FROM tickets WHERE assigned_to=? ORDER BY created_at DESC LIMIT 1000").bind(user.id).all()
+      : await env.DB.prepare("SELECT * FROM tickets ORDER BY created_at DESC LIMIT 1000").all();
+    return json({items:rs.results||[]});
   }
   const ticketMatch=p.match(/^\/api\/admin\/tickets\/([^/]+)$/);
   if(ticketMatch&&request.method==="PATCH"){
-    const deny=requirePermission(user,"ticket.manage");if(deny)return deny;
     const idT=decodeURIComponent(ticketMatch[1]),body=await readJson(request)||{},sets=[],vals=[];
-    for(const k of ["priority","status","assigned_to","subject"]) if(k in body){sets.push(`${k}=?`);vals.push(body[k])}
+    const current=await env.DB.prepare("SELECT * FROM tickets WHERE id=?").bind(idT).first();
+    if(!current) return json({error:"NOT_FOUND"},404);
+    const canAll=hasPermission(user,"ticket.manage");
+    const canAssigned=hasPermission(user,"ticket.manage_assigned")&&Number(current.assigned_to)===Number(user.id);
+    if(!canAll&&!canAssigned) return json({error:"FORBIDDEN",permission:"ticket.manage"},403);
+    for(const k of (canAll?["priority","status","assigned_to","subject"]:["priority","status"])) if(k in body){sets.push(`${k}=?`);vals.push(body[k])}
     if(sets.length){vals.push(idT);await env.DB.prepare(`UPDATE tickets SET ${sets.join(",")},updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(...vals).run()}
     if(body.message) await env.DB.prepare("INSERT INTO ticket_messages(ticket_id,sender_user_id,sender_type,body) VALUES(?,?,'staff',?)").bind(idT,user.id,body.message).run();
     await audit(env,request,user,"Cập nhật ticket","ticket",idT,body);return json({ok:true});
   }
 
   if(p==="/api/admin/email-templates"&&request.method==="GET"){
-    const deny=requirePermission(user,"email.manage");if(deny)return deny;
+    if(!hasAnyPermission(user,["email.view","email.manage"])) return json({error:"FORBIDDEN",permission:"email.view"},403);
     const rs=await env.DB.prepare("SELECT * FROM email_templates ORDER BY key").all();return json({items:rs.results||[]});
   }
   const emailTpl=p.match(/^\/api\/admin\/email-templates\/([^/]+)$/);
   if(emailTpl&&request.method==="PUT"){
     const deny=requirePermission(user,"email.manage");if(deny)return deny;
     const key=decodeURIComponent(emailTpl[1]),body=await readJson(request)||{};
-    await env.DB.prepare("UPDATE email_templates SET subject_template=?,html_template=?,text_template=?,enabled=?,updated_at=CURRENT_TIMESTAMP WHERE key=?")
-      .bind(body.subject_template||"",body.html_template||"",body.text_template||"",body.enabled===false?0:1,key).run();
-    await audit(env,request,user,"Cập nhật mẫu email","email_template",key,{});return json({ok:true});
+    if(!body.subject_template || !body.html_template) return json({error:"INVALID_INPUT",message:"Tiêu đề và nội dung HTML của mẫu email là bắt buộc."},400);
+    await env.DB.prepare("INSERT INTO email_templates(key,subject_template,html_template,text_template,enabled,updated_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET subject_template=excluded.subject_template,html_template=excluded.html_template,text_template=excluded.text_template,enabled=excluded.enabled,updated_at=CURRENT_TIMESTAMP")
+      .bind(key,body.subject_template,body.html_template,body.text_template||"",body.enabled===false?0:1).run();
+    if(await adminTableExists(env,"email_template_versions")){
+      try{
+        const vRow=await env.DB.prepare("SELECT COALESCE(MAX(version),0)+1 AS v FROM email_template_versions WHERE template_key=?").bind(key).first();
+        await env.DB.prepare("INSERT INTO email_template_versions(template_key,version,subject_template,html_template,text_template,updated_by) VALUES(?,?,?,?,?,?)")
+          .bind(key,Number(vRow?.v||1),body.subject_template,body.html_template,body.text_template||"",user.id).run();
+      }catch{}
+    }
+    await audit(env,request,user,"Cập nhật mẫu email","email_template",key,{enabled:body.enabled!==false});return json({ok:true});
+  }
+  const emailPreviewMatch=p.match(/^\/api\/admin\/email-templates\/([^/]+)\/preview$/);
+  if(emailPreviewMatch&&request.method==="POST"){
+    if(!hasAnyPermission(user,["email.view","email.manage"])) return json({error:"FORBIDDEN",permission:"email.view"},403);
+    const key=decodeURIComponent(emailPreviewMatch[1]),body=await readJson(request)||{};
+    const row=await env.DB.prepare("SELECT * FROM email_templates WHERE key=?").bind(key).first();
+    if(!row) return json({error:"NOT_FOUND"},404);
+    const sampleVars={
+      full_name:"Nguyễn Văn A",
+      recipient_name:"Nguyễn Văn A",
+      email:"nguyenvana@example.com",
+      code:"SFN-TV-2026-0001",
+      application_code:"SFN-TV-2026-0001",
+      form_name:"Đăng ký Thành viên Sky First",
+      program_name:"Tiếng Anh Cộng đồng SFEC",
+      submitted_at:"22/10/2026 14:30",
+      status:"Đã tiếp nhận",
+      certificate_code:"SFN-GCN-12345678",
+      cert_type:"Giấy chứng nhận",
+      content:"Hoàn thành xuất sắc chương trình hoạt động cộng đồng.",
+      certificate_url:"https://app.skyfirst.io.vn/gcn/SFN-GCN-12345678",
+      requirement_note:"Vui lòng bổ sung minh chứng học tập hoặc kinh nghiệm liên quan.",
+      result_summary:"Hồ sơ đạt yêu cầu tuyển chọn vòng 1.",
+      activation_link:"https://app.skyfirst.io.vn/?reset=sample-token",
+      ticket_code:"SFN-SAFE-2026-0001",
+      subject:"Hỗ trợ tra cứu thông tin",
+      campaign_code:"SFN-TT-2026-01",
+      campaign_title:"Học bổng & Học liệu Cộng đồng 2026",
+      target_amount:"100.000.000 đồng",
+      pledged_amount:"60.000.000 đồng",
+      received_amount:"45.000.000 đồng",
+      ...(body.vars||{})
+    };
+    const rendered=renderEmailContent({
+      subject_template:body.subject_template??row.subject_template,
+      html_template:body.html_template??row.html_template,
+      text_template:body.text_template??row.text_template
+    },sampleVars);
+    return json({ok:true,preview:rendered});
+  }
+  const emailTestMatch=p.match(/^\/api\/admin\/email-templates\/([^/]+)\/test$/);
+  if(emailTestMatch&&request.method==="POST"){
+    if(!hasAnyPermission(user,["email.send_test","email.manage"])) return json({error:"FORBIDDEN",permission:"email.send_test"},403);
+    const key=decodeURIComponent(emailTestMatch[1]),body=await readJson(request)||{};
+    const to=String(body.to_email||user.email||"").trim().toLowerCase();
+    if(!to||!to.includes("@")) return json({error:"INVALID_EMAIL",message:"Địa chỉ email nhận thử không hợp lệ."},400);
+    const res=await sendTemplatedEmail(env,key,to,{
+      full_name:user.full_name||"Quản trị viên",
+      recipient_name:user.full_name||"Quản trị viên",
+      email:to,
+      code:"SFN-TEST-0001",
+      form_name:"Kiểm thử mẫu email hệ thống",
+      program_name:"Chương trình kiểm thử",
+      submitted_at:new Date().toLocaleString("vi-VN",{timeZone:"Asia/Ho_Chi_Minh"}),
+      status:"Kiểm thử mẫu email",
+      certificate_code:"SFN-GCN-00000000",
+      cert_type:"Giấy chứng nhận (Thử nghiệm)",
+      content:"Nội dung kiểm thử hiển thị mẫu email.",
+      certificate_url:"https://app.skyfirst.io.vn/gcn",
+      requirement_note:"Nội dung kiểm thử yêu cầu bổ sung thông tin.",
+      result_summary:"Nội dung kiểm thử thông báo kết quả xử lý.",
+      activation_link:"https://app.skyfirst.io.vn/admin/login",
+      ticket_code:"SFN-TICKET-TEST",
+      subject:"Kiểm thử gửi email",
+      campaign_code:"SFN-TT-TEST",
+      campaign_title:"Chiến dịch kiểm thử",
+      target_amount:"0 đồng",
+      pledged_amount:"0 đồng",
+      received_amount:"0 đồng",
+      ...(body.vars||{})
+    },{skipDedupe:true});
+    await audit(env,request,user,"Gửi thử mẫu email","email_template",key,{to,ok:res.ok,pending:!!res.pending,error:res.error||""});
+    return json({ok:res.ok,pending:!!res.pending,error:res.error||null,message:res.ok?"Đã gửi email thử tới nhà cung cấp.":res.pending?"Đã ghi nhận vào nhật ký (chưa cấu hình RESEND_API_KEY / EMAIL binding).":res.error});
   }
   if(p==="/api/admin/email-logs"&&request.method==="GET"){
-    const deny=requirePermission(user,"email.manage");if(deny)return deny;
+    if(!hasAnyPermission(user,["email.view","email.manage"])) return json({error:"FORBIDDEN",permission:"email.view"},403);
     const rs=await env.DB.prepare("SELECT * FROM email_logs ORDER BY id DESC LIMIT 1000").all();return json({items:rs.results||[]});
   }
 
@@ -825,6 +968,379 @@ export async function adminRoute(request,env,url,ctx){
       }
     }
     await audit(env,request,user,"Phục hồi dữ liệu từ backup","backup",idB,{tables:Object.keys(snap.tables||{})});return json({ok:true});
+  }
+
+
+  // ================= MODULE TÀI TRỢ & MINH BẠCH TÀI CHÍNH (/api/admin/sponsorship) =================
+  if(p==="/api/admin/sponsorship"&&request.method==="GET"){
+    if(!hasAnyPermission(user,["sponsorship.view","sponsorship.manage","sponsorship.approve"])) return json({error:"FORBIDDEN",permission:"sponsorship.view"},403);
+    if(!(await adminTableExists(env,"sponsorship_campaigns"))) return json({campaigns:[],transactions:[],reports:[]});
+    const [camps,txs,reps]=await env.DB.batch([
+      env.DB.prepare("SELECT * FROM sponsorship_campaigns ORDER BY created_at DESC LIMIT 200"),
+      env.DB.prepare("SELECT t.*,c.code AS campaign_code,c.title AS campaign_title FROM sponsorship_transactions t JOIN sponsorship_campaigns c ON c.id=t.campaign_id ORDER BY t.occurred_at DESC,t.created_at DESC LIMIT 500"),
+      env.DB.prepare("SELECT r.*,c.code AS campaign_code,c.title AS campaign_title FROM sponsorship_reports r JOIN sponsorship_campaigns c ON c.id=r.campaign_id ORDER BY r.created_at DESC LIMIT 200")
+    ]);
+    return json({campaigns:camps.results||[],transactions:txs.results||[],reports:reps.results||[]});
+  }
+
+  async function recalculateCampaignTotals(env,campaignId){
+    const rows=await env.DB.prepare("SELECT tx_type, COALESCE(SUM(amount),0) AS total FROM sponsorship_transactions WHERE campaign_id=? AND verification_status='verified' GROUP BY tx_type").bind(campaignId).all();
+    let pledged=0,received=0,disbursed=0;
+    for(const r of rows.results||[]){
+      const amt=Number(r.total||0);
+      if(r.tx_type==="pledge") pledged+=amt;
+      else if(r.tx_type==="receipt") received+=amt;
+      else if(r.tx_type==="disbursement") disbursed+=amt;
+      else if(r.tx_type==="refund") received=Math.max(0,received-amt);
+      else if(r.tx_type==="adjustment") received=Math.max(0,received+amt);
+    }
+    await env.DB.prepare("UPDATE sponsorship_campaigns SET pledged_amount=?,received_amount=?,disbursed_amount=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(pledged,received,disbursed,campaignId).run();
+    return {pledged,received,disbursed};
+  }
+
+  if(p==="/api/admin/sponsorship/campaigns"&&request.method==="POST"){
+    const deny=requirePermission(user,"sponsorship.manage");if(deny)return deny;
+    const body=await readJson(request)||{};
+    const title=String(body.title||"").trim(),code=String(body.code||"").trim().toUpperCase();
+    if(!title||!code) return json({error:"INVALID_INPUT",message:"Mã và tên chương trình tài trợ là bắt buộc."},400);
+    const target=Math.max(0,Math.round(Number(body.target_amount||0)));
+    const wantPublic=body.visibility==="public";
+    if(wantPublic && !hasPermission(user,"sponsorship.approve")) return json({error:"FORBIDDEN",message:"Cần quyền phê duyệt tài trợ (sponsorship.approve) để công khai chương trình."},403);
+    const id=uid("spcamp");
+    await env.DB.prepare("INSERT INTO sponsorship_campaigns(id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,visibility,approved_by,approved_at,created_by) VALUES(?,?,?,?,?,?,?,0,0,0,'VND',?,?,?,?,?,?,?)")
+      .bind(id,code,String(body.website_id||"app"),title,String(body.summary||""),String(body.purpose||""),target,body.start_at||null,body.end_at||null,body.status||"active",wantPublic?"public":"draft",wantPublic?user.id:null,wantPublic?new Date().toISOString():null,user.id).run();
+    await audit(env,request,user,"Tạo chương trình tài trợ","sponsorship_campaign",id,{code,title,target_amount:target,visibility:wantPublic?"public":"draft"});
+    invalidatePublicCache(url,["/api/public/sponsorship","/api/config"],ctx);
+    return json({ok:true,id,code},201);
+  }
+
+  const spCampMatch=p.match(/^\/api\/admin\/sponsorship\/campaigns\/([^/]+)$/);
+  if(spCampMatch&&request.method==="PUT"){
+    if(!hasAnyPermission(user,["sponsorship.manage","sponsorship.approve"])) return json({error:"FORBIDDEN",permission:"sponsorship.manage"},403);
+    const id=decodeURIComponent(spCampMatch[1]),body=await readJson(request)||{};
+    const current=await env.DB.prepare("SELECT * FROM sponsorship_campaigns WHERE id=?").bind(id).first();
+    if(!current) return json({error:"NOT_FOUND"},404);
+    const nextVis=body.visibility??current.visibility;
+    if(nextVis==="public" && current.visibility!=="public" && !hasPermission(user,"sponsorship.approve")){
+      return json({error:"FORBIDDEN",message:"Chỉ người có quyền phê duyệt tài trợ mới được công khai chương trình."},403);
+    }
+    const target=body.target_amount!==undefined?Math.max(0,Math.round(Number(body.target_amount||0))):current.target_amount;
+    await env.DB.prepare("UPDATE sponsorship_campaigns SET title=?,summary=?,purpose=?,target_amount=?,start_at=?,end_at=?,status=?,visibility=?,approved_by=CASE WHEN ?='public' THEN ? ELSE approved_by END,approved_at=CASE WHEN ?='public' THEN CURRENT_TIMESTAMP ELSE approved_at END,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(body.title||current.title,body.summary??current.summary,body.purpose??current.purpose,target,body.start_at??current.start_at,body.end_at??current.end_at,body.status||current.status,nextVis,nextVis,user.id,nextVis,id).run();
+    await audit(env,request,user,"Cập nhật chương trình tài trợ","sponsorship_campaign",id,{status:body.status||current.status,visibility:nextVis,target_amount:target});
+    invalidatePublicCache(url,["/api/public/sponsorship","/api/config"],ctx);
+    return json({ok:true});
+  }
+
+  if(p==="/api/admin/sponsorship/transactions"&&request.method==="POST"){
+    const deny=requirePermission(user,"sponsorship.manage");if(deny)return deny;
+    const body=await readJson(request)||{};
+    const campaignId=String(body.campaign_id||"").trim();
+    const txType=String(body.tx_type||"receipt").trim();
+    const amount=Math.round(Number(body.amount||0));
+    if(!campaignId||!["pledge","receipt","disbursement","adjustment","refund"].includes(txType)||!Number.isFinite(amount)||amount<=0){
+      return json({error:"INVALID_INPUT",message:"Vui lòng chọn chương trình, loại giao dịch hợp lệ và số tiền lớn hơn 0."},400);
+    }
+    const camp=await env.DB.prepare("SELECT id,code FROM sponsorship_campaigns WHERE id=?").bind(campaignId).first();
+    if(!camp) return json({error:"CAMPAIGN_NOT_FOUND"},404);
+    const id=uid("sptx"),txCode=body.tx_code?String(body.tx_code).trim().toUpperCase():`TX-${camp.code}-${await nextCounter(env,`sptx:${camp.code}`)}`;
+    const autoVerify=body.verification_status==="verified"&&hasPermission(user,"sponsorship.approve");
+    await env.DB.prepare("INSERT INTO sponsorship_transactions(id,campaign_id,tx_code,tx_type,amount,currency,public_party_label,purpose,voucher_file_id,occurred_at,verification_status,is_public,verified_by,verified_at,created_by) VALUES(?,?,?,?,?,'VND',?,?,?,?,?,?,?,?,?)")
+      .bind(id,campaignId,txCode,txType,amount,String(body.public_party_label||"Nhà tài trợ / Đơn vị thụ hưởng").slice(0,160),String(body.purpose||"").slice(0,500),body.voucher_file_id||null,body.occurred_at||new Date().toISOString(),autoVerify?"verified":"pending",body.is_public?1:0,autoVerify?user.id:null,autoVerify?new Date().toISOString():null,user.id).run();
+    const totals=await recalculateCampaignTotals(env,campaignId);
+    await audit(env,request,user,"Ghi nhận giao dịch tài trợ","sponsorship_transaction",id,{tx_code:txCode,tx_type:txType,amount,verified:autoVerify,totals});
+    invalidatePublicCache(url,["/api/public/sponsorship","/api/config"],ctx);
+    return json({ok:true,id,tx_code:txCode,totals},201);
+  }
+
+  const spTxMatch=p.match(/^\/api\/admin\/sponsorship\/transactions\/([^/]+)$/);
+  if(spTxMatch&&request.method==="PATCH"){
+    const deny=requirePermission(user,"sponsorship.approve");if(deny)return deny;
+    const id=decodeURIComponent(spTxMatch[1]),body=await readJson(request)||{};
+    const tx=await env.DB.prepare("SELECT * FROM sponsorship_transactions WHERE id=?").bind(id).first();
+    if(!tx) return json({error:"NOT_FOUND"},404);
+    const vStatus=["pending","verified","rejected"].includes(body.verification_status)?body.verification_status:tx.verification_status;
+    const isPub=body.is_public!==undefined?(body.is_public?1:0):tx.is_public;
+    await env.DB.prepare("UPDATE sponsorship_transactions SET verification_status=?,is_public=?,verified_by=?,verified_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(vStatus,isPub,user.id,id).run();
+    const totals=await recalculateCampaignTotals(env,tx.campaign_id);
+    await audit(env,request,user,"Xác nhận đối soát giao dịch tài trợ","sponsorship_transaction",id,{verification_status:vStatus,is_public:isPub,totals});
+    invalidatePublicCache(url,["/api/public/sponsorship","/api/config"],ctx);
+    return json({ok:true,totals});
+  }
+
+  if(p==="/api/admin/sponsorship/reports"&&request.method==="POST"){
+    const deny=requirePermission(user,"sponsorship.manage");if(deny)return deny;
+    const body=await readJson(request)||{};
+    if(!body.campaign_id||!body.title) return json({error:"INVALID_INPUT",message:"Chương trình và tiêu đề báo cáo là bắt buộc."},400);
+    const publish=body.status==="published"&&hasPermission(user,"sponsorship.approve");
+    const id=uid("sprep");
+    await env.DB.prepare("INSERT INTO sponsorship_reports(id,campaign_id,title,report_period,file_id,summary,status,approved_by,published_at) VALUES(?,?,?,?,?,?,?,?,?)")
+      .bind(id,body.campaign_id,String(body.title).trim(),String(body.report_period||""),body.file_id||null,String(body.summary||""),publish?"published":"draft",publish?user.id:null,publish?new Date().toISOString():null).run();
+    await audit(env,request,user,"Tạo báo cáo minh bạch tài trợ","sponsorship_report",id,{title:body.title,status:publish?"published":"draft"});
+    invalidatePublicCache(url,["/api/public/sponsorship"],ctx);
+    return json({ok:true,id},201);
+  }
+
+  // ================= MODULE AN TOÀN & BÁO CÁO SỰ CỐ (/api/admin/safety-reports) =================
+  if(p==="/api/admin/safety-reports"&&request.method==="GET"){
+    if(!hasAnyPermission(user,["safety.view","safety.manage","ticket.manage"])) return json({error:"FORBIDDEN",permission:"safety.view"},403);
+    if(!(await adminTableExists(env,"safety_reports"))) return json({items:[]});
+    const rs=await env.DB.prepare("SELECT * FROM safety_reports ORDER BY created_at DESC LIMIT 500").all();
+    return json({items:rs.results||[]});
+  }
+  const safeMatch=p.match(/^\/api\/admin\/safety-reports\/([^/]+)$/);
+  if(safeMatch&&request.method==="PATCH"){
+    if(!hasAnyPermission(user,["safety.manage","ticket.manage"])) return json({error:"FORBIDDEN",permission:"safety.manage"},403);
+    const id=decodeURIComponent(safeMatch[1]),body=await readJson(request)||{};
+    await env.DB.prepare("UPDATE safety_reports SET status=?,severity=COALESCE(?,severity),resolution_note=?,assigned_to=?,updated_at=CURRENT_TIMESTAMP WHERE id=? OR code=?")
+      .bind(body.status||"Đang xác minh",body.severity||null,String(body.resolution_note||""),body.assigned_to||user.id,id,id).run();
+    await audit(env,request,user,"Xử lý báo cáo sự cố an toàn","safety_report",id,body);
+    return json({ok:true});
+  }
+
+  // ================= THƯ VIỆN PDF & PHIÊN BẢN TÀI LIỆU (/api/admin/documents/:id/versions) =================
+  const docVerMatch=p.match(/^\/api\/admin\/documents\/([^/]+)\/versions$/);
+  if(docVerMatch&&request.method==="GET"){
+    if(!hasAnyPermission(user,["document.view","document.manage"])) return json({error:"FORBIDDEN",permission:"document.view"},403);
+    const docId=decodeURIComponent(docVerMatch[1]);
+    const doc=await env.DB.prepare("SELECT * FROM documents WHERE id=? OR code=?").bind(docId,docId).first();
+    if(!doc) return json({error:"NOT_FOUND"},404);
+    const rs=await env.DB.prepare("SELECT * FROM document_versions WHERE document_id=? ORDER BY version_number DESC").bind(doc.id).all();
+    return json({document:doc,versions:rs.results||[]});
+  }
+  if(docVerMatch&&request.method==="POST"){
+    if(!hasAnyPermission(user,["document.manage","document.version_manage"])) return json({error:"FORBIDDEN",permission:"document.version_manage"},403);
+    const docId=decodeURIComponent(docVerMatch[1]),body=await readJson(request)||{};
+    const doc=await env.DB.prepare("SELECT * FROM documents WHERE id=? OR code=?").bind(docId,docId).first();
+    if(!doc) return json({error:"NOT_FOUND"},404);
+    const fileId=String(body.file_id||"").trim();
+    if(!fileId) return json({error:"FILE_REQUIRED"},400);
+    const fMeta=await env.DB.prepare("SELECT * FROM files WHERE id=?").bind(fileId).first();
+    if(!fMeta) return json({error:"FILE_NOT_FOUND"},404);
+    const maxRow=await env.DB.prepare("SELECT COALESCE(MAX(version_number),0)+1 AS next_v FROM document_versions WHERE document_id=?").bind(doc.id).first();
+    const nextV=Number(maxRow?.next_v||1),verId=uid("docver");
+    await env.DB.batch([
+      env.DB.prepare("UPDATE document_versions SET is_current=0 WHERE document_id=?").bind(doc.id),
+      env.DB.prepare("INSERT INTO document_versions(id,document_id,version_number,file_id,filename,mime,size,sha256,change_note,is_current,created_by) VALUES(?,?,?,?,?,?,?,?,?,1,?)")
+        .bind(verId,doc.id,nextV,fileId,fMeta.filename||"",fMeta.mime||"application/pdf",fMeta.size||0,fMeta.sha256||null,String(body.change_note||`Cập nhật phiên bản v${nextV}`),user.id),
+      env.DB.prepare("UPDATE documents SET file_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(fileId,doc.id)
+    ]);
+    await audit(env,request,user,"Cập nhật phiên bản tài liệu PDF","document",doc.id,{version:nextV,file_id:fileId,change_note:body.change_note||""});
+    invalidatePublicCache(url,["/api/public/resources"],ctx);
+    return json({ok:true,version_id:verId,version_number:nextV},201);
+  }
+  const docVerRestoreMatch=p.match(/^\/api\/admin\/documents\/([^/]+)\/versions\/([^/]+)\/restore$/);
+  if(docVerRestoreMatch&&request.method==="POST"){
+    if(!hasAnyPermission(user,["document.manage","document.version_manage"])) return json({error:"FORBIDDEN",permission:"document.version_manage"},403);
+    const docId=decodeURIComponent(docVerRestoreMatch[1]),verId=decodeURIComponent(docVerRestoreMatch[2]);
+    const ver=await env.DB.prepare("SELECT * FROM document_versions WHERE id=? AND document_id=?").bind(verId,docId).first();
+    if(!ver) return json({error:"VERSION_NOT_FOUND"},404);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE document_versions SET is_current=0 WHERE document_id=?").bind(docId),
+      env.DB.prepare("UPDATE document_versions SET is_current=1 WHERE id=?").bind(verId),
+      env.DB.prepare("UPDATE documents SET file_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(ver.file_id,docId)
+    ]);
+    await audit(env,request,user,"Khôi phục phiên bản tài liệu","document",docId,{restored_version:ver.version_number,file_id:ver.file_id});
+    invalidatePublicCache(url,["/api/public/resources"],ctx);
+    return json({ok:true,version_number:ver.version_number});
+  }
+
+  // ================= QUẢN LÝ ĐA WEBSITE (/api/admin/websites) =================
+  if(p==="/api/admin/websites"&&request.method==="GET"){
+    if(!hasAnyPermission(user,["website.view","website.manage","cms.view","settings.manage"])) return json({error:"FORBIDDEN",permission:"website.view"},403);
+    if(!(await adminTableExists(env,"websites"))) return json({items:[]});
+    const rs=await env.DB.prepare("SELECT * FROM websites ORDER BY CASE WHEN id='app' THEN 0 ELSE 1 END, id ASC").all();
+    const items=(rs.results||[]).filter(w=>canAccessScope(user,w.id)||canAccessScope(user,w.code));
+    return json({items});
+  }
+  if(p==="/api/admin/websites"&&request.method==="POST"){
+    const deny=requirePermission(user,"website.manage");if(deny)return deny;
+    const body=await readJson(request)||{};
+    const id=String(body.id||"").trim().toLowerCase().replace(/[^a-z0-9_-]/g,"");
+    const code=String(body.code||id.toUpperCase()).trim().toUpperCase();
+    const name=String(body.name||"").trim(),domain=String(body.domain||"").trim().toLowerCase();
+    if(!id||!name||!domain) return json({error:"INVALID_INPUT",message:"Mã định danh, tên hiển thị và tên miền là bắt buộc."},400);
+    await env.DB.prepare("INSERT INTO websites(id,code,name,domain,description,logo_url,primary_color,navy_color,status,config_json,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(id,code,name,domain,String(body.description||""),body.logo_url||"/assets/sfn-logo-tight.png",body.primary_color||"#0759b8",body.navy_color||"#071b35",body.status||"active",JSON.stringify(body.config||{}),user.id).run();
+    await audit(env,request,user,"Thêm website vào hệ thống quản trị","website",id,{code,name,domain});
+    return json({ok:true,id},201);
+  }
+  const siteMatch=p.match(/^\/api\/admin\/websites\/([^/]+)$/);
+  if(siteMatch&&request.method==="PUT"){
+    const deny=requirePermission(user,"website.manage");if(deny)return deny;
+    const id=decodeURIComponent(siteMatch[1]),body=await readJson(request)||{};
+    if(!canAccessScope(user,id)) return json({error:"FORBIDDEN",message:"Tài khoản không có quyền quản trị phạm vi website này."},403);
+    const curr=await env.DB.prepare("SELECT * FROM websites WHERE id=?").bind(id).first();
+    if(!curr) return json({error:"NOT_FOUND"},404);
+    await env.DB.prepare("UPDATE websites SET name=?,domain=?,description=?,logo_url=?,primary_color=?,navy_color=?,status=?,config_json=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(body.name||curr.name,body.domain||curr.domain,body.description??curr.description,body.logo_url||curr.logo_url,body.primary_color||curr.primary_color,body.navy_color||curr.navy_color,body.status||curr.status,body.config?JSON.stringify(body.config):curr.config_json,user.id,id).run();
+    await audit(env,request,user,"Cập nhật cấu hình website","website",id,{status:body.status||curr.status,domain:body.domain||curr.domain});
+    return json({ok:true});
+  }
+
+  // ================= CMS & TRÌNH DỰNG TRANG TRỰC QUAN KÉO THẢ (/api/admin/cms/*) =================
+  if(p==="/api/admin/cms/pages"&&request.method==="GET"){
+    if(!hasAnyPermission(user,["cms.view","cms.edit","cms.approve","cms.publish","news.manage"])) return json({error:"FORBIDDEN",permission:"cms.view"},403);
+    if(!(await adminTableExists(env,"cms_pages"))) return json({items:[],templates:[],shared_blocks:[]});
+    const site=String(url.searchParams.get("website_id")||"").trim();
+    if(site && !canAccessScope(user,site)) return json({error:"FORBIDDEN",message:"Bạn không có quyền truy cập phạm vi website này."},403);
+    const [pagesRs,tplRs,sbRs]=await env.DB.batch([
+      site
+        ? env.DB.prepare("SELECT * FROM cms_pages WHERE website_id=? ORDER BY updated_at DESC LIMIT 300").bind(site)
+        : env.DB.prepare("SELECT * FROM cms_pages ORDER BY updated_at DESC LIMIT 300"),
+      env.DB.prepare("SELECT * FROM cms_templates ORDER BY name"),
+      env.DB.prepare("SELECT * FROM cms_shared_blocks ORDER BY name")
+    ]);
+    const pages=(pagesRs.results||[]).filter(pg=>canAccessScope(user,pg.website_id));
+    return json({items:pages,templates:tplRs.results||[],shared_blocks:sbRs.results||[]});
+  }
+
+  if(p==="/api/admin/cms/pages"&&request.method==="POST"){
+    if(!hasAnyPermission(user,["cms.edit","news.manage"])) return json({error:"FORBIDDEN",permission:"cms.edit"},403);
+    const body=await readJson(request)||{};
+    const websiteId=String(body.website_id||"app").trim();
+    if(!canAccessScope(user,websiteId)) return json({error:"FORBIDDEN",message:"Không có quyền tạo trang trên website này."},403);
+    const title=String(body.title||"").trim();
+    const slug=String(body.slug||"").trim().toLowerCase().replace(/[^a-z0-9-]+/g,"-").replace(/^-+|-+$/g,"");
+    if(!title||!slug) return json({error:"INVALID_INPUT",message:"Tiêu đề và đường dẫn (slug) là bắt buộc."},400);
+    const dup=await env.DB.prepare("SELECT id FROM cms_pages WHERE website_id=? AND slug=?").bind(websiteId,slug).first();
+    if(dup) return json({error:"SLUG_EXISTS",message:"Đường dẫn trang đã tồn tại trên website này."},409);
+    const id=uid("page");
+    const blocksJson=JSON.stringify(Array.isArray(body.blocks)?body.blocks:[]);
+    const seoJson=JSON.stringify(body.seo||{});
+    const tagsJson=JSON.stringify(Array.isArray(body.tags)?body.tags:[]);
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO cms_pages(id,website_id,slug,title,summary,cover_file_id,category,tags_json,seo_json,blocks_json,status,version,author_id) VALUES(?,?,?,?,?,?,?,?,?,?,'draft',1,?)")
+        .bind(id,websiteId,slug,title,String(body.summary||""),body.cover_file_id||null,String(body.category||"general"),tagsJson,seoJson,blocksJson,user.id),
+      env.DB.prepare("INSERT INTO cms_page_revisions(page_id,version,title,blocks_json,seo_json,status,note,created_by) VALUES(?,1,?,?,?,'draft','Khởi tạo trang',?)")
+        .bind(id,title,blocksJson,seoJson,user.id)
+    ]);
+    await audit(env,request,user,"Tạo trang CMS","cms_page",id,{website_id:websiteId,slug,title});
+    return json({ok:true,id,slug},201);
+  }
+
+  const cmsPageMatch=p.match(/^\/api\/admin\/cms\/pages\/([^/]+)$/);
+  if(cmsPageMatch&&request.method==="GET"){
+    if(!hasAnyPermission(user,["cms.view","cms.edit","cms.approve","cms.publish","news.manage"])) return json({error:"FORBIDDEN",permission:"cms.view"},403);
+    const id=decodeURIComponent(cmsPageMatch[1]);
+    const page=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=?").bind(id).first();
+    if(!page) return json({error:"NOT_FOUND"},404);
+    if(!canAccessScope(user,page.website_id)) return json({error:"FORBIDDEN"},403);
+    const revs=await env.DB.prepare("SELECT id,version,title,status,note,created_by,created_at FROM cms_page_revisions WHERE page_id=? ORDER BY version DESC LIMIT 50").bind(id).all();
+    return json({
+      item:{
+        ...page,
+        blocks:JSON.parse(page.blocks_json||"[]"),
+        seo:JSON.parse(page.seo_json||"{}"),
+        tags:JSON.parse(page.tags_json||"[]")
+      },
+      revisions:revs.results||[]
+    });
+  }
+
+  if(cmsPageMatch&&request.method==="PUT"){
+    if(!hasAnyPermission(user,["cms.edit","news.manage"])) return json({error:"FORBIDDEN",permission:"cms.edit"},403);
+    const id=decodeURIComponent(cmsPageMatch[1]),body=await readJson(request)||{};
+    const curr=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=?").bind(id).first();
+    if(!curr) return json({error:"NOT_FOUND"},404);
+    if(!canAccessScope(user,curr.website_id)) return json({error:"FORBIDDEN"},403);
+    const nextVersion=Number(curr.version||1)+1;
+    const title=String(body.title||curr.title).trim();
+    const slug=body.slug?String(body.slug).trim().toLowerCase().replace(/[^a-z0-9-]+/g,"-").replace(/^-+|-+$/g,""):curr.slug;
+    const blocksJson=body.blocks!==undefined?JSON.stringify(body.blocks):curr.blocks_json;
+    const seoJson=body.seo!==undefined?JSON.stringify(body.seo):curr.seo_json;
+    const tagsJson=body.tags!==undefined?JSON.stringify(body.tags):curr.tags_json;
+    // If content was already approved/published and edited by regular editor, require re-approval unless user has cms.publish
+    const nextStatus=(["approved","published"].includes(curr.status)&&!hasPermission(user,"cms.publish"))?"draft":curr.status;
+    await env.DB.batch([
+      env.DB.prepare("UPDATE cms_pages SET slug=?,title=?,summary=?,cover_file_id=?,category=?,tags_json=?,seo_json=?,blocks_json=?,status=?,version=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(slug,title,body.summary??curr.summary,body.cover_file_id??curr.cover_file_id,body.category||curr.category,tagsJson,seoJson,blocksJson,nextStatus,nextVersion,id),
+      env.DB.prepare("INSERT INTO cms_page_revisions(page_id,version,title,blocks_json,seo_json,status,note,created_by) VALUES(?,?,?,?,?,?,?,?)")
+        .bind(id,nextVersion,title,blocksJson,seoJson,nextStatus,String(body.note||`Lưu phiên bản v${nextVersion}`),user.id)
+    ]);
+    await audit(env,request,user,"Cập nhật trang CMS","cms_page",id,{version:nextVersion,status:nextStatus});
+    if(nextStatus==="published") invalidatePublicCache(url,["/api/public/pages"],ctx);
+    return json({ok:true,version:nextVersion,status:nextStatus});
+  }
+
+  const cmsWorkflowMatch=p.match(/^\/api\/admin\/cms\/pages\/([^/]+)\/workflow$/);
+  if(cmsWorkflowMatch&&request.method==="POST"){
+    const id=decodeURIComponent(cmsWorkflowMatch[1]),body=await readJson(request)||{};
+    const action=String(body.action||"").trim();
+    const curr=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=?").bind(id).first();
+    if(!curr) return json({error:"NOT_FOUND"},404);
+    if(!canAccessScope(user,curr.website_id)) return json({error:"FORBIDDEN"},403);
+    const isRoot=(user.roles||[]).some(r=>["owner","super_admin"].includes(r.role_id));
+
+    if(action==="submit_review"){
+      if(!hasAnyPermission(user,["cms.submit_review","cms.edit","news.manage"])) return json({error:"FORBIDDEN"},403);
+      await env.DB.prepare("UPDATE cms_pages SET status='pending_review',submitted_by=?,submitted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(user.id,id).run();
+      await audit(env,request,user,"Gửi duyệt trang CMS","cms_page",id,{website_id:curr.website_id});
+      return json({ok:true,status:"pending_review"});
+    }
+    if(action==="approve"){
+      if(!hasPermission(user,"cms.approve")) return json({error:"FORBIDDEN",permission:"cms.approve"},403);
+      const creatorId=curr.submitted_by||curr.author_id;
+      if(creatorId && Number(creatorId)===Number(user.id) && !isRoot){
+        return json({error:"SELF_APPROVAL_FORBIDDEN",message:"Người biên tập không mặc nhiên được tự duyệt trang do chính mình gửi."},403);
+      }
+      await env.DB.prepare("UPDATE cms_pages SET status='approved',reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP,review_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(user.id,String(body.note||"Đã phê duyệt nội dung"),id).run();
+      await audit(env,request,user,"Phê duyệt trang CMS","cms_page",id,{website_id:curr.website_id,note:body.note||""});
+      return json({ok:true,status:"approved"});
+    }
+    if(action==="reject"){
+      if(!hasPermission(user,"cms.approve")) return json({error:"FORBIDDEN",permission:"cms.approve"},403);
+      await env.DB.prepare("UPDATE cms_pages SET status='draft',reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP,review_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(user.id,String(body.note||"Yêu cầu chỉnh sửa lại"),id).run();
+      await audit(env,request,user,"Từ chối duyệt trang CMS","cms_page",id,{website_id:curr.website_id,note:body.note||""});
+      return json({ok:true,status:"draft"});
+    }
+    if(action==="publish"){
+      if(!hasPermission(user,"cms.publish")) return json({error:"FORBIDDEN",permission:"cms.publish"},403);
+      if(curr.status!=="approved" && !isRoot){
+        return json({error:"MUST_BE_APPROVED_FIRST",message:"Trang phải được phê duyệt trước khi xuất bản ra công khai."},409);
+      }
+      let blocks=[]; try{blocks=JSON.parse(curr.blocks_json||"[]")}catch{}
+      if(!curr.title || !Array.isArray(blocks) || !blocks.length){
+        return json({error:"PUBLISH_VALIDATION_FAILED",message:"Không thể xuất bản trang thiếu tiêu đề hoặc chưa có khối nội dung nào."},400);
+      }
+      await env.DB.prepare("UPDATE cms_pages SET status='published',published_by=?,published_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(user.id,id).run();
+      await audit(env,request,user,"Xuất bản trang CMS","cms_page",id,{website_id:curr.website_id,slug:curr.slug});
+      invalidatePublicCache(url,["/api/public/pages"],ctx);
+      return json({ok:true,status:"published"});
+    }
+    if(action==="unpublish"){
+      if(!hasPermission(user,"cms.publish")) return json({error:"FORBIDDEN",permission:"cms.publish"},403);
+      await env.DB.prepare("UPDATE cms_pages SET status='archived',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run();
+      await audit(env,request,user,"Gỡ xuất bản trang CMS","cms_page",id,{website_id:curr.website_id,slug:curr.slug});
+      invalidatePublicCache(url,["/api/public/pages"],ctx);
+      return json({ok:true,status:"archived"});
+    }
+    return json({error:"INVALID_WORKFLOW_ACTION"},400);
+  }
+
+  const cmsRestoreMatch=p.match(/^\/api\/admin\/cms\/pages\/([^/]+)\/restore-version$/);
+  if(cmsRestoreMatch&&request.method==="POST"){
+    if(!hasAnyPermission(user,["cms.edit","cms.publish"])) return json({error:"FORBIDDEN",permission:"cms.edit"},403);
+    const id=decodeURIComponent(cmsRestoreMatch[1]),body=await readJson(request)||{};
+    const curr=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=?").bind(id).first();
+    if(!curr) return json({error:"NOT_FOUND"},404);
+    if(!canAccessScope(user,curr.website_id)) return json({error:"FORBIDDEN"},403);
+    const rev=await env.DB.prepare("SELECT * FROM cms_page_revisions WHERE page_id=? AND version=?").bind(id,Number(body.version||0)).first();
+    if(!rev) return json({error:"REVISION_NOT_FOUND"},404);
+    const nextVer=Number(curr.version||1)+1;
+    await env.DB.batch([
+      env.DB.prepare("UPDATE cms_pages SET title=?,blocks_json=?,seo_json=?,status='draft',version=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(rev.title,rev.blocks_json,rev.seo_json,nextVer,id),
+      env.DB.prepare("INSERT INTO cms_page_revisions(page_id,version,title,blocks_json,seo_json,status,note,created_by) VALUES(?,?,?,?,'draft',?,?)")
+        .bind(id,nextVer,rev.title,rev.blocks_json,rev.seo_json,`Khôi phục từ phiên bản v${rev.version}`,user.id)
+    ]);
+    await audit(env,request,user,"Khôi phục phiên bản trang CMS","cms_page",id,{from_version:rev.version,new_version:nextVer});
+    return json({ok:true,version:nextVer});
   }
 
   return json({error:"ADMIN_ROUTE_NOT_FOUND"},404);

@@ -6,7 +6,7 @@ import {hasPermission, highestRoleLevel, roleLevel, permissionsForRoles} from ".
 import {sendTemplatedEmail} from "./email.js";
 
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
-const PASSWORD_ITERATIONS = 150000;
+const PASSWORD_ITERATIONS = 100000;
 
 async function loadRoles(env, userId) {
   const rs = await env.DB.prepare(`
@@ -97,7 +97,7 @@ async function verifyPassword(env, email, password) {
   if (
     !Number.isFinite(iterations) ||
     iterations < 1 ||
-    iterations > PASSWORD_ITERATIONS
+    iterations > 600000
   ) {
     return null;
   }
@@ -874,6 +874,8 @@ export async function authRoute(request, env, url) {
           password_salt=?,
           password_hash=?,
           password_iterations=?,
+          status=CASE WHEN status='invited' THEN 'active' ELSE status END,
+          email_verified=1,
           must_change_password=0,
           updated_at=CURRENT_TIMESTAMP
         WHERE id=?
@@ -1182,7 +1184,7 @@ export async function authRoute(request, env, url) {
 
     const issuer =
       encodeURIComponent(
-        "Sky First Network"
+        "Hệ thống Thông tin Số Sky First"
       );
 
     const label =

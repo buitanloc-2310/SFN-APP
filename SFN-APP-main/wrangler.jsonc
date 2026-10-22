@@ -25,10 +25,13 @@
   ],
 
   "vars": {
-    "APP_URL": "https://ctt.skyfirst.io.vn",
-    "MAIL_FROM": "Sky First · Cổng Thông tin <ctt@skyfirst.io.vn>",
+    "APP_URL": "https://app.skyfirst.io.vn",
+    "LEGACY_APP_URL": "https://ctt.skyfirst.io.vn",
+    "MAIL_FROM": "Hệ thống Thông tin Số Sky First <app@skyfirst.io.vn>",
+    "MAIL_CONTACT": "lienhe@skyfirst.io.vn",
+    "MAIL_SUPPORT": "support@skyfirst.io.vn",
     "GOOGLE_CLIENT_ID": "",
-    "GOOGLE_REDIRECT_URI": "https://ctt.skyfirst.io.vn/api/auth/google/callback",
+    "GOOGLE_REDIRECT_URI": "https://app.skyfirst.io.vn/api/auth/google/callback",
     "TURNSTILE_SITE_KEY": ""
   },
 

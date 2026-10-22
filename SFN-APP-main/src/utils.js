@@ -73,8 +73,8 @@ export async function sha256(input) {
 }
 
 /*
- * Cloudflare Workers hiện hỗ trợ PBKDF2 tối đa 100000 iterations
- * trong runtime đang sử dụng cho ứng dụng SFN.
+ * Hỗ trợ tương thích ngược cả tài khoản cũ (150.000 iterations)
+ * và giới hạn WebCrypto của Cloudflare Workers runtime (100.000 iterations).
  */
 export async function pbkdf2(
   password,
@@ -89,18 +89,37 @@ export async function pbkdf2(
     ["deriveBits"]
   );
 
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      salt: fromB64url(saltB64),
-      iterations,
-      hash: "SHA-256",
-    },
-    key,
-    256
-  );
+  const salt = fromB64url(saltB64);
+  const targetIterations = Number.isFinite(Number(iterations)) && Number(iterations) > 0
+    ? Number(iterations)
+    : 100000;
 
-  return b64url(new Uint8Array(bits));
+  try {
+    const bits = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt,
+        iterations: targetIterations,
+        hash: "SHA-256",
+      },
+      key,
+      256
+    );
+    return b64url(new Uint8Array(bits));
+  } catch {
+    const fallbackIterations = Math.min(targetIterations, 100000);
+    const bits = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt,
+        iterations: fallbackIterations,
+        hash: "SHA-256",
+      },
+      key,
+      256
+    );
+    return b64url(new Uint8Array(bits));
+  }
 }
 
 export function newSalt() {
@@ -365,16 +384,61 @@ export async function rateLimit(
   };
 }
 
+const TEMPLATE_ALIASES = {
+  FULL_NAME: ["full_name", "recipient_name"],
+  full_name: ["FULL_NAME", "recipient_name"],
+   recipient_name: ["full_name", "FULL_NAME"],
+  EMAIL: ["email"],
+  email: ["EMAIL"],
+  APPLICATION_ID: ["code", "application_code"],
+  application_code: ["code", "APPLICATION_ID"],
+  code: ["APPLICATION_ID", "application_code"],
+  APPLICATION_TYPE: ["form_name", "program_name"],
+  form_name: ["APPLICATION_TYPE", "program_name"],
+  program_name: ["form_name", "APPLICATION_TYPE"],
+  SUBMITTED_AT: ["submitted_at"],
+  submitted_at: ["SUBMITTED_AT"],
+  STATUS: ["status", "application_status"],
+  application_status: ["status", "STATUS"],
+  status: ["STATUS", "application_status"],
+  certificate_code: ["code"],
+  support_email: ["MAIL_SUPPORT"]
+};
+
 export function renderTemplate(
   template,
-  vars
+  vars = {},
+  options = {}
 ) {
-  return String(
-    template || ""
-  ).replace(
+  const htmlEscape = !!options.htmlEscape;
+  const rawKeys = options.rawKeys instanceof Set
+    ? options.rawKeys
+    : new Set(options.rawKeys || ["PROFILE_IMAGE_BLOCK", "answers_table", "note_block"]);
+
+  return String(template || "").replace(
     /\{\{([a-zA-Z0-9_]+)\}\}/g,
-    (_, k) =>
-      String(vars[k] ?? "")
+    (_, k) => {
+      let val = vars[k];
+      if (val === undefined || val === null) {
+        const aliases = TEMPLATE_ALIASES[k] || [];
+        for (const alt of aliases) {
+          if (vars[alt] !== undefined && vars[alt] !== null) {
+            val = vars[alt];
+            break;
+          }
+        }
+      }
+      if (val === undefined || val === null) {
+        if (k === "support_email") val = "support@skyfirst.io.vn";
+        else if (k === "PROFILE_IMAGE_BLOCK" || k === "note_block" || k === "answers_table") val = "";
+        else val = "";
+      }
+      const str = String(val);
+      if (htmlEscape && !rawKeys.has(k)) {
+        return escapeHtml(str);
+      }
+      return str;
+    }
   );
 }
 
@@ -423,10 +487,17 @@ export function sameOrigin(
   if (!origin) return true;
 
   try {
-    return (
-      new URL(origin).origin ===
-      new URL(appUrl).origin
-    );
+    const reqOrigin = new URL(origin).origin;
+    const reqUrlOrigin = new URL(request.url).origin;
+    if (reqOrigin === reqUrlOrigin) return true;
+    const allowedOrigins = new Set([
+      "https://app.skyfirst.io.vn",
+      "https://ctt.skyfirst.io.vn"
+    ]);
+    if (appUrl) {
+      try { allowedOrigins.add(new URL(appUrl).origin); } catch {}
+    }
+    return allowedOrigins.has(reqOrigin);
   } catch {
     return false;
   }

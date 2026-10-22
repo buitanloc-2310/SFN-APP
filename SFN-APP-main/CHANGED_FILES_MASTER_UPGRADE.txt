@@ -1,19 +1,29 @@
-CTT V6 ADMIN REVIEW — key changed/new files
+SKY FIRST DIGITAL INFORMATION SYSTEM (V7) — DANH SÁCH FILE THAY ĐỔI & BỔ SUNG
 
-Backend / API
-- src/auth.js — frontend receives effective permission list; backend authorization remains authoritative.
-- src/admin.js — existing media upload validates permission, size, MIME and image magic bytes; stores in R2 and logs audit.
-- src/public.js — homepage statistics no longer have fake numeric defaults.
+1. Cấu hình & Migration:
+- package.json (Mới/Sửa): Chuẩn hóa tên gói sky-first-digital-information-system v3.0.0, thêm script npm test.
+- wrangler.jsonc (Sửa): Cập nhật APP_URL=https://app.skyfirst.io.vn, LEGACY_APP_URL=https://ctt.skyfirst.io.vn, MAIL_FROM, MAIL_CONTACT, MAIL_SUPPORT.
+- D1_CTT_SUPER_SYSTEM_POLISH.sql (Sửa): Chuẩn hóa cấu hình định danh và email hệ thống.
+- migrations/0008_sky_first_digital_information_system.sql (Bổ sung mới): Migration tương thích ngược bổ sung 6 vai trò còn thiếu trong bảng roles, chuẩn hóa settings, tạo bảng cho Tài trợ, An toàn, Đa Website, Trình dựng trang CMS, Phiên bản PDF và Lịch sử mẫu Email.
 
-Public / Admin UI
-- public/app.js — Admin nav/menu, custom accessible dialogs, dedicated home stats table, news CRUD and real cover upload/editor, UTC+7 date handling, form validation fixes.
-- public/digital-portal.js — true-data statistics fallback and cover-image missing/broken state.
-- public/styles.css — Admin menu/table/CMS/dialog/responsive styling.
-- public/index.html, public/bootstrap.js, public/sw.js — asset/cache version update.
-- public/assets/sfn-logo.png — retained unmodified; SHA-256 matches supplied original logo.
+2. Backend (Cloudflare Workers):
+- src/utils.js (Sửa): Tương thích ngược PBKDF2 150k/100k, chống XSS trong renderTemplate, hỗ trợ song song biến chữ hoa/chữ thường, cho phép cả origin app.skyfirst.io.vn và ctt.skyfirst.io.vn.
+- src/permissions.js (Sửa): Bổ sung quyền chi tiết theo module (sponsorship, safety, cms, website, email, document.version_manage) và hàm kiểm tra phạm vi canAccessScope.
+- src/email.js (Sửa): Chuẩn hóa địa chỉ gửi app@skyfirst.io.vn, reply_to support@skyfirst.io.vn, chống gửi trùng trong 60 giây, bổ sung hàm renderEmailContent an toàn.
+- src/auth.js (Sửa): Sửa lỗi kích hoạt tài khoản invited trong /api/auth/reset, chuẩn hóa PASSWORD_ITERATIONS=100000 và hỗ trợ xác thực tài khoản cũ 150000.
+- src/index.js (Sửa): Mở rộng SPA routing (/chuong-trinh, /su-kien, /tai-lieu, /tai-tro, /an-toan, /trang/*), đổi X-Frame-Options sang SAMEORIGIN hỗ trợ xem trước PDF nội tuyến, cho phép xem tệp của tài liệu công khai.
+- src/public.js (Sửa): Tự động hóa 5 chỉ số trang chủ từ D1, bổ sung API /api/public/sponsorship, /api/public/safety-reports, /api/public/pages, nâng cấp /api/public/resources và /api/public/search.
+- src/admin.js (Sửa): Khắc phục phân quyền handler, kiểm soát tách biệt nhiệm vụ phê duyệt (chặn tự duyệt), tự động gửi email khi phát hành chứng nhận, bổ sung API quản trị Tài trợ, An toàn, Trung tâm Email (preview/test), Phiên bản PDF, Đa Website và Trình dựng trang CMS.
 
-Documents
-- README_FIRST.md
-- CTT_V6_ADMIN_AUDIT_REPORT.md
+3. Frontend & Thư viện Mẫu Email HTML:
+- public/index.html (Sửa): Chuẩn hóa định danh Hệ thống Thông tin Số Sky First, thanh điều hướng 9 mục, chuyển đổi VI/EN, phần Hero sạch theo ảnh tham chiếu, chân trang chuẩn.
+- public/bootstrap.js (Sửa): Đồng bộ điều hướng SPA và cache v7.
+- public/digital-portal.js (Sửa): Giao diện trang chủ chuẩn ảnh tham chiếu (6 thẻ chức năng + 5 chỉ số thực từ D1), song ngữ VI/EN, trang Tài trợ (/tai-tro), trang An toàn (/an-toan), Thư viện PDF (/tai-lieu) có xem trước trực tiếp, và bộ kết xuất trang CMS (/trang/:slug).
+- public/app.js (Sửa): Ẩn thuật ngữ hạ tầng nội bộ khỏi nhãn hiển thị, nâng cấp bảng 5 chỉ số trang chủ, bổ sung giao diện quản trị Tài trợ, An toàn, Thư viện PDF đa phiên bản, Trung tâm Email tự động, Quản trị đa Website và Trình dựng trang trực quan kéo thả.
+- public/digital.css (Sửa): Bổ sung hệ thống thiết kế cho thanh điều hướng pill, hero sạch, 6 thẻ chức năng, thanh 5 chỉ số và bố cục responsive.
+- public/sw.js, public/manifest.webmanifest, public/403.html, public/404.html, public/error.html, public/maintenance.html (Sửa): Đồng bộ nhận diện Hệ thống Thông tin Số Sky First và email support@skyfirst.io.vn.
+- public/email-templates/*.html (Bổ sung/Cập nhật 10 file): application-received.html, registration-confirmation.html, certificate-issued.html, application-status-updated.html, information-required.html, application-result.html, account-notification.html, support-ticket-received.html, fundraising-update.html, submission-confirmation.html.
 
-No SQL migrations were added; production D1/R2 were not modified. Not deployed.
+4. Kiểm thử:
+- scripts/validate.mjs (Sửa): Kiểm tra đầy đủ cấu trúc file, cú pháp JS, mẫu email HTML và kiểm soát chuỗi hiển thị công khai.
+- scripts/test-all.mjs (Bổ sung mới): Bộ 59 kiểm thử tích hợp đầu-cuối (E2E) và hồi quy chạy trên Worker thật và SQLite thực tế.

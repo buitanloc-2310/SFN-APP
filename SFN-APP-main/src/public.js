@@ -366,10 +366,18 @@ export async function publicRoute(request,env,url,ctx){
     }catch(err){ console.error("PUBLIC_CONFIG_DB_FALLBACK",err); }
     const homeStatsDefaults={
       source:"d1",
-      values:{programs:null,members:null,certificates:null,partners:null},
-      labels:{programs:"Chương trình & sự kiện",members:"Thành viên cộng đồng",certificates:"Chứng nhận đã phát hành",partners:"Đối tác & đơn vị đồng hành"},
-      duration_ms:1800,
-      cycles:100
+      values:{programs:null,members:null,certificates:null,partners:null,sponsorship:null},
+      labels:{
+        programs:"Chương trình & sự kiện",
+        members:"Thành viên cộng đồng",
+        certificates:"Chứng nhận đã phát hành",
+        partners:"Đối tác & đơn vị đồng hành",
+        sponsorship:"Tổng tiền tài trợ (thực nhận)"
+      },
+      sponsorship_basis:"received",
+      sponsorship_unit:"VND",
+      duration_ms:1200,
+      cycles:1
     };
     const storedHomeStats=await getSetting(env,"home_stats",homeStatsDefaults);
     const homeStats={
@@ -380,44 +388,65 @@ export async function publicRoute(request,env,url,ctx){
     };
     let d1Stats=null;
     try{
-      if(env.DB&&homeStats.source==="d1"){
-        const counts=await env.DB.batch([
-          env.DB.prepare("SELECT (SELECT COUNT(*) FROM classes)+(SELECT COUNT(*) FROM events) AS n"),
-          env.DB.prepare("SELECT COUNT(*) AS n FROM users WHERE status='active'"),
+      if(env.DB){
+        const hasSponsorship=await tableExists(env,"sponsorship_campaigns");
+        const queries=[
+          env.DB.prepare("SELECT (SELECT COUNT(*) FROM classes WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn','Đã hủy'))+(SELECT COUNT(*) FROM events WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn','Đã hủy')) AS n"),
+          env.DB.prepare("SELECT CASE WHEN (SELECT COUNT(*) FROM people WHERE status='Đang hoạt động') > 0 THEN (SELECT COUNT(*) FROM people WHERE status='Đang hoạt động') ELSE (SELECT COUNT(*) FROM users WHERE status='active' AND email_verified=1) END AS n"),
           env.DB.prepare("SELECT COUNT(*) AS n FROM certificates WHERE lower(status)='issued' AND issued_at IS NOT NULL"),
-          env.DB.prepare("SELECT COUNT(*) AS n FROM units WHERE status!='Đã giải thể'")
-        ]);
-        d1Stats={programs:Number(counts[0]?.results?.[0]?.n||0),members:Number(counts[1]?.results?.[0]?.n||0),certificates:Number(counts[2]?.results?.[0]?.n||0),partners:Number(counts[3]?.results?.[0]?.n||0)};
+          env.DB.prepare("SELECT COUNT(*) AS n FROM units WHERE status='Đang hoạt động'")
+        ];
+        if(hasSponsorship){
+          queries.push(env.DB.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(pledged_amount),0) AS pledged, COALESCE(SUM(received_amount),0) AS received, COALESCE(SUM(disbursed_amount),0) AS disbursed FROM sponsorship_campaigns WHERE visibility='public' AND status IN ('active','completed')"));
+        }
+        const counts=await env.DB.batch(queries);
+        const spRow=hasSponsorship?(counts[4]?.results?.[0]||{}):{c:0,pledged:0,received:0,disbursed:0};
+        const spCampaignCount=Number(spRow.c||0);
+        d1Stats={
+          programs:Number(counts[0]?.results?.[0]?.n||0),
+          members:Number(counts[1]?.results?.[0]?.n||0),
+          certificates:Number(counts[2]?.results?.[0]?.n||0),
+          partners:Number(counts[3]?.results?.[0]?.n||0),
+          sponsorship:spCampaignCount>0?Number(spRow.received||0):null,
+          sponsorship_pledged:spCampaignCount>0?Number(spRow.pledged||0):null,
+          sponsorship_disbursed:spCampaignCount>0?Number(spRow.disbursed||0):null,
+          sponsorship_campaigns:spCampaignCount,
+          updated_at:new Date().toISOString()
+        };
       }
     }catch(err){console.error("HOME_STATS_D1_FALLBACK",err)}
     return json({
       home_stats:{...homeStats,d1_values:d1Stats},
-      app_name:await getSetting(env,"app_name","Cổng Thông tin Số Sky First"),
-      app_short_name:await getSetting(env,"app_short_name","Sky First Network"),
-      app_url:env.APP_URL||await getSetting(env,"app_url",""),
+      app_name:await getSetting(env,"app_name","Hệ thống Thông tin Số Sky First"),
+      app_name_en:await getSetting(env,"app_name_en","Sky First Digital Information System"),
+      app_short_name:await getSetting(env,"app_short_name","Sky First"),
+      app_url:env.APP_URL||await getSetting(env,"app_url","https://app.skyfirst.io.vn"),
       website:await getSetting(env,"website","https://skyfirst.io.vn"),
       hotline:await getSetting(env,"hotline","0924 910 210"),
-      receiver_email:await getSetting(env,"receiver_email","skyfirst.ec@gmail.com"),
-      slogan:await getSetting(env,"brand_slogan",""),
-      hero_title:await getSetting(env,"hero_title","Kết nối giáo dục. Phát triển cộng đồng."),
-      hero_text:await getSetting(env,"hero_text","Khám phá thông tin, chương trình, hoạt động, tài nguyên và các tiện ích số trong hệ sinh thái Sky First Network."),
-      hero_cover_url:await getSetting(env,"hero_cover_url","/assets/sfn-cover.png"),
+      system_email:await getSetting(env,"system_email","app@skyfirst.io.vn"),
+      contact_email:await getSetting(env,"contact_email","lienhe@skyfirst.io.vn"),
+      support_email:await getSetting(env,"support_email","support@skyfirst.io.vn"),
+      receiver_email:await getSetting(env,"receiver_email","app@skyfirst.io.vn"),
+      slogan:await getSetting(env,"brand_slogan","Kết nối tri thức • Lan tỏa giá trị • Vì cộng đồng bền vững"),
+      hero_title:await getSetting(env,"hero_title","Hệ thống Thông tin Số Sky First"),
+      hero_text:await getSetting(env,"hero_text","Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First."),
+      hero_cover_url:await getSetting(env,"hero_cover_url",""),
       maintenance_mode:await getSetting(env,"maintenance_mode",false),
       header_show_brand:await getSetting(env,"header_show_brand",true),
       header_show_theme:await getSetting(env,"header_show_theme",true),
-      header_show_account:false,
+      header_show_account:await getSetting(env,"header_show_account",true),
       header_account_label:await getSetting(env,"header_account_label","Đăng nhập"),
-      footer_description:await getSetting(env,"footer_description","Kết nối giáo dục, tri thức và phát triển cộng đồng trên một hệ thống thống nhất."),
-      footer_email:await getSetting(env,"footer_email","skyfirst.ec@gmail.com"),
-      footer_support_email:await getSetting(env,"footer_support_email","ctt@skyfirst.io.vn"),
-      footer_portal_email:await getSetting(env,"footer_portal_email","ctt@skyfirst.io.vn"),
-      portal_main_label:await getSetting(env,"portal_main_label","Trang thông tin điện tử Sky First Network"),
+      footer_description:await getSetting(env,"footer_description","Hệ thống thông tin và dịch vụ số phục vụ tra cứu, đăng ký chương trình, biểu mẫu, chứng nhận và minh bạch hoạt động."),
+      footer_email:await getSetting(env,"footer_email","lienhe@skyfirst.io.vn"),
+      footer_support_email:await getSetting(env,"footer_support_email","support@skyfirst.io.vn"),
+      footer_portal_email:await getSetting(env,"footer_portal_email","app@skyfirst.io.vn"),
+      portal_main_label:await getSetting(env,"portal_main_label","Trang Thông tin Điện tử Sky First"),
       portal_main_url:await getSetting(env,"portal_main_url","https://skyfirst.io.vn"),
       portal_tnv_url:await getSetting(env,"portal_tnv_url","https://tnv.skyfirst.io.vn"),
       portal_sfec_url:await getSetting(env,"portal_sfec_url","https://sfec.skyfirst.io.vn"),
       portal_slc_url:await getSetting(env,"portal_slc_url","https://slc.skyfirst.io.vn"),
       portal_member_url:await getSetting(env,"portal_member_url","https://member.skyfirst.io.vn"),
-      footer_copyright:await getSetting(env,"footer_copyright","© 2026 Sky First Network (SFN)"),
+      footer_copyright:await getSetting(env,"footer_copyright","© 2026 Hệ thống Thông tin Số Sky First (app.skyfirst.io.vn)"),
       modules:mods.results||[],
       forms:forms.results||[],
       google_oauth:!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_REDIRECT_URI),
@@ -429,22 +458,34 @@ export async function publicRoute(request,env,url,ctx){
     const q=String(url.searchParams.get("q")||"").trim().slice(0,120);
     if(q.length<2) return json({items:[],query:q},200,publicCacheHeaders(30));
     const like=`%${q}%`;
-    const [news,events,units,forms,docs,programs]=await env.DB.batch([
+    const batchQueries=[
       env.DB.prepare("SELECT 'news' type,title,slug ref,substr(body,1,180) description,published_at date FROM news WHERE status='published' AND (title LIKE ? OR body LIKE ?) ORDER BY COALESCE(published_at,created_at) DESC LIMIT 12").bind(like,like),
-      env.DB.prepare("SELECT 'event' type,title,id ref,COALESCE(status,'') description,start_at date FROM events WHERE title LIKE ? OR COALESCE(data_json,'') LIKE ? ORDER BY COALESCE(start_at,created_at) DESC LIMIT 12").bind(like,like),
+      env.DB.prepare("SELECT 'event' type,title,id ref,COALESCE(status,'') description,start_at date FROM events WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn') AND (title LIKE ? OR COALESCE(data_json,'') LIKE ?) ORDER BY COALESCE(start_at,created_at) DESC LIMIT 12").bind(like,like),
       env.DB.prepare("SELECT 'unit' type,name title,code ref,COALESCE(unit_type,'') description,NULL date FROM units WHERE status!='Đã giải thể' AND (name LIKE ? OR code LIKE ?) ORDER BY name LIMIT 12").bind(like,like),
       env.DB.prepare("SELECT 'form' type,name title,id ref,COALESCE(description,'') description,NULL date FROM forms WHERE enabled=1 AND (name LIKE ? OR COALESCE(description,'') LIKE ?) ORDER BY rowid LIMIT 12").bind(like,like),
-      env.DB.prepare("SELECT 'resource' type,title,id ref,COALESCE(doc_type,'') description,issued_at date FROM documents WHERE visibility='public' AND status='Có hiệu lực' AND (title LIKE ? OR code LIKE ?) ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 12").bind(like,like),
-      env.DB.prepare("SELECT 'program' type,title,id ref,trim(COALESCE(level,'') || ' ' || COALESCE(status,'')) description,NULL date FROM classes WHERE title LIKE ? OR COALESCE(level,'') LIKE ? OR COALESCE(unit_code,'') LIKE ? ORDER BY created_at DESC LIMIT 12").bind(like,like,like)
-    ]);
+      env.DB.prepare("SELECT 'resource' type,title,id ref,COALESCE(doc_type,'') description,issued_at date FROM documents WHERE visibility='public' AND status='Có hiệu lực' AND (title LIKE ? OR code LIKE ? OR COALESCE(metadata_json,'') LIKE ?) ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 12").bind(like,like,like),
+      env.DB.prepare("SELECT 'program' type,title,id ref,trim(COALESCE(level,'') || ' ' || COALESCE(status,'')) description,NULL date FROM classes WHERE COALESCE(status,'') NOT IN ('Nháp','draft','private','ẩn') AND (title LIKE ? OR COALESCE(level,'') LIKE ? OR COALESCE(unit_code,'') LIKE ?) ORDER BY created_at DESC LIMIT 12").bind(like,like,like)
+    ];
+    const hasSp=await tableExists(env,"sponsorship_campaigns");
+    const hasCms=await tableExists(env,"cms_pages");
+    if(hasSp) batchQueries.push(env.DB.prepare("SELECT 'sponsorship' type,title,code ref,substr(summary,1,180) description,updated_at date FROM sponsorship_campaigns WHERE visibility='public' AND (title LIKE ? OR code LIKE ? OR summary LIKE ?) ORDER BY updated_at DESC LIMIT 8").bind(like,like,like));
+    if(hasCms) batchQueries.push(env.DB.prepare("SELECT 'cms_page' type,title,slug ref,substr(summary,1,180) description,published_at date FROM cms_pages WHERE status='published' AND website_id='app' AND (title LIKE ? OR summary LIKE ?) ORDER BY published_at DESC LIMIT 8").bind(like,like));
+    const batchRes=await env.DB.batch(batchQueries);
+    const [news,events,units,forms,docs,programs]=batchRes;
+    const spRes=hasSp?(batchRes[6]?.results||[]):[];
+    const cmsRes=hasCms?(batchRes[hasSp?7:6]?.results||[]):[];
     const pages=[
-      {type:"page",title:"Cổng Thông tin Số",ref:"/",description:"Thông tin và tiện ích số Sky First"},
-      {type:"page",title:"Tra cứu giấy đã phát hành",ref:"/gcn",description:"Giấy chứng nhận, Giấy xác nhận, Bảng khen và QR"},
-      {type:"page",title:"Tra cứu hồ sơ",ref:"/ho-so",description:"Theo dõi tình trạng xử lý hồ sơ"},
-      {type:"page",title:"Biểu mẫu trực tuyến",ref:"/bieu-mau",description:"Gửi thông tin và hồ sơ trực tuyến"},
-      {type:"page",title:"Tra cứu thông tin",ref:"/tra-cuu",description:"Tra cứu giấy đã phát hành và hồ sơ"}
+      {type:"page",title:"Hệ thống Thông tin Số Sky First",ref:"/",description:"Điểm truy cập tập trung các chức năng và dịch vụ số Sky First"},
+      {type:"page",title:"Chương trình đào tạo & cộng đồng",ref:"/chuong-trinh",description:"Danh mục chương trình và lớp học thực tế"},
+      {type:"page",title:"Sự kiện & Hoạt động",ref:"/su-kien",description:"Lịch sự kiện và hoạt động công khai"},
+      {type:"page",title:"Thư viện Tài liệu & PDF",ref:"/tai-lieu",description:"Tài liệu, văn bản và hướng dẫn được phân loại"},
+      {type:"page",title:"Biểu mẫu điện tử",ref:"/bieu-mau",description:"Gửi thông tin và hồ sơ trực tuyến"},
+      {type:"page",title:"Tra cứu Chứng nhận",ref:"/gcn",description:"Tra cứu Giấy chứng nhận, Giấy xác nhận, Bằng khen bằng mã"},
+      {type:"page",title:"Tra cứu Hồ sơ",ref:"/ho-so",description:"Theo dõi tiến trình xử lý hồ sơ đã gửi"},
+      {type:"page",title:"Minh bạch Tài trợ",ref:"/tai-tro",description:"Công khai mục tiêu, số tiền cam kết, thực nhận, giải ngân và chứng từ"},
+      {type:"page",title:"An toàn & Bảo mật số",ref:"/an-toan",description:"Hướng dẫn bảo vệ tài khoản, cảnh báo giả mạo và báo cáo sự cố"}
     ].filter(x=>(x.title+' '+x.description).toLowerCase().includes(q.toLowerCase()));
-    const items=[...pages,...(news.results||[]),...(events.results||[]),...(programs.results||[]),...(units.results||[]),...(forms.results||[]),...(docs.results||[])].slice(0,40);
+    const items=[...pages,...spRes,...cmsRes,...(news.results||[]),...(events.results||[]),...(programs.results||[]),...(units.results||[]),...(forms.results||[]),...(docs.results||[])].slice(0,40);
     if(/^(SFN-(GCN|GXN|BK)-\d{5,8}|\d{8}|\d{3}-(GCN|GXN|BK)-SFN\/\d{4})$/i.test(q)){
       const c=await lookupCredential(env,q); if(c) items.unshift({type:"credential",title:c.code,ref:c.code,description:`${c.type} · ${c.status_text}`,date:c.issued_at});
     }
@@ -452,8 +493,162 @@ export async function publicRoute(request,env,url,ctx){
   }
 
   if(p==="/api/public/resources"&&request.method==="GET"){
-    const rs=await env.DB.prepare("SELECT id,code,doc_type,title,file_id,issued_at,metadata_json FROM documents WHERE visibility='public' AND status='Có hiệu lực' ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 200").all();
-    return json({items:rs.results||[]},200,publicCacheHeaders(300));
+    const rs=await env.DB.prepare("SELECT id,code,doc_type,title,file_id,issued_at,metadata_json,updated_at FROM documents WHERE visibility='public' AND status='Có hiệu lực' ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 200").all();
+    const docs=rs.results||[];
+    let versionsMap={};
+    if(docs.length && await tableExists(env,"document_versions")){
+      try{
+        const vrs=await env.DB.prepare("SELECT document_id,version_number,file_id,filename,mime,size,created_at FROM document_versions WHERE is_current=1").all();
+        for(const v of vrs.results||[]) versionsMap[v.document_id]=v;
+      }catch{}
+    }
+    const items=docs.map(d=>{
+      let meta={}; try{meta=JSON.parse(d.metadata_json||"{}")}catch{}
+      const ver=versionsMap[d.id]||null;
+      const fid=ver?.file_id||d.file_id||"";
+      return {
+        ...d,
+        file_id:fid,
+        category:meta.category||d.doc_type||"Tài liệu",
+        description:meta.description||"",
+        keywords:meta.keywords||"",
+        website_id:meta.website_id||"app",
+        allow_download:meta.allow_download!==false,
+        current_version:ver?.version_number||Number(meta.version||1),
+        mime:ver?.mime||meta.mime||(fid?"application/pdf":""),
+        size:ver?.size||meta.size||0,
+        preview_url:fid?`/api/files/${encodeURIComponent(fid)}`:"",
+        download_url:(fid&&meta.allow_download!==false)?`/api/files/${encodeURIComponent(fid)}?download=1`:""
+      };
+    });
+    return json({items},200,publicCacheHeaders(180));
+  }
+
+  if(p==="/api/public/sponsorship"&&request.method==="GET"){
+    if(!(await tableExists(env,"sponsorship_campaigns"))){
+      return json({summary:{campaigns_count:0,target_amount:0,pledged_amount:0,received_amount:0,disbursed_amount:0,remaining_amount:0,currency:"VND",has_data:false,updated_at:null},campaigns:[],reports:[]},200,publicCacheHeaders(120));
+    }
+    const [campRs,repRs]=await env.DB.batch([
+      env.DB.prepare("SELECT id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,updated_at FROM sponsorship_campaigns WHERE visibility='public' AND status IN ('active','completed','paused','closed') ORDER BY COALESCE(start_at,created_at) DESC LIMIT 100"),
+      env.DB.prepare("SELECT r.id,r.campaign_id,r.title,r.report_period,r.file_id,r.summary,r.published_at,c.code AS campaign_code,c.title AS campaign_title FROM sponsorship_reports r JOIN sponsorship_campaigns c ON c.id=r.campaign_id WHERE r.status='published' AND c.visibility='public' ORDER BY COALESCE(r.published_at,r.created_at) DESC LIMIT 100")
+    ]);
+    const campaigns=(campRs.results||[]).map(c=>({
+      ...c,
+      target_amount:Number(c.target_amount||0),
+      pledged_amount:Number(c.pledged_amount||0),
+      received_amount:Number(c.received_amount||0),
+      disbursed_amount:Number(c.disbursed_amount||0),
+      remaining_amount:Math.max(0,Number(c.received_amount||0)-Number(c.disbursed_amount||0))
+    }));
+    const activeForSum=campaigns.filter(c=>["active","completed"].includes(c.status));
+    const target_amount=activeForSum.reduce((s,c)=>s+c.target_amount,0);
+    const pledged_amount=activeForSum.reduce((s,c)=>s+c.pledged_amount,0);
+    const received_amount=activeForSum.reduce((s,c)=>s+c.received_amount,0);
+    const disbursed_amount=activeForSum.reduce((s,c)=>s+c.disbursed_amount,0);
+    const remaining_amount=Math.max(0,received_amount-disbursed_amount);
+    const latestUpdate=campaigns.reduce((m,c)=>(!m||String(c.updated_at)>m)?String(c.updated_at):m,null);
+    return json({
+      summary:{
+        campaigns_count:campaigns.length,
+        target_amount,
+        pledged_amount,
+        received_amount,
+        disbursed_amount,
+        remaining_amount,
+        currency:"VND",
+        has_data:campaigns.length>0,
+        updated_at:latestUpdate
+      },
+      campaigns,
+      reports:repRs.results||[]
+    },200,publicCacheHeaders(120));
+  }
+
+  const spDetailMatch=p.match(/^\/api\/public\/sponsorship\/([^/]+)$/);
+  if(spDetailMatch&&request.method==="GET"){
+    if(!(await tableExists(env,"sponsorship_campaigns"))) return json({error:"NOT_FOUND",message:"Chưa có dữ liệu chương trình tài trợ."},404);
+    const codeOrId=decodeURIComponent(spDetailMatch[1]);
+    const camp=await env.DB.prepare("SELECT id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,updated_at FROM sponsorship_campaigns WHERE visibility='public' AND (code=? OR id=?) LIMIT 1").bind(codeOrId,codeOrId).first();
+    if(!camp) return json({error:"NOT_FOUND",message:"Không tìm thấy chương trình tài trợ công khai phù hợp."},404);
+    const [txRs,repRs]=await env.DB.batch([
+      env.DB.prepare("SELECT tx_code,tx_type,amount,currency,public_party_label,purpose,voucher_file_id,occurred_at,verified_at FROM sponsorship_transactions WHERE campaign_id=? AND verification_status='verified' AND is_public=1 ORDER BY occurred_at DESC LIMIT 300").bind(camp.id),
+      env.DB.prepare("SELECT id,title,report_period,file_id,summary,published_at FROM sponsorship_reports WHERE campaign_id=? AND status='published' ORDER BY COALESCE(published_at,created_at) DESC LIMIT 50").bind(camp.id)
+    ]);
+    return json({
+      campaign:{
+        ...camp,
+        target_amount:Number(camp.target_amount||0),
+        pledged_amount:Number(camp.pledged_amount||0),
+        received_amount:Number(camp.received_amount||0),
+        disbursed_amount:Number(camp.disbursed_amount||0),
+        remaining_amount:Math.max(0,Number(camp.received_amount||0)-Number(camp.disbursed_amount||0))
+      },
+      transactions:txRs.results||[],
+      reports:repRs.results||[]
+    },200,publicCacheHeaders(60));
+  }
+
+  if(p==="/api/public/safety-reports"&&request.method==="POST"){
+    const ip=await ipHash(request);
+    const rl=await rateLimit(env,`safety-report:${ip}`,5,300);
+    if(!rl.ok) return json({error:"RATE_LIMIT",message:"Bạn đã gửi quá nhiều báo cáo trong thời gian ngắn. Vui lòng thử lại sau."},429,{"Cache-Control":"no-store"});
+    const body=await readJson(request)||{};
+    const category=String(body.category||"Báo cáo an toàn").trim().slice(0,80);
+    const severity=["Thấp","Trung bình","Cao","Khẩn cấp"].includes(body.severity)?body.severity:"Trung bình";
+    const title=String(body.title||"").trim().slice(0,200);
+    const description=String(body.description||"").trim().slice(0,4000);
+    const reporterName=String(body.reporter_name||"").trim().slice(0,120);
+    const reporterEmail=String(body.reporter_email||"").trim().toLowerCase().slice(0,200);
+    const affectedUrl=String(body.affected_url||"").trim().slice(0,400);
+    if(title.length<5 || description.length<10){
+      return json({error:"INVALID_INPUT",message:"Vui lòng nhập tiêu đề (tối thiểu 5 ký tự) và mô tả chi tiết sự cố (tối thiểu 10 ký tự)."},400);
+    }
+    if(reporterEmail && !/^\S+@\S+\.\S+$/.test(reporterEmail)){
+      return json({error:"INVALID_EMAIL",message:"Địa chỉ email liên hệ không hợp lệ."},400);
+    }
+    const code=await nextCode(env,"SFN-SAFE");
+    const id=uid("safe");
+    if(await tableExists(env,"safety_reports")){
+      await env.DB.prepare("INSERT INTO safety_reports(id,code,category,severity,reporter_name,reporter_email,title,description,affected_url,status,ip_hash) VALUES(?,?,?,?,?,?,?,?,?,'Đã tiếp nhận',?)")
+        .bind(id,code,category,severity,reporterName,reporterEmail,title,description,affectedUrl,ip).run();
+    }
+    const ticketId=uid("ticket");
+    await env.DB.prepare("INSERT INTO tickets(id,code,submitter_name,email,ticket_type,priority,status,subject) VALUES(?,?,?,?,?,?, 'Mới', ?)")
+      .bind(ticketId,code,reporterName||"Người báo cáo ẩn danh",reporterEmail||"",`An toàn · ${category}`,severity==="Khẩn cấp"?"Khẩn":severity,title).run();
+    await env.DB.prepare("INSERT INTO ticket_messages(ticket_id,sender_type,body) VALUES(?,'public',?)")
+      .bind(ticketId,`${description}${affectedUrl?`\nURL liên quan: ${affectedUrl}`:""}`).run();
+    if(reporterEmail){
+      const sendTask=sendTemplatedEmail(env,"support_ticket_received",reporterEmail,{
+        full_name:reporterName||reporterEmail,
+        ticket_code:code,
+        subject:title,
+        status:"Đã tiếp nhận"
+      });
+      if(ctx?.waitUntil) ctx.waitUntil(sendTask); else await sendTask;
+    }
+    await audit(env,request,null,"Gửi báo cáo an toàn số","safety_report",code,{category,severity});
+    return json({ok:true,code,status:"Đã tiếp nhận",message:"Báo cáo an toàn đã được hệ thống ghi nhận. Vui lòng lưu mã tham chiếu để đối soát."},201,{"Cache-Control":"no-store"});
+  }
+
+  if(p==="/api/public/pages"&&request.method==="GET"){
+    if(!(await tableExists(env,"cms_pages"))) return json({items:[]},200,publicCacheHeaders(120));
+    const site=String(url.searchParams.get("website_id")||"app").trim();
+    const rs=await env.DB.prepare("SELECT id,website_id,slug,title,summary,cover_file_id,category,tags_json,published_at,updated_at FROM cms_pages WHERE status='published' AND website_id=? ORDER BY COALESCE(published_at,updated_at) DESC LIMIT 100").bind(site).all();
+    return json({items:rs.results||[]},200,publicCacheHeaders(120));
+  }
+
+  const pageDetailMatch=p.match(/^\/api\/public\/pages\/([^/]+)$/);
+  if(pageDetailMatch&&request.method==="GET"){
+    if(!(await tableExists(env,"cms_pages"))) return json({error:"NOT_FOUND",message:"Không tìm thấy trang nội dung."},404);
+    const slugOrId=decodeURIComponent(pageDetailMatch[1]);
+    const site=String(url.searchParams.get("website_id")||"app").trim();
+    const row=await env.DB.prepare("SELECT id,website_id,slug,title,summary,cover_file_id,category,tags_json,seo_json,blocks_json,published_at,updated_at FROM cms_pages WHERE status='published' AND website_id=? AND (slug=? OR id=?) LIMIT 1").bind(site,slugOrId,slugOrId).first();
+    if(!row) return json({error:"NOT_FOUND",message:"Trang nội dung không tồn tại hoặc chưa được xuất bản."},404);
+    let blocks=[],seo={},tags=[];
+    try{blocks=JSON.parse(row.blocks_json||"[]")}catch{}
+    try{seo=JSON.parse(row.seo_json||"{}")}catch{}
+    try{tags=JSON.parse(row.tags_json||"[]")}catch{}
+    return json({item:{...row,blocks,seo,tags,blocks_json:undefined,seo_json:undefined,tags_json:undefined}},200,publicCacheHeaders(120));
   }
 
   if(p==="/api/public/news"&&request.method==="GET"){
@@ -611,11 +806,19 @@ export async function publicRoute(request,env,url,ctx){
       APPLICATION_TYPE:escapeHtml(row.name),SUBMITTED_AT:escapeHtml(submittedAt),STATUS:"ĐÃ TIẾP NHẬN",
       PROFILE_IMAGE_BLOCK:profileImageBlock
     };
-    const receiver=row.recipient_email||await getSetting(env,"receiver_email","skyfirst.ec@gmail.com");
+    const receiver=row.recipient_email||await getSetting(env,"receiver_email","app@skyfirst.io.vn");
+    const programName=String(answers.course||answers.event_name||row.name||"");
+    const enrichVars={...vars,submitted_at:submittedAt,status:"Đã tiếp nhận",program_name:programName,ticket_code:code,subject:answers.request_type||row.name};
     let confirmation={ok:false},emailQueued=false;
     const sendSubmissionEmails=async()=>{
-      await sendTemplatedEmail(env,"submission_internal",receiver,vars);
-      if(email) confirmation=await sendTemplatedEmail(env,"submission_confirmation",email,vars);
+      await sendTemplatedEmail(env,"submission_internal",receiver,enrichVars);
+      if(email){
+        const tplKey=(idForm==="class"||idForm==="event")?"registration_confirmation":(idForm==="support"?"support_ticket_received":"submission_confirmation");
+        confirmation=await sendTemplatedEmail(env,tplKey,email,enrichVars);
+        if(!confirmation.ok && tplKey!=="submission_confirmation"){
+          confirmation=await sendTemplatedEmail(env,"submission_confirmation",email,enrichVars);
+        }
+      }
     };
     if(ctx?.waitUntil){ctx.waitUntil(sendSubmissionEmails());emailQueued=!!email;} else await sendSubmissionEmails();
 

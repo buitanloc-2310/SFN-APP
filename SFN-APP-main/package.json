@@ -1,15 +1,16 @@
 {
-  "name": "sky-first-digital-information-portal",
-  "version": "2.0.0",
+  "name": "sky-first-digital-information-system",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
-  "description": "Cổng Thông tin Số Sky First — Digital Information Infrastructure on Cloudflare Workers, D1 and R2",
+  "description": "Hệ thống Thông tin Số Sky First — Sky First Digital Information System (app.skyfirst.io.vn)",
   "scripts": {
     "dev": "wrangler dev --remote",
     "deploy": "wrangler deploy",
     "db:migrate": "wrangler d1 migrations apply DB --remote",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "validate": "node scripts/validate.mjs"
+    "validate": "node scripts/validate.mjs",
+    "test": "node scripts/test-all.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.30.0"

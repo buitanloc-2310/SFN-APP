@@ -7,20 +7,139 @@ function parseCttTime(value){
   return Date.parse(`${normalized}+07:00`);
 }
 const fmt=d=>{const ms=parseCttTime(d);return Number.isFinite(ms)?new Date(ms).toLocaleString("vi-VN",{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Ho_Chi_Minh"}):"—";};
+const fmtVnd=n=>{const num=Number(n);if(!Number.isFinite(num))return "Chưa có dữ liệu";return new Intl.NumberFormat("vi-VN").format(Math.round(num))+" đồng";};
 const api=async(path,options={})=>{const r=await fetch(path,{credentials:"same-origin",...options,headers:{...(options.headers||{})}});const ct=r.headers.get("content-type")||"";const d=ct.includes("application/json")?await r.json():await r.text();if(!r.ok){const e=new Error(d?.message||d?.error||`HTTP ${r.status}`);e.status=r.status;e.data=d;throw e}return d};
 const event=(name,meta={})=>fetch('/api/public/analytics',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({event:name,route:location.pathname,device_class:innerWidth<700?'mobile':innerWidth<1100?'tablet':'desktop',...meta})}).catch(()=>{});
-const icon=n=>({verify:'✓',case:'⌁',form:'▤',program:'◫',event:'◇',resource:'▱',news:'◧',unit:'◎',search:'⌕',support:'?',shield:'◈'}[n]||'•');
-function statusClass(s=''){s=String(s).toLowerCase();return s.includes('thu hồi')||s.includes('revoked')?'bad':s.includes('thay thế')||s.includes('supersed')?'warn':s.includes('xác thực')||s.includes('issued')||s.includes('hoàn tất')?'good':''}
-function setMeta(title,desc){document.title=`${title} — Cổng Thông tin Số Sky First`;document.querySelector('meta[name="description"]')?.setAttribute('content',desc||'Cổng Thông tin Số Sky First.');}
+const icon=n=>({verify:'✓',case:'⌁',form:'▤',program:'◫',event:'📅',resource:'📁',news:'◧',unit:'◎',search:'⌕',support:'?',shield:'🛡️',sponsorship:'♡',cms_page:'▤'}[n]||'•');
+function statusClass(s=''){s=String(s).toLowerCase();return s.includes('thu hồi')||s.includes('revoked')?'bad':s.includes('thay thế')||s.includes('supersed')?'warn':s.includes('xác thực')||s.includes('issued')||s.includes('hoàn tất')||s.includes('có hiệu lực')?'good':''}
+function setMeta(title,desc){
+  document.title=`${title} — Hệ thống Thông tin Số Sky First`;
+  document.querySelector('meta[name="description"]')?.setAttribute('content',desc||'Hệ thống Thông tin Số Sky First (Sky First Digital Information System).');
+}
 function sectionHead(kicker,title,desc){return `<div class="dip-section-head"><div><span class="section-kicker">${esc(kicker)}</span><h2>${esc(title)}</h2>${desc?`<p>${esc(desc)}</p>`:''}</div></div>`}
 function empty(msg){return `<div class="dip-empty"><span>◇</span><p>${esc(msg)}</p></div>`}
-function cardLink({tag='',title='',desc='',href='#',meta=''}){return `<a class="content-card" href="${esc(href)}"><span class="content-tag">${esc(tag)}</span><h3>${esc(title)}</h3><p>${esc(desc||'')}</p>${meta?`<small>${esc(meta)}</small>`:''}<b>Khám phá <span>→</span></b></a>`}
 function jsonObject(value){if(value&&typeof value==='object')return value;try{return JSON.parse(value||'{}')}catch{return {}}}
 function firstText(obj,keys){for(const key of keys){const v=obj?.[key];if(typeof v==='string'&&v.trim())return v.trim()}return ''}
 function isHiddenPublicStatus(status=''){return /(^|\b)(nháp|draft|private|ẩn|đã ẩn|unpublished)(\b|$)/i.test(String(status||''))}
 function visiblePublicItems(items=[]){return (items||[]).filter(x=>!isHiddenPublicStatus(x.status))}
 function programArtKind(item={}){const t=String(item.title||'').toLowerCase();if(t.includes('reading')||t.includes('đọc'))return 'reading';if(t.includes('listening')||t.includes('nghe'))return 'listening';if(t.includes('speaking')||t.includes('nói'))return 'speaking';return 'program'}
-function publicStatusLabel(status,kind='program'){const s=String(status||'').trim();if(!s)return 'Trạng thái đang cập nhật';if(/draft|nháp|private|ẩn/i.test(s))return 'Chưa công khai';return s}
+function publicStatusLabel(status){const s=String(status||'').trim();if(!s)return 'Trạng thái đang cập nhật';if(/draft|nháp|private|ẩn/i.test(s))return 'Chưa công khai';return s}
+
+const I18N = {
+  vi: {
+    brand_sub: "HỆ THỐNG THÔNG TIN SỐ",
+    nav_home: "Trang chủ",
+    nav_programs: "Chương trình",
+    nav_events: "Sự kiện",
+    nav_docs: "Tài liệu",
+    nav_forms: "Biểu mẫu",
+    nav_certs: "Chứng nhận",
+    nav_cases: "Hồ sơ",
+    nav_sponsorship: "Tài trợ",
+    nav_safety: "An toàn",
+    nav_login: "Đăng nhập",
+    hero_badge: "HỆ THỐNG THÔNG TIN SỐ SKY FIRST",
+    hero_title_top: "Hệ thống Thông tin Số",
+    hero_desc: "Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First.",
+    search_placeholder: "Tìm kiếm chương trình, sự kiện, tài liệu, biểu mẫu, chứng nhận...",
+    search_btn: "Tìm kiếm",
+    quick_label: "Truy cập nhanh:",
+    card_prog_title: "Chương trình",
+    card_prog_desc: "Khám phá các chương trình giáo dục và cộng đồng",
+    card_ev_title: "Sự kiện",
+    card_ev_desc: "Cập nhật sự kiện mới nhất",
+    card_doc_title: "Tài liệu",
+    card_doc_desc: "Tài liệu, hướng dẫn và biểu mẫu",
+    card_cert_title: "Chứng nhận",
+    card_cert_desc: "Tra cứu chứng nhận đã phát hành",
+    card_safe_title: "An toàn",
+    card_safe_desc: "Bảo vệ dữ liệu và thông tin cá nhân",
+    card_sp_title: "Tài trợ",
+    card_sp_desc: "Công khai minh bạch các chương trình tài trợ",
+    stat_programs: "Chương trình & sự kiện",
+    stat_members: "Thành viên cộng đồng",
+    stat_certificates: "Chứng nhận đã phát hành",
+    stat_partners: "Đối tác & đơn vị đồng hành",
+    stat_sponsorship: "Tổng tiền tài trợ (thực nhận)",
+    footer_tagline: "Kết nối tri thức • Lan tỏa giá trị • Vì cộng đồng bền vững",
+    footer_desc: "Hệ thống thông tin và dịch vụ số phục vụ tra cứu, đăng ký chương trình, biểu mẫu, chứng nhận và minh bạch hoạt động.",
+    footer_col_services: "Chức năng số",
+    footer_col_lookup: "Tra cứu & Minh bạch",
+    footer_col_contact: "Liên hệ & Hỗ trợ",
+    footer_privacy: "Quyền riêng tư & Bảo vệ dữ liệu",
+    search_header: "TÌM KIẾM HỆ THỐNG",
+    search_eyebrow: "TÌM KIẾM TRÊN HỆ THỐNG THÔNG TIN SỐ SKY FIRST",
+    search_title: "Khám phá thông tin & dịch vụ số",
+    search_hint: "Chỉ tìm kiếm trên dữ liệu công khai. Dùng phím ↑ ↓ để chọn, Enter để mở."
+  },
+  en: {
+    brand_sub: "DIGITAL INFORMATION SYSTEM",
+    nav_home: "Home",
+    nav_programs: "Programs",
+    nav_events: "Events",
+    nav_docs: "Documents",
+    nav_forms: "Forms",
+    nav_certs: "Certificates",
+    nav_cases: "Records",
+    nav_sponsorship: "Sponsorship",
+    nav_safety: "Safety",
+    nav_login: "Sign In",
+    hero_badge: "SKY FIRST DIGITAL INFORMATION SYSTEM",
+    hero_title_top: "Digital Information System",
+    hero_desc: "Explore, verify, register, and manage educational programs, events, documents, forms, certificates, and community support services of Sky First.",
+    search_placeholder: "Search programs, events, documents, forms, certificates...",
+    search_btn: "Search",
+    quick_label: "Quick access:",
+    card_prog_title: "Programs",
+    card_prog_desc: "Explore educational and community programs",
+    card_ev_title: "Events",
+    card_ev_desc: "Latest activity & event updates",
+    card_doc_title: "Documents",
+    card_doc_desc: "Official PDFs, guides & templates",
+    card_cert_title: "Certificates",
+    card_cert_desc: "Verify issued certificates by code",
+    card_safe_title: "Safety",
+    card_safe_desc: "Data protection & incident reporting",
+    card_sp_title: "Sponsorship",
+    card_sp_desc: "Public financial & sponsorship transparency",
+    stat_programs: "Programs & events",
+    stat_members: "Community members",
+    stat_certificates: "Issued certificates",
+    stat_partners: "Partners & units",
+    stat_sponsorship: "Received sponsorship",
+    footer_tagline: "Connecting Knowledge • Spreading Value • Sustainable Community",
+    footer_desc: "Digital information and service platform for program registration, records lookup, credential verification, and public transparency.",
+    footer_col_services: "Digital Services",
+    footer_col_lookup: "Lookup & Transparency",
+    footer_col_contact: "Contact & Support",
+    footer_privacy: "Privacy & Data Protection",
+    search_header: "SYSTEM SEARCH",
+    search_eyebrow: "SKY FIRST DIGITAL INFORMATION SYSTEM SEARCH",
+    search_title: "Discover public information & services",
+    search_hint: "Searches public records only. Use ↑ ↓ arrows to navigate, Enter to open."
+  }
+};
+
+function getLang(){
+  try{return localStorage.getItem('sfn_lang')==='en'?'en':'vi'}catch{return 'vi'}
+}
+function t(key){
+  const lang=getLang();
+  return I18N[lang]?.[key] || I18N.vi[key] || key;
+}
+function applyLanguage(lang){
+  const code=lang==='en'?'en':'vi';
+  try{localStorage.setItem('sfn_lang',code)}catch{}
+  document.documentElement.lang=code;
+  document.querySelectorAll('.lang-btn').forEach(btn=>btn.classList.toggle('is-active',btn.dataset.lang===code));
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const k=el.dataset.i18n;
+    if(I18N[code]?.[k]) el.textContent=I18N[code][k];
+  });
+  const hs=document.getElementById('homeSearch')||document.getElementById('staticSearch');
+  if(hs) hs.placeholder=t('search_placeholder');
+}
+
 let sceneSequence=0;
 function sceneArt(kind='program'){
   const uid=`sfn-art-${++sceneSequence}`,blue=`url(#${uid}-blue)`,cyan=`url(#${uid}-cyan)`,violet=`url(#${uid}-violet)`;
@@ -35,155 +154,600 @@ function sceneArt(kind='program'){
   else drawing=`<ellipse cx="298" cy="320" rx="186" ry="33" fill="#00c8ff" opacity=".2"/><ellipse cx="298" cy="320" rx="145" ry="22" fill="none" stroke="#9b89ff" stroke-width="3"/><circle cx="299" cy="205" r="110" fill="${blue}" opacity=".92"/><circle cx="299" cy="205" r="110" fill="none" stroke="#8cecff" stroke-width="5"/><ellipse cx="299" cy="205" rx="48" ry="110" fill="none" stroke="#8beaff" stroke-width="2"/><ellipse cx="299" cy="205" rx="110" ry="36" fill="none" stroke="#8beaff" stroke-width="2"/><path d="M194 178Q299 143 404 178M194 232Q299 266 404 232" fill="none" stroke="#8beaff" stroke-width="2"/><g transform="translate(241 70) rotate(-5)"><path d="M0 23L64 0 128 23 64 46Z" fill="${violet}" stroke="#e2d6ff" stroke-width="3"/><path d="M28 30v30q36 27 72 0V30" fill="#e6f5ff" stroke="#7be6ff" stroke-width="3"/><path d="M125 23v42" stroke="#9ceeff" stroke-width="4"/><circle cx="125" cy="67" r="7" fill="#ffe19d"/></g><g transform="translate(74 145) rotate(-9)"><rect width="86" height="80" rx="17" fill="${cyan}" stroke="#93edff" stroke-width="3"/><path d="M22 20h42M22 36h42M22 52h29" stroke="white" stroke-width="5" stroke-linecap="round"/></g><g transform="translate(409 144) rotate(9)"><rect width="86" height="80" rx="17" fill="${violet}" stroke="#d4c3ff" stroke-width="3"/><path d="M22 22l13 14 28-29" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></g>`;
   return `<div class="scene-art scene-${esc(kind)}" aria-hidden="true"><div class="scene-glow"></div><svg viewBox="0 0 580 420" focusable="false" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="${uid}-blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#00d9ff"/><stop offset=".48" stop-color="#147eff"/><stop offset="1" stop-color="#4a36f5"/></linearGradient><linearGradient id="${uid}-cyan" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5af4e0"/><stop offset="1" stop-color="#00a9df"/></linearGradient><linearGradient id="${uid}-violet" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#a97aff"/><stop offset="1" stop-color="#4f36ee"/></linearGradient></defs><g>${drawing}</g></svg><span class="scene-spark scene-spark-a"></span><span class="scene-spark scene-spark-b"></span></div>`;
 }
+
 function storyHref(item){return `#news/${encodeURIComponent(item.slug||item.id||'')}`}
-function programHref(item){return `#programs/${encodeURIComponent(item.id||'')}`}
-function eventHref(item){return `#events/${encodeURIComponent(item.id||'')}`}
+function programHref(item){return `/chuong-trinh/${encodeURIComponent(item.id||'')}`}
+function eventHref(item){return `/su-kien/${encodeURIComponent(item.id||'')}`}
 function activeLike(status=''){return /đang hoạt động|đang mở|active|open|ongoing|đang diễn ra/i.test(String(status||''))}
 function comparePrograms(a,b){const rank=x=>{const t=String(x.title||'').toLowerCase();if(/tiếng anh trung cấp|b1\s*-?\s*b2/.test(t))return 0;if(/reading/.test(t))return 1;if(/listening/.test(t))return 2;if(/speaking/.test(t))return 3;return 4};return rank(a)-rank(b)}
 function programCard(item,index=0,mode='catalog'){
  const data=jsonObject(item.data_json),kind=programArtKind(item),desc=firstText(data,['summary','short_description','description','intro'])||item.level||'';
  const status=publicStatusLabel(item.status),level=item.level?`<span class="program-level">${esc(item.level)}</span>`:'';
  if(mode==='home')return `<article class="program-home-card ${index===0?'is-featured':''} art-${esc(kind)}"><div class="program-home-art">${sceneArt(kind)}</div><div class="program-home-copy"><span class="program-unit">${esc(item.unit_code||'SKY FIRST')}</span><h3>${esc(item.title)}</h3>${level}<p class="program-status-line">${esc(status)}</p><a href="${esc(programHref(item))}">Xem chi tiết chương trình <span>→</span></a></div></article>`;
- return `<article class="program-card"><div class="program-card-visual">${sceneArt(kind)}<span class="program-unit">${esc(item.unit_code||'SKY FIRST')}</span></div><div class="program-card-body"><h3>${esc(item.title)}</h3>${level}${desc?`<p>${esc(desc)}</p>`:`<p>Thông tin chi tiết của chương trình được cập nhật từ hệ thống quản trị.</p>`}<div class="program-card-foot"><span class="program-status ${activeLike(item.status)?'is-active':''}"><i></i>${esc(status)}</span><a href="${esc(programHref(item))}">Xem chi tiết <b>→</b></a></div></div></article>`;
+ return `<article class="program-card"><div class="program-card-visual">${sceneArt(kind)}<span class="program-unit">${esc(item.unit_code||'SKY FIRST')}</span></div><div class="program-card-body"><h3>${esc(item.title)}</h3>${level}${desc?`<p>${esc(desc)}</p>`:`<p>Thông tin chi tiết của chương trình được đồng bộ từ hệ thống quản trị.</p>`}<div class="program-card-foot"><span class="program-status ${activeLike(item.status)?'is-active':''}"><i></i>${esc(status)}</span><a href="${esc(programHref(item))}">Xem chi tiết <b>→</b></a></div></div></article>`;
+}
+
+function updateActiveNav(activeKey){
+  document.querySelectorAll('#mainNav [data-nav-match]').forEach(a=>{
+    const match=a.dataset.navMatch===activeKey;
+    a.classList.toggle('is-active',match);
+    if(match) a.setAttribute('aria-current','page');
+    else a.removeAttribute('aria-current');
+  });
 }
 
 async function home(app){
-  setMeta('Cổng Thông tin Số','Thông tin, chương trình, hoạt động, cơ hội, tài nguyên và tiện ích số của Sky First Network.');
-  const [news,classes,events,units,resources,config]=await Promise.allSettled([api('/api/public/news'),api('/api/public/classes'),api('/api/public/events'),api('/api/public/units'),api('/api/public/resources'),api('/api/config')]);
-  const n=news.value?.items||[], c=classes.value?.items||[], ev=events.value?.items||[], u=units.value?.items||[], r=resources.value?.items||[];
-  const newsHtml=n.length?`<div class="news-editorial"><a class="news-feature" href="${esc(storyHref(n[0]))}"><div class="news-feature-art">${sceneArt('news')}${n[0].cover_file_id?`<img src="/media/${encodeURIComponent(n[0].cover_file_id)}" alt="Ảnh đại diện: ${esc(n[0].title)}" loading="lazy">`:''}${n[0].cover_file_id?'':`<em class="cover-default-note">MINH HỌA MẶC ĐỊNH · CHƯA CÓ ẢNH ĐẠI DIỆN</em>`}</div><span>TIN NỔI BẬT</span><h3>${esc(n[0].title)}</h3><p>${esc(String(n[0].body||'').replace(/<[^>]*>/g,' ').slice(0,230))}</p><small>${n[0].published_at?fmt(n[0].published_at):''}</small><b class="news-card-cta">Đọc tin <span>→</span></b></a><div class="news-stack">${n.slice(1,5).map(x=>`<a href="${esc(storyHref(x))}"><span>TIN TỨC</span><b>${esc(x.title)}</b><small>${x.published_at?fmt(x.published_at):''}</small><strong>Đọc tin →</strong></a>`).join('')}</div></div>`:`<div class="beautiful-empty"><i>◧</i><div><h3>Chưa có tin tức công khai</h3><p>Tin mới sẽ xuất hiện tại đây khi được xuất bản từ hệ thống quản trị.</p></div></div>`;
+  updateActiveNav('home');
+  setMeta('Hệ thống Thông tin Số Sky First','Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First.');
+  const [news,classes,events,resources,config]=await Promise.allSettled([
+    api('/api/public/news'),
+    api('/api/public/classes'),
+    api('/api/public/events'),
+    api('/api/public/resources'),
+    api('/api/config')
+  ]);
+  const n=news.value?.items||[], c=classes.value?.items||[], ev=events.value?.items||[], r=resources.value?.items||[];
+  const newsHtml=n.length?`<div class="news-editorial"><a class="news-feature" href="${esc(storyHref(n[0]))}"><div class="news-feature-art">${sceneArt('news')}${n[0].cover_file_id?`<img src="/media/${encodeURIComponent(n[0].cover_file_id)}" alt="Ảnh đại diện: ${esc(n[0].title)}" loading="lazy">`:''}${n[0].cover_file_id?'':`<em class="cover-default-note">MINH HỌA MẶC ĐỊNH · CHƯA CÓ ẢNH ĐẠI DIỆN</em>`}</div><span>TIN NỔI BẬT</span><h3>${esc(n[0].title)}</h3><p>${esc(String(n[0].body||'').replace(/<[^>]*>/g,' ').slice(0,230))}</p><small>${n[0].published_at?fmt(n[0].published_at):''}</small><b class="news-card-cta">Đọc tin <span>→</span></b></a><div class="news-stack">${n.slice(1,5).map(x=>`<a href="${esc(storyHref(x))}"><span>THÔNG BÁO</span><b>${esc(x.title)}</b><small>${x.published_at?fmt(x.published_at):''}</small><strong>Đọc tin →</strong></a>`).join('')}</div></div>`:`<div class="beautiful-empty"><i>◧</i><div><h3>Chưa có tin tức công khai</h3><p>Tin mới và thông báo sẽ xuất hiện tại đây khi được xuất bản từ hệ thống quản trị.</p></div></div>`;
+
   app.innerHTML=`
-  <section class="digital-hero hero-v3 hero-sfn-command" id="about"><div class="digital-hero-grid"><div class="hero-copy-new"><span class="hero-eyebrow">✦ SKY FIRST DIGITAL INFORMATION PORTAL</span><h1>CỔNG THÔNG TIN SỐ<br><strong>SKY FIRST</strong></h1><p>Khám phá thông tin, chương trình, hoạt động, tài nguyên và các tiện ích số trong hệ sinh thái Sky First Network.</p><div class="hero-search-new"><label for="homeSearch">Bạn đang tìm kiếm điều gì?</label><div><span>⌕</span><input id="homeSearch" placeholder="Tìm chương trình, sự kiện, tài liệu, biểu mẫu..." autocomplete="off"><button id="homeSearchBtn" type="button">Tìm kiếm <span aria-hidden="true">→</span></button></div></div><div class="hero-popular"><span>Tìm kiếm phổ biến:</span><a href="#programs">Chương trình</a><a href="#events">Sự kiện</a><a href="/bieu-mau">Biểu mẫu</a><a href="/gcn">Chứng nhận</a><a href="/ho-so">Hồ sơ</a></div></div><div class="hero-visual portal-art portal-globe" aria-hidden="true"><div class="grid-field"></div><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="glow-core"></div><div class="portal-logo"><img src="/assets/sfn-logo-tight.png" alt=""><b>ONE SKY FIRST</b><strong>DIGITAL<br>INFRASTRUCTURE</strong></div><div class="float-tag tag-discover"><b>✦ DISCOVER</b><span>Khám phá</span></div><div class="float-tag tag-verify"><b>✓ VERIFY</b><span>Xác thực</span></div><div class="float-tag tag-connect"><b>◉ CONNECT</b><span>Kết nối</span></div><div class="float-tag tag-explore"><b>↗ EXPLORE</b><span>Phát triển</span></div></div></div></section>
-  <section class="home-stats" id="homeStats" aria-label="Số liệu Sky First"><div class="home-stat"><i>▤</i><div><strong data-stat="programs">—</strong><span data-stat-label="programs">Chương trình &amp; sự kiện</span></div></div><div class="home-stat"><i>♧</i><div><strong data-stat="members">—</strong><span data-stat-label="members">Thành viên cộng đồng</span></div></div><div class="home-stat"><i>✓</i><div><strong data-stat="certificates">—</strong><span data-stat-label="certificates">Chứng nhận đã phát hành</span></div></div><div class="home-stat"><i>↗</i><div><strong data-stat="partners">—</strong><span data-stat-label="partners">Đối tác &amp; đơn vị đồng hành</span></div></div></section>
-  <section class="quick-actions-new quick-v3" aria-label="Truy cập nhanh"><a href="/gcn"><i>${icon('verify')}</i><span><b>Tra cứu giấy đã phát hành</b><small>Giấy chứng nhận, Giấy xác nhận, Bảng khen</small></span></a><a href="/ho-so"><i>${icon('case')}</i><span><b>Tra cứu hồ sơ</b><small>Theo dõi tình trạng xử lý</small></span></a><a href="/bieu-mau"><i>${icon('form')}</i><span><b>Biểu mẫu</b><small>Gửi thông tin trực tuyến</small></span></a><a href="#programs"><i>${icon('program')}</i><span><b>Chương trình</b><small>Khám phá chương trình</small></span></a><a href="#events"><i>${icon('event')}</i><span><b>Sự kiện</b><small>Hoạt động sắp diễn ra</small></span></a><a href="#resources"><i>${icon('resource')}</i><span><b>Tài liệu</b><small>Tài nguyên hữu ích</small></span></a></section>
-  <section class="dip-section fields-v3" id="fields">${sectionHead('KHÁM PHÁ SKY FIRST','Bốn hướng kết nối với Sky First','Tìm nội dung theo điều bạn quan tâm, không cần hiểu cấu trúc nội bộ.')}<div class="discovery-v3"><article class="field-a"><span>01</span><h3>Giáo dục & Đào tạo</h3><p>Các chương trình học tập, lớp học, hoạt động hỗ trợ giáo dục và phát triển kiến thức.</p></article><article class="field-b"><span>02</span><h3>Phát triển người trẻ</h3><p>Không gian để người trẻ học hỏi, trải nghiệm, phát triển kỹ năng và tham gia những hoạt động có ý nghĩa.</p></article><article class="field-c"><span>03</span><h3>Tình nguyện & Cộng đồng</h3><p>Kết nối hoạt động tình nguyện, dự án cộng đồng và cơ hội đóng góp cho xã hội.</p></article><article class="field-d"><span>04</span><h3>Môi trường & Phát triển bền vững</h3><p>Hoạt động hướng đến lối sống xanh, bảo vệ môi trường và những thay đổi tích cực, bền vững.</p></article></div></section>
-  <section class="dip-section live-v3" id="programs">${sectionHead('ĐANG DIỄN RA','Chương trình & cơ hội tại Sky First','Nội dung thật được đồng bộ từ hệ thống quản trị.')}<div class="program-spotlight">${visiblePublicItems(c).sort(comparePrograms).slice(0,4).map((x,i)=>programCard(x,i,'home')).join('')||`<div class="beautiful-empty"><i>◫</i><div><h3>Chưa có chương trình công khai</h3><p>Chương trình sẽ xuất hiện tại đây khi được cập nhật và công khai từ hệ thống quản trị.</p><a href="mailto:ctt@skyfirst.io.vn?subject=H%E1%BB%8Fi%20v%E1%BB%81%20ch%C6%B0%C6%A1ng%20tr%C3%ACnh%20Sky%20First">Liên hệ để được hỗ trợ →</a></div></div>`}</div><a class="section-more-link" href="#programs">Xem tất cả chương trình <span>→</span></a></section>
-  <section class="dip-section opportunity-v3"><div class="opportunity-copy"><span class="section-kicker">CƠ HỘI DÀNH CHO BẠN</span><h2>Không chỉ đọc thông tin.<br>Hãy bắt đầu tham gia.</h2><p>Tìm một hướng phù hợp để học tập, trải nghiệm, đóng góp và kết nối cùng Sky First.</p></div><div class="opportunity-rails"><a href="#programs"><b>Tham gia chương trình</b><span>Tìm chương trình phù hợp →</span></a><a href="#activities"><b>Hoạt động cộng đồng</b><span>Khám phá hoạt động →</span></a><a href="#resources"><b>Học tập & phát triển</b><span>Mở tài nguyên →</span></a><a href="#connect"><b>Đồng hành cùng Sky First</b><span>Kết nối ngay →</span></a></div></section>
-  <section class="dip-section tone" id="activities">${sectionHead('HOẠT ĐỘNG & SỰ KIỆN','Những điểm chạm đang diễn ra','Theo dõi hoạt động, dự án, chiến dịch và sự kiện trong hệ sinh thái.')}<div class="event-timeline" id="events">${visiblePublicItems(ev).slice(0,6).map(x=>`<a href="${esc(eventHref(x))}"><time>${x.start_at?fmt(x.start_at):'Thời gian đang cập nhật'}</time><div><small>${esc(x.unit_code||'SKY FIRST')}</small><h3>${esc(x.title)}</h3><p>${esc(publicStatusLabel(x.status,'event'))}</p></div><span>→</span></a>`).join('')||empty('Chưa có sự kiện công khai. Các hoạt động sẽ xuất hiện tại đây khi được cập nhật từ hệ thống quản trị.')}</div></section>
-  <section class="dip-section news-v3" id="news">${sectionHead('TIN MỚI & THÔNG BÁO','Theo dõi những cập nhật từ Sky First','Tin tức và thông báo được xuất bản trực tiếp từ hệ thống quản trị.')}${newsHtml}<a class="section-more-link" href="#news">Xem tất cả tin tức <span>→</span></a></section>
-  <section class="dip-section resources-v3" id="resources">${sectionHead('TÀI NGUYÊN DÀNH CHO BẠN','Tìm, đọc và sử dụng tài nguyên dễ dàng','Tài liệu, ấn phẩm, hướng dẫn và thư viện được tổ chức theo nhu cầu.')}<div class="resource-mosaic"><article><i>▱</i><h3>Tài liệu</h3><p>Các tài liệu phục vụ học tập, hoạt động và chương trình.</p></article><article><i>◫</i><h3>Ấn phẩm</h3><p>Các ấn phẩm được phát hành trong hệ sinh thái Sky First.</p></article><article><i>?</i><h3>Hướng dẫn</h3><p>Thông tin giúp sử dụng dịch vụ và tham gia thuận tiện hơn.</p></article><article><i>▦</i><h3>Thư viện</h3><p>Hình ảnh, nội dung và tài nguyên từ các hoạt động Sky First.</p></article></div>${r.length?`<div class="resource-list">${r.slice(0,6).map(x=>`<article><i>${icon('resource')}</i><div><span>${esc(x.doc_type||'TÀI LIỆU')}</span><h3>${esc(x.title)}</h3></div>${x.file_id?`<a href="/api/files/${encodeURIComponent(x.file_id)}">Mở →</a>`:''}</article>`).join('')}</div>`:''}</section>
-  <section class="dip-section utility-v3" id="utilityPreview"><div class="utility-art" aria-hidden="true"><div class="u-doc">✓</div><div class="u-qr">▦</div><div class="u-folder">⌁</div><div class="u-form">▤</div></div><div>${sectionHead('TIỆN ÍCH SỐ','Một nơi cho các tiện ích số','Thực hiện những tác vụ thường dùng mà không phải đi qua nhiều hệ thống.')}<div class="utility-links"><a href="/gcn"><b>Tra cứu giấy đã phát hành</b><span>Kiểm tra Giấy chứng nhận, Giấy xác nhận và Bảng khen.</span></a><a href="/ho-so"><b>Theo dõi hồ sơ</b><span>Xem tiến trình xử lý và việc cần thực hiện tiếp theo.</span></a><a href="/bieu-mau"><b>Biểu mẫu trực tuyến</b><span>Gửi thông tin và tài liệu trực tuyến.</span></a><button type="button" id="utilitySearch"><b>Tìm kiếm toàn Cổng</b><span>Tìm nhanh thông tin từ nhiều khu vực.</span></button></div><a class="section-more-link" href="#utilities">Xem tất cả tiện ích <span>→</span></a></div></section>
-  <section class="dip-section ecosystem-v3 ecosystem-v4" id="ecosystem"><div class="ecosystem-copy"><span class="section-kicker">HỆ SINH THÁI SKY FIRST</span><h2>NHIỀU ĐƠN VỊ.<br><strong>MỘT HỆ SINH THÁI.</strong></h2><p>Khám phá các đơn vị, chương trình và nền tảng đang cùng tạo nên hệ sinh thái Sky First.</p><div class="ecosystem-brand-core"><img src="/assets/sfn-logo-tight.png" alt="Logo chính thức Sky First"><span>ONE SKY FIRST</span></div></div><div class="ecosystem-cards-v4">${[['01 / CỔNG THÔNG TIN','Trang Thông Tin Điện Tử Sky First',config.value?.portal_main_url,'Website chính thức'],['02 / TÌNH NGUYỆN','Trung Tâm TNV Sky First',config.value?.portal_tnv_url,'Tình nguyện viên'],['03 / GIÁO DỤC','SFEC – Sky First Education Club',config.value?.portal_sfec_url,'Giáo dục'],['04 / HỌC TẬP','Sky First Learning Center',config.value?.portal_slc_url,'Learning Center']].map(([kicker,name,url,label])=>url&&url!=='#'?`<a href="${esc(url)}" class="ecosystem-unit" target="_blank" rel="noopener"><span>${esc(kicker)}</span><b>${esc(name)}</b><small>${esc(label)} ↗</small></a>`:`<article class="ecosystem-unit is-unlinked"><span>${esc(kicker)}</span><b>${esc(name)}</b><small>Đường dẫn chưa được cấu hình</small></article>`).join('')}</div></section>
-  <section class="connect-v3" id="connect"><span>KẾT NỐI VỚI SKY FIRST</span><h2>Bạn cần tìm thông tin, gửi yêu cầu hay muốn kết nối?</h2><div><a href="mailto:ctt@skyfirst.io.vn">Liên hệ Sky First</a><a href="mailto:ctt@skyfirst.io.vn">Gửi yêu cầu hỗ trợ</a><a href="/tra-cuu">Tra cứu thông tin</a></div></section>`;
+  <section class="sfn-clean-hero" id="heroSection">
+    <div class="sfn-clean-hero-inner">
+      <div class="sfn-hero-badge"><span>✦</span> <b data-i18n="hero_badge">${esc(t('hero_badge'))}</b></div>
+      <h1><span data-i18n="hero_title_top">${esc(t('hero_title_top'))}</span><strong>SKY FIRST</strong></h1>
+      <p class="sfn-hero-desc" data-i18n="hero_desc">${esc(t('hero_desc'))}</p>
+      <div class="sfn-search-bar" role="search">
+        <label class="sr-only" for="homeSearch">Tìm kiếm trên Hệ thống Thông tin Số Sky First</label>
+        <span class="sfn-search-icon" aria-hidden="true">⌕</span>
+        <input id="homeSearch" type="search" placeholder="${esc(t('search_placeholder'))}" autocomplete="off">
+        <button id="homeSearchBtn" type="button"><span data-i18n="search_btn">${esc(t('search_btn'))}</span> <span aria-hidden="true">→</span></button>
+      </div>
+      <div class="sfn-quick-pills" aria-label="Truy cập nhanh">
+        <span class="sfn-quick-label" data-i18n="quick_label">${esc(t('quick_label'))}</span>
+        <a href="/chuong-trinh"><span>◫</span> <b data-i18n="nav_programs">${esc(t('nav_programs'))}</b></a>
+        <a href="/su-kien"><span>📅</span> <b data-i18n="nav_events">${esc(t('nav_events'))}</b></a>
+        <a href="/bieu-mau"><span>▤</span> <b data-i18n="nav_forms">${esc(t('nav_forms'))}</b></a>
+        <a href="/gcn"><span>✓</span> <b data-i18n="nav_certs">${esc(t('nav_certs'))}</b></a>
+        <a href="/ho-so"><span>⌁</span> <b data-i18n="nav_cases">${esc(t('nav_cases'))}</b></a>
+        <a href="/tai-tro"><span>♡</span> <b data-i18n="nav_sponsorship">${esc(t('nav_sponsorship'))}</b></a>
+        <a href="/an-toan"><span>🛡️</span> <b data-i18n="nav_safety">${esc(t('nav_safety'))}</b></a>
+      </div>
+
+      <div class="sfn-feature-cards-grid" aria-label="Các phân hệ chức năng chính">
+        <a class="sfn-fcard fcard-blue" href="/chuong-trinh">
+          <div class="sfn-fcard-icon" aria-hidden="true">◫</div>
+          <div class="sfn-fcard-body">
+            <h2 data-i18n="card_prog_title">${esc(t('card_prog_title'))}</h2>
+            <p data-i18n="card_prog_desc">${esc(t('card_prog_desc'))}</p>
+          </div>
+          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="sfn-fcard fcard-purple" href="/su-kien">
+          <div class="sfn-fcard-icon" aria-hidden="true">📅</div>
+          <div class="sfn-fcard-body">
+            <h2 data-i18n="card_ev_title">${esc(t('card_ev_title'))}</h2>
+            <p data-i18n="card_ev_desc">${esc(t('card_ev_desc'))}</p>
+          </div>
+          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="sfn-fcard fcard-teal" href="/tai-lieu">
+          <div class="sfn-fcard-icon" aria-hidden="true">📁</div>
+          <div class="sfn-fcard-body">
+            <h2 data-i18n="card_doc_title">${esc(t('card_doc_title'))}</h2>
+            <p data-i18n="card_doc_desc">${esc(t('card_doc_desc'))}</p>
+          </div>
+          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="sfn-fcard fcard-amber" href="/gcn">
+          <div class="sfn-fcard-icon" aria-hidden="true">✓</div>
+          <div class="sfn-fcard-body">
+            <h2 data-i18n="card_cert_title">${esc(t('card_cert_title'))}</h2>
+            <p data-i18n="card_cert_desc">${esc(t('card_cert_desc'))}</p>
+          </div>
+          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="sfn-fcard fcard-navy" href="/an-toan">
+          <div class="sfn-fcard-icon" aria-hidden="true">🛡️</div>
+          <div class="sfn-fcard-body">
+            <h2 data-i18n="card_safe_title">${esc(t('card_safe_title'))}</h2>
+            <p data-i18n="card_safe_desc">${esc(t('card_safe_desc'))}</p>
+          </div>
+          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="sfn-fcard fcard-green" href="/tai-tro">
+          <div class="sfn-fcard-icon" aria-hidden="true">♡</div>
+          <div class="sfn-fcard-body">
+            <h2 data-i18n="card_sp_title">${esc(t('card_sp_title'))}</h2>
+            <p data-i18n="card_sp_desc">${esc(t('card_sp_desc'))}</p>
+          </div>
+          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
+        </a>
+      </div>
+
+      <div class="sfn-stats-bar home-stats-5" id="homeStats" aria-label="Chỉ số vận hành hệ thống">
+        <div class="sfn-stat-item">
+          <i class="sfn-stat-icon" aria-hidden="true">◫</i>
+          <div>
+            <strong data-stat="programs">—</strong>
+            <span data-stat-label="programs" data-i18n="stat_programs">${esc(t('stat_programs'))}</span>
+          </div>
+        </div>
+        <div class="sfn-stat-item">
+          <i class="sfn-stat-icon" aria-hidden="true">👥</i>
+          <div>
+            <strong data-stat="members">—</strong>
+            <span data-stat-label="members" data-i18n="stat_members">${esc(t('stat_members'))}</span>
+          </div>
+        </div>
+        <div class="sfn-stat-item">
+          <i class="sfn-stat-icon" aria-hidden="true">✓</i>
+          <div>
+            <strong data-stat="certificates">—</strong>
+            <span data-stat-label="certificates" data-i18n="stat_certificates">${esc(t('stat_certificates'))}</span>
+          </div>
+        </div>
+        <div class="sfn-stat-item">
+          <i class="sfn-stat-icon" aria-hidden="true">🤝</i>
+          <div>
+            <strong data-stat="partners">—</strong>
+            <span data-stat-label="partners" data-i18n="stat_partners">${esc(t('stat_partners'))}</span>
+          </div>
+        </div>
+        <div class="sfn-stat-item">
+          <i class="sfn-stat-icon" aria-hidden="true">🛡️</i>
+          <div>
+            <strong data-stat="sponsorship">—</strong>
+            <span data-stat-label="sponsorship" data-i18n="stat_sponsorship">${esc(t('stat_sponsorship'))}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sfn-hero-tagline">
+        <span class="tagline-line"></span>
+        <p data-i18n="footer_tagline">${esc(t('footer_tagline'))}</p>
+        <span class="tagline-line"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="dip-section live-v3" id="programs">
+    ${sectionHead('CHƯƠNG TRÌNH ĐÀO TẠO & CỘNG ĐỒNG','Chương trình đang triển khai','Dữ liệu chương trình và lớp học được đồng bộ trực tiếp từ hệ thống quản trị.')}
+    <div class="program-spotlight">${visiblePublicItems(c).sort(comparePrograms).slice(0,4).map((x,i)=>programCard(x,i,'home')).join('')||`<div class="beautiful-empty"><i>◫</i><div><h3>Chưa có chương trình công khai</h3><p>Chương trình sẽ xuất hiện tại đây khi được cập nhật và công bố từ hệ thống quản trị.</p><a href="mailto:lienhe@skyfirst.io.vn">Liên hệ tìm hiểu chương trình →</a></div></div>`}</div>
+    <a class="section-more-link" href="/chuong-trinh">Xem toàn bộ chương trình <span>→</span></a>
+  </section>
+
+  <section class="dip-section tone" id="activities">
+    ${sectionHead('SỰ KIỆN & HOẠT ĐỘNG','Lịch sự kiện và hoạt động thực tế','Theo dõi ngày giờ, trạng thái và thông tin tham gia các sự kiện đang mở.')}
+    <div class="event-timeline" id="events">${visiblePublicItems(ev).slice(0,6).map(x=>`<a href="${esc(eventHref(x))}"><time>${x.start_at?fmt(x.start_at):'Thời gian đang cập nhật'}</time><div><small>${esc(x.unit_code||'SKY FIRST')}</small><h3>${esc(x.title)}</h3><p>${esc(publicStatusLabel(x.status))}</p></div><span>→</span></a>`).join('')||empty('Chưa có sự kiện công khai. Lịch sự kiện mới sẽ hiển thị khi được công bố từ hệ thống quản trị.')}</div>
+    <a class="section-more-link" href="/su-kien">Xem toàn bộ sự kiện <span>→</span></a>
+  </section>
+
+  <section class="dip-section resources-v3" id="resources">
+    ${sectionHead('THƯ VIỆN TÀI LIỆU SỐ','Tài liệu, văn bản và hướng dẫn','Tài liệu công khai được phân loại theo danh mục, hỗ trợ xem trước PDF và tải xuống.')}
+    ${r.length?`<div class="resource-list">${r.slice(0,6).map(x=>`<article><i>${icon('resource')}</i><div><span>${esc(x.category||x.doc_type||'TÀI LIỆU')} · v${esc(x.current_version||1)}</span><h3>${esc(x.title)}</h3>${x.description?`<p class="muted small">${esc(x.description)}</p>`:''}</div><div class="actions">${x.preview_url?`<a class="secondary" href="/tai-lieu?preview=${encodeURIComponent(x.id)}">Xem trước</a>`:''}${x.download_url?`<a class="portal-button" href="${esc(x.download_url)}">Tải xuống →</a>`:''}</div></article>`).join('')}</div>`:empty('Hiện chưa có tài liệu công khai được xuất bản.')}
+    <a class="section-more-link" href="/tai-lieu">Mở Thư viện Tài liệu & PDF <span>→</span></a>
+  </section>
+
+  <section class="dip-section news-v3" id="news">
+    ${sectionHead('THÔNG BÁO & CẬP NHẬT','Thông tin vận hành và thông báo mới','Các thông báo chính thức được phát hành trên Hệ thống Thông tin Số Sky First.')}
+    ${newsHtml}
+  </section>`;
+
   bindBrokenCoverImages(app,'.news-feature-art','ẢNH ĐẠI DIỆN KHÔNG TẢI ĐƯỢC · MINH HỌA MẶC ĐỊNH');
   const statConfig=config.status==="fulfilled"?(config.value.home_stats||{}):{};
-  const statDefaults={source:"d1",values:{programs:null,members:null,certificates:null,partners:null},labels:{programs:"Chương trình & sự kiện",members:"Thành viên cộng đồng",certificates:"Chứng nhận đã phát hành",partners:"Đối tác & đơn vị đồng hành"},duration_ms:1800,cycles:100};
+  const statDefaults={
+    source:"d1",
+    values:{programs:null,members:null,certificates:null,partners:null,sponsorship:null},
+    labels:{
+      programs:t('stat_programs'),
+      members:t('stat_members'),
+      certificates:t('stat_certificates'),
+      partners:t('stat_partners'),
+      sponsorship:t('stat_sponsorship')
+    },
+    duration_ms:900,
+    cycles:1
+  };
   const statSettings={...statDefaults,...statConfig,values:{...statDefaults.values,...(statConfig.values||{})},labels:{...statDefaults.labels,...(statConfig.labels||{})}};
-  document.querySelectorAll("[data-stat-label]").forEach(el=>{const label=String(statSettings.labels[el.dataset.statLabel]||"").trim();if(label)el.textContent=label;});
-  const fmtStat=n=>new Intl.NumberFormat("vi-VN",{maximumFractionDigits:0}).format(Number(n)||0);
+  document.querySelectorAll("[data-stat-label]").forEach(el=>{
+    const k=el.dataset.statLabel;
+    const label=getLang()==='en'?t(`stat_${k}`):String(statSettings.labels[k]||t(`stat_${k}`)).trim();
+    if(label) el.textContent=label;
+  });
+  const fmtStat=(n,key)=>{
+    const num=Number(n)||0;
+    if(key==="sponsorship"){
+      if(num>=1000000000) return new Intl.NumberFormat("vi-VN",{maximumFractionDigits:2}).format(num/1000000000)+" tỷ đồng";
+      if(num>=1000000) return new Intl.NumberFormat("vi-VN",{maximumFractionDigits:1}).format(num/1000000)+" triệu đồng";
+      return new Intl.NumberFormat("vi-VN",{maximumFractionDigits:0}).format(num)+" đồng";
+    }
+    return new Intl.NumberFormat("vi-VN",{maximumFractionDigits:0}).format(num);
+  };
   const runStat=el=>{
-    const key=el.dataset.stat;let rawValue=statSettings.values?.[key];
-    if(statSettings.source==="d1")rawValue=statConfig.d1_values&&Object.prototype.hasOwnProperty.call(statConfig.d1_values,key)?statConfig.d1_values[key]:null;
-    if(rawValue===null||rawValue===undefined||rawValue===""||!Number.isFinite(Number(rawValue))||Number(rawValue)<0){el.textContent="Chưa có dữ liệu";el.setAttribute("data-stat-state","unavailable");return}
-    const target=Number(rawValue);el.removeAttribute("data-stat-state");
-    const duration=Math.max(250,Math.min(30000,Number(statSettings.duration_ms)||1800));
-    const cycles=Math.max(1,Math.min(100,Number(statSettings.cycles)||100));
-    let cycle=0,start=0,from=0;
-    const tick=now=>{
-      if(!start)start=now;
-      const progress=Math.min(1,(now-start)/duration);
-      el.textContent=fmtStat(Math.round(from+(target-from)*progress));
-      if(progress<1){requestAnimationFrame(tick);return}
-      cycle++;
-      if(cycle<cycles){from=0;start=0;el.textContent="0";requestAnimationFrame(tick)}
-      else el.textContent=fmtStat(target)+(target>=1000?"+":"");
-    };
-    requestAnimationFrame(tick);
+    const key=el.dataset.stat;
+    let rawValue=statSettings.values?.[key];
+    if(statSettings.source==="d1"){
+      rawValue=statConfig.d1_values&&Object.prototype.hasOwnProperty.call(statConfig.d1_values,key)?statConfig.d1_values[key]:null;
+    }
+    if(rawValue===null||rawValue===undefined||rawValue===""||!Number.isFinite(Number(rawValue))||Number(rawValue)<0){
+      el.textContent=getLang()==='en'?"No public data":"Chưa có dữ liệu";
+      el.setAttribute("data-stat-state","unavailable");
+      return;
+    }
+    const target=Number(rawValue);
+    el.removeAttribute("data-stat-state");
+    el.textContent=fmtStat(target,key);
   };
   document.querySelectorAll("[data-stat]").forEach(runStat);
   document.getElementById('homeSearchBtn')?.addEventListener('click',()=>openSearch(document.getElementById('homeSearch')?.value||''));
   document.getElementById('homeSearch')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();openSearch(e.currentTarget.value)}});
-  document.getElementById('utilitySearch')?.addEventListener('click',()=>openSearch(''));
-  if(location.hash&&location.hash!=='#home') requestAnimationFrame(()=>document.querySelector(location.hash)?.scrollIntoView({block:'start'}));
   event('route_view',{category:'home'});
 }
+
 async function formCenter(app){
-  setMeta('Biểu mẫu','Sky First Form Center — biểu mẫu số và điểm bắt đầu của quy trình hồ sơ.');
+  updateActiveNav('forms');
+  setMeta('Biểu mẫu điện tử','Hệ thống Biểu mẫu điện tử Sky First — tiếp nhận thông tin, chữ ký hình ảnh và tệp đính kèm an toàn.');
   const d=await api('/api/config'); const forms=d.forms||[];
-  app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">TRUNG TÂM BIỂU MẪU SỐ</span><h1>BIỂU MẪU SỐ</h1><p>Mỗi biểu mẫu là điểm bắt đầu của một luồng dữ liệu thống nhất: <b>Biểu mẫu → Hồ sơ → Quy trình xử lý → Kết quả → Chứng nhận</b> khi phù hợp.</p></section>
-  <section class="dip-section tight"><div class="capability-strip"><span>Biểu mẫu nhiều bước</span><span>Điều kiện linh hoạt</span><span>Tải tài liệu an toàn</span><span>Lưu phiên bản đồng ý</span><span>Bảo vệ người chưa thành niên</span><span>Kiểm tra trước khi gửi</span></div>${sectionHead('ĐANG MỞ','Biểu mẫu đang tiếp nhận','Chọn đúng biểu mẫu theo mục đích. Sau khi gửi, hệ thống cấp mã hồ sơ để theo dõi.')}
-  <div class="form-center-grid">${forms.map(f=>`<article class="form-center-card"><div><span class="content-tag">${esc(f.prefix)}</span><h3>${esc(f.name)}</h3><p>${esc(f.description||'')}</p></div><div><small>${f.min_age?`Điều kiện tuổi: từ ${esc(f.min_age)}+`:'Theo điều kiện của chương trình'}</small><a class="portal-button" href="#form/${encodeURIComponent(f.id)}">Mở biểu mẫu <span>→</span></a></div></article>`).join('')||empty('Hiện chưa có biểu mẫu công khai đang mở.')}</div></section>
-  <section class="dip-section tone"><div class="process-line"><div><b>01</b><span>Điền biểu mẫu</span></div><i>→</i><div><b>02</b><span>Nhận mã hồ sơ</span></div><i>→</i><div><b>03</b><span>Theo dõi xử lý</span></div><i>→</i><div><b>04</b><span>Nhận kết quả</span></div></div></section>`;
+  app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>BIỂU MẪU ĐIỆN TỬ</h1><p>Gửi đăng ký chương trình, hồ sơ tham gia và yêu cầu trực tuyến. Sau khi gửi thành công, hệ thống cấp mã hồ sơ để bạn tra cứu tiến trình xử lý tại mục <b>Hồ sơ (/ho-so)</b>.</p></section>
+  <section class="dip-section tight">
+    <div class="capability-strip"><span>Biểu mẫu nhiều bước</span><span>Điều kiện hiển thị linh hoạt</span><span>Tải tệp kiểm tra chữ ký byte</span><span>Hỗ trợ vẽ/tải ảnh chữ ký</span><span>Bảo vệ người dưới 18 tuổi</span><span>Xem lại trước khi gửi</span></div>
+    <div class="notice" style="margin-bottom:24px;"><b>Lưu ý pháp lý về chữ ký trong biểu mẫu:</b> Trường chữ ký trên biểu mẫu thu nhận <i>chữ ký hình ảnh</i> do người dùng trực tiếp vẽ trên màn hình hoặc tải ảnh lên nhằm xác nhận thao tác gửi biểu mẫu. Đây <b>không phải</b> chữ ký số được chứng thực bởi tổ chức cung cấp dịch vụ chứng thực chữ ký số.</div>
+    ${sectionHead('DANH MỤC BIỂU MẪU','Biểu mẫu đang mở tiếp nhận','Chọn biểu mẫu phù hợp với nhu cầu của bạn.')}
+    <div class="form-center-grid">${forms.map(f=>`<article class="form-center-card"><div><span class="content-tag">${esc(f.prefix)}</span><h3>${esc(f.name)}</h3><p>${esc(f.description||'')}</p></div><div><small>${f.min_age?`Điều kiện tuổi: từ đủ ${esc(f.min_age)} tuổi`:'Theo điều kiện của chương trình'}</small><a class="portal-button" href="#form/${encodeURIComponent(f.id)}">Mở biểu mẫu <span>→</span></a></div></article>`).join('')||empty('Hiện chưa có biểu mẫu công khai đang mở.')}</div>
+  </section>`;
   event('route_view',{category:'forms'});
 }
 
-function lookupShell(title,desc){return `<section class="page-hero compact lookup-entry-hero"><span class="hero-eyebrow">TRA CỨU THÔNG TIN</span><h1>${esc(title)}</h1><p>${esc(desc)}</p></section>`}
+function lookupShell(title,desc){return `<section class="page-hero compact lookup-entry-hero"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>${esc(title)}</h1><p>${esc(desc)}</p></section>`}
 
 async function lookupCenter(app){
-  setMeta('Tra cứu thông tin','Chọn nội dung cần tra cứu trên hệ thống Sky First.');
-  app.innerHTML=lookupShell('TRA CỨU THÔNG TIN','Lựa chọn nội dung cần tra cứu để kiểm tra thông tin được ghi nhận trên hệ thống Sky First.')+`<section class="lookup-choice-v3"><a class="lookup-choice paper" href="/gcn"><div class="choice-art"><span>✓</span><i>▦</i></div><small>GIẤY ĐÃ PHÁT HÀNH</small><h2>Tra cứu Giấy chứng nhận, Giấy xác nhận & Bảng khen</h2><p>Kiểm tra thông tin và trạng thái của các loại giấy do Sky First phát hành.</p><b>Tra cứu giấy đã phát hành →</b></a><a class="lookup-choice case" href="/ho-so"><div class="choice-art"><span>⌁</span><i>•••</i></div><small>HỒ SƠ</small><h2>Tra cứu hồ sơ</h2><p>Kiểm tra tiến trình xử lý hồ sơ và những thông tin cần thiết liên quan đến hồ sơ đã gửi.</p><b>Tra cứu hồ sơ →</b></a></section>`;
+  updateActiveNav('gcn');
+  setMeta('Tra cứu thông tin','Chọn phân hệ tra cứu Chứng nhận (/gcn) hoặc Hồ sơ (/ho-so) trên Hệ thống Thông tin Số Sky First.');
+  app.innerHTML=lookupShell('TRUNG TÂM TRA CỨU','Chọn đúng phân hệ cần tra cứu: Chứng nhận đã phát hành (/gcn), Hồ sơ đã gửi (/ho-so) hoặc Minh bạch Tài trợ (/tai-tro).')+`<section class="lookup-choice-v3"><a class="lookup-choice paper" href="/gcn"><div class="choice-art"><span>✓</span><i>▦</i></div><small>CHỨNG NHẬN (/GCN)</small><h2>Tra cứu Giấy chứng nhận, Giấy xác nhận & Bằng khen</h2><p>Tra cứu tính hợp lệ và trạng thái hiệu lực bằng mã chứng nhận được in trên giấy.</p><b>Mở tra cứu chứng nhận →</b></a><a class="lookup-choice case" href="/ho-so"><div class="choice-art"><span>⌁</span><i>•••</i></div><small>HỒ SƠ (/HO-SO)</small><h2>Tra cứu tiến trình xử lý hồ sơ</h2><p>Xác minh bằng mã hồ sơ và địa chỉ email đã đăng ký để bảo vệ thông tin cá nhân.</p><b>Mở tra cứu hồ sơ →</b></a></section>`;
 }
-function credentialResult(x){return `<article class="verification-record ${statusClass(x.status_text)}"><div class="verify-state"><i>${x.status==='issued'?'✓':x.status==='revoked'?'!':'↻'}</i><div><span>THÔNG TIN ĐƯỢC XÁC THỰC</span><h2>${esc(x.status_text)}</h2></div></div><dl><div><dt>Mã</dt><dd>${esc(x.code)}</dd></div><div><dt>Loại</dt><dd>${esc(x.type)}</dd></div><div><dt>Người được ghi nhận</dt><dd>${esc(x.full_name)}</dd></div><div class="wide"><dt>Nội dung</dt><dd>${esc(x.content)}</dd></div>${x.program?`<div><dt>Chương trình</dt><dd>${esc(x.program)}</dd></div>`:''}<div><dt>Đơn vị phát hành</dt><dd>${esc(x.unit_name)}</dd></div><div><dt>Ngày phát hành</dt><dd>${esc(x.issued_at?fmt(x.issued_at):'—')}</dd></div><div><dt>Trạng thái</dt><dd>${esc(x.status_text)}</dd></div>${x.replacement_code?`<div class="wide"><dt>Mã thay thế</dt><dd><a href="/gcn/${encodeURIComponent(x.replacement_code)}">${esc(x.replacement_code)}</a></dd></div>`:''}${x.revocation_reason?`<div class="wide"><dt>Lý do thu hồi</dt><dd>${esc(x.revocation_reason)}</dd></div>`:''}</dl><p class="record-note">Bản ghi này xác nhận trạng thái trong hệ thống Sky First. Mã trên giấy là mã tra cứu công khai, không phải mật khẩu hay thông tin bí mật.</p></article>`}
-function failCard(msg){return `<div class="result-fail"><i>×</i><div><h3>Không thể xác minh</h3><p>${esc(msg||'Không tìm thấy dữ liệu phù hợp.')}</p></div></div>`}
+
+function credentialResult(x){return `<article class="verification-record ${statusClass(x.status_text)}"><div class="verify-state"><i>${x.status==='issued'?'✓':x.status==='revoked'?'!':'↻'}</i><div><span>KẾT QUẢ ĐỐI CHIẾU CHỨNG NHẬN</span><h2>${esc(x.status_text)}</h2></div></div><dl><div><dt>Mã chứng nhận</dt><dd>${esc(x.code)}</dd></div><div><dt>Loại văn bản</dt><dd>${esc(x.type)}</dd></div><div><dt>Người được ghi nhận</dt><dd>${esc(x.full_name)}</dd></div><div class="wide"><dt>Nội dung ghi nhận</dt><dd>${esc(x.content)}</dd></div>${x.program?`<div><dt>Chương trình / Hoạt động</dt><dd>${esc(x.program)}</dd></div>`:''}<div><dt>Đơn vị phát hành</dt><dd>${esc(x.unit_name)}</dd></div><div><dt>Ngày phát hành</dt><dd>${esc(x.issued_at?fmt(x.issued_at):'—')}</dd></div><div><dt>Trạng thái hiệu lực</dt><dd>${esc(x.status_text)}</dd></div>${x.replacement_code?`<div class="wide"><dt>Được thay thế bởi mã mới</dt><dd><a href="/gcn/${encodeURIComponent(x.replacement_code)}">${esc(x.replacement_code)}</a></dd></div>`:''}${x.revocation_reason?`<div class="wide"><dt>Lý do thu hồi</dt><dd>${esc(x.revocation_reason)}</dd></div>`:''}</dl><p class="record-note">Bản ghi này phản ánh trạng thái thực tế trong cơ sở dữ liệu Hệ thống Thông tin Số Sky First. Chỉ hỗ trợ tra cứu bằng mã chứng nhận; không tra cứu bằng số điện thoại hoặc email.</p></article>`}
+function failCard(msg){return `<div class="result-fail" role="alert"><i>×</i><div><h3>Không thể xác minh thông tin</h3><p>${esc(msg||'Không tìm thấy dữ liệu phù hợp với thông tin đã cung cấp.')}</p></div></div>`}
 
 async function credentialCenter(app,path){
-  setMeta('Tra cứu giấy đã phát hành','Tra cứu Giấy chứng nhận, Giấy xác nhận và Bảng khen do Sky First phát hành.');
+  updateActiveNav('gcn');
+  setMeta('Tra cứu chứng nhận','Tra cứu Giấy chứng nhận, Giấy xác nhận và Bằng khen bằng mã chứng nhận trên Hệ thống Thông tin Số Sky First.');
   const pathCode=decodeURIComponent(path.split('/').filter(Boolean)[1]||''); const queryCode=new URLSearchParams(location.search).get('code')||''; const init=pathCode||queryCode;
-  app.innerHTML=`<section class="lookup-hero credential-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">TRUNG TÂM XÁC THỰC SỐ SKY FIRST</span><h1>TRA CỨU GIẤY<br><strong>ĐÃ PHÁT HÀNH</strong></h1><p>Xác thực Giấy chứng nhận, Giấy xác nhận và Bằng khen do Sky First phát hành.</p><div class="lookup-trust"><span>✓ Dữ liệu đối chiếu</span><span>⌁ Tra cứu bằng mã</span><span>▦ Hỗ trợ quét QR</span></div></div><div class="lookup-hero-art credential-art-new" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="credential-document"><span>SKY FIRST</span><i>GIẤY XÁC NHẬN</i><b>★</b><small>▦ QR</small></div><div class="credential-shield">✓</div></div></section><section class="lookup-search-panel credential-search credential-search-v3"><h2>Nhập mã trên giấy để xác thực</h2><form id="credentialForm"><label for="credentialCode">Mã GCN / GXN / Bằng khen</label><div class="lookup-big"><span>⌕</span><input id="credentialCode" value="${esc(init)}" placeholder="Ví dụ: SFN-GCN-58327" autocomplete="off" required><button>⌕ &nbsp; XÁC THỰC</button></div><div class="lookup-secondary-actions"><button class="secondary" type="button" id="scanQr">▦ &nbsp; Quét mã QR</button><a href="#huong-dan">Xem hướng dẫn tra cứu ↓</a></div></form><div id="credentialOut" aria-live="polite"></div></section><section class="dip-section tight public-benefits credential-benefits"><article><i>▦</i><h3>Tra cứu nhanh chóng</h3><p>Nhập mã hoặc quét mã QR để kiểm tra thông tin trên giấy.</p></article><article><i>✓</i><h3>Đối chiếu rõ ràng</h3><p>Hiển thị trạng thái theo dữ liệu được hệ thống ghi nhận.</p></article><article><i>♙</i><h3>Bảo vệ thông tin</h3><p>Chỉ công khai thông tin cần thiết cho việc xác thực.</p></article></section><section class="dip-section tone faq-v3" id="huong-dan"><details><summary>Thông tin nào được công khai?</summary><p>Chỉ hiển thị những thông tin cần thiết để xác thực giấy. Thông tin riêng tư không cần thiết sẽ không được công khai.</p></details><details><summary>Mã trên giấy có phải mật khẩu không?</summary><p>Không. Đây là mã tra cứu công khai, không phải mật khẩu hoặc thông tin dùng để xác minh danh tính.</p></details><details><summary>Phát hiện thông tin chưa chính xác?</summary><p>Hãy gửi yêu cầu hỗ trợ để Sky First kiểm tra. Bản ghi đã phát hành không bị sửa đè tùy tiện; khi cần sẽ thực hiện thu hồi, thay thế hoặc phát hành lại theo quy trình.</p></details></section>`;
+  app.innerHTML=`<section class="lookup-hero credential-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>TRA CỨU <strong>CHỨNG NHẬN</strong></h1><p>Xác thực trạng thái hiệu lực, thu hồi hoặc thay thế của Giấy chứng nhận, Giấy xác nhận và Bằng khen bằng mã chứng nhận.</p><div class="lookup-trust"><span>✓ Tra cứu duy nhất bằng mã chứng nhận</span><span>⌁ Đối chiếu trực tiếp cơ sở dữ liệu</span><span>▦ Hỗ trợ quét mã QR</span></div></div><div class="lookup-hero-art credential-art-new" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="credential-document"><span>SKY FIRST</span><i>CHỨNG NHẬN</i><b>★</b><small>▦ QR</small></div><div class="credential-shield">✓</div></div></section><section class="lookup-search-panel credential-search credential-search-v3"><h2>Nhập mã chứng nhận để xác thực</h2><form id="credentialForm"><label for="credentialCode">Mã chứng nhận (GCN / GXN / BK)</label><div class="lookup-big"><span>⌕</span><input id="credentialCode" value="${esc(init)}" placeholder="Ví dụ: SFN-GCN-12345678 hoặc 001-GCN-SFN/2026" autocomplete="off" required><button type="submit">⌕ &nbsp; XÁC THỰC</button></div><div class="lookup-secondary-actions"><button class="secondary" type="button" id="scanQr">▦ &nbsp; Quét mã QR</button><a href="#huong-dan">Quy tắc xác thực chứng nhận ↓</a></div></form><div id="credentialOut" aria-live="polite"></div></section><section class="dip-section tight public-benefits credential-benefits"><article><i>✓</i><h3>Trạng thái minh bạch</h3><p>Phân biệt rõ chứng nhận đang có hiệu lực, đã bị thu hồi hoặc đã được thay thế bằng mã mới.</p></article><article><i>🛡️</i><h3>Không lộ dữ liệu cá nhân</h3><p>Hệ thống chỉ tra cứu theo mã chứng nhận, không cho phép tìm kiếm bằng số điện thoại hay email cá nhân.</p></article><article><i>▦</i><h3>Tương thích mã cũ & mới</h3><p>Hỗ trợ đồng thời mã định danh ngẫu nhiên mới và các mã chứng nhận đã phát hành trước đây.</p></article></section><section class="dip-section tone faq-v3" id="huong-dan"><details><summary>Vì sao hệ thống không hỗ trợ tra cứu chứng nhận bằng email hay số điện thoại?</summary><p>Để bảo vệ quyền riêng tư và ngăn việc dò tìm danh sách chứng nhận của người khác, Hệ thống Thông tin Số Sky First chỉ cho phép tra cứu khi có mã chứng nhận cụ thể hoặc quét trực tiếp mã QR in trên chứng nhận.</p></details><details><summary>Chứng nhận bị thu hồi hoặc thay thế hiển thị như thế nào?</summary><p>Nếu chứng nhận bị thu hồi, hệ thống hiển thị cảnh báo ĐÃ THU HỒI kèm lý do. Nếu chứng nhận được cấp lại do điều chỉnh thông tin, hệ thống hiển thị ĐÃ ĐƯỢC THAY THẾ và dẫn tới mã chứng nhận mới.</p></details></section>`;
   const form=document.getElementById('credentialForm'), input=document.getElementById('credentialCode'), out=document.getElementById('credentialOut');
-  form.onsubmit=async e=>{e.preventDefault();const code=input.value.trim();if(!code)return;out.innerHTML='<div class="loading">Đang kiểm tra thông tin…</div>';try{const d=await api(`/api/public/credentials/${encodeURIComponent(code)}`);out.innerHTML=credentialResult(d.item);history.replaceState(null,'',`/gcn/${encodeURIComponent(d.item.code)}`);event('verification_success',{category:'credential'})}catch(err){out.innerHTML=failCard(err.message);event('verification_not_found',{category:'credential'})}};
+  form.onsubmit=async e=>{e.preventDefault();const code=input.value.trim();if(!code)return;out.innerHTML='<div class="loading">Đang đối chiếu mã chứng nhận…</div>';try{const d=await api(`/api/public/credentials/${encodeURIComponent(code)}`);out.innerHTML=credentialResult(d.item);history.replaceState(null,'',`/gcn/${encodeURIComponent(d.item.code)}`);event('verification_success',{category:'credential'})}catch(err){out.innerHTML=failCard(err.message);event('verification_not_found',{category:'credential'})}};
   document.getElementById('scanQr').onclick=()=>openQrScanner(input,form); if(init) form.requestSubmit();
 }
+
 function openQrScanner(input,form){
-  if(!('BarcodeDetector' in window)||!navigator.mediaDevices?.getUserMedia){credentialScanMessage('Trình duyệt này chưa hỗ trợ quét QR trực tiếp. Bà có thể nhập mã trên giấy.');return}
-  const wrap=document.createElement('div');wrap.className='qr-modal';wrap.innerHTML='<div><button type="button" aria-label="Đóng">✕</button><h2>Quét mã QR trên giấy</h2><video autoplay playsinline muted></video><p>Đưa QR vào giữa khung hình.</p></div>';document.body.appendChild(wrap);const video=wrap.querySelector('video'),close=()=>{stream?.getTracks().forEach(t=>t.stop());wrap.remove()},detector=new BarcodeDetector({formats:['qr_code']});let stream=null;wrap.querySelector('button').onclick=close;navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false}).then(s=>{stream=s;video.srcObject=s;const tick=async()=>{if(!document.body.contains(wrap))return;try{const codes=await detector.detect(video);if(codes[0]?.rawValue){const raw=codes[0].rawValue;let value=raw;try{const u=new URL(raw);value=decodeURIComponent(u.pathname.split('/').filter(Boolean).pop()||raw)}catch{}input.value=value;close();form.requestSubmit();return}}catch{}requestAnimationFrame(tick)};tick()}).catch(()=>{close();credentialScanMessage('Không thể mở camera. Hãy kiểm tra quyền camera hoặc nhập mã trên giấy.')});
+  if(!('BarcodeDetector' in window)||!navigator.mediaDevices?.getUserMedia){credentialScanMessage('Trình duyệt hiện tại chưa hỗ trợ quét QR trực tiếp từ camera. Vui lòng nhập mã chứng nhận vào ô tìm kiếm.');return}
+  const wrap=document.createElement('div');wrap.className='qr-modal';wrap.innerHTML='<div><button type="button" aria-label="Đóng">✕</button><h2>Quét mã QR trên chứng nhận</h2><video autoplay playsinline muted></video><p>Đưa mã QR vào khung hình để tự động nhận diện.</p></div>';document.body.appendChild(wrap);const video=wrap.querySelector('video'),close=()=>{stream?.getTracks().forEach(t=>t.stop());wrap.remove()},detector=new BarcodeDetector({formats:['qr_code']});let stream=null;wrap.querySelector('button').onclick=close;navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false}).then(s=>{stream=s;video.srcObject=s;const tick=async()=>{if(!document.body.contains(wrap))return;try{const codes=await detector.detect(video);if(codes[0]?.rawValue){const raw=codes[0].rawValue;let value=raw;try{const u=new URL(raw);value=decodeURIComponent(u.pathname.split('/').filter(Boolean).pop()||raw)}catch{}input.value=value;close();form.requestSubmit();return}}catch{}requestAnimationFrame(tick)};tick()}).catch(()=>{close();credentialScanMessage('Không thể mở camera. Vui lòng kiểm tra quyền truy cập camera hoặc nhập mã chứng nhận thủ công.')});
 }
 function credentialScanMessage(message){const out=document.getElementById('credentialOut');if(out)out.innerHTML=`<div class="notice bad qr-scan-message" role="alert">${esc(message)}</div>`;}
 
-function caseResult(x){const steps=['TIẾP NHẬN','KIỂM TRA','XỬ LÝ','CẦN BỔ SUNG','HOÀN TẤT'];const timeline=x.timeline||[];const seen=new Set(timeline.map(t=>t.label));return `<article class="case-record"><div class="case-head"><div><span>HỒ SƠ SKY FIRST</span><h2>${esc(x.code)}</h2></div><strong>${esc(x.status)}</strong></div><div class="case-meta"><div><span>Loại hồ sơ</span><b>${esc(x.form_name||x.form_id)}</b></div><div><span>Ngày nhận</span><b>${fmt(x.submitted_at)}</b></div><div><span>Cập nhật gần nhất</span><b>${fmt(x.updated_at)}</b></div><div><span>Việc cần thực hiện</span><b>${esc(x.next_action||'Theo dõi cập nhật')}</b></div></div><div class="timeline">${steps.map((s,i)=>{const ev=timeline.find(t=>t.label===s);const active=seen.has(s);return `<div class="${active?'done':''}"><i>${active?'✓':i+1}</i><span><b>${s}</b><small>${ev?.note?esc(ev.note):active?fmt(ev?.created_at):'Chưa đến bước này'}</small></span></div>`}).join('')}</div>${x.result?`<div class="case-result"><span>KẾT QUẢ</span><p>${esc(x.result)}</p></div>`:''}</article>`}
+function caseResult(x){const steps=['TIẾP NHẬN','KIỂM TRA','XỬ LÝ','CẦN BỔ SUNG','HOÀN TẤT'];const timeline=x.timeline||[];const seen=new Set(timeline.map(t=>t.label));return `<article class="case-record"><div class="case-head"><div><span>HỒ SƠ ĐÃ XÁC MINH</span><h2>${esc(x.code)}</h2></div><strong>${esc(x.status)}</strong></div><div class="case-meta"><div><span>Người đăng ký</span><b>${esc(x.full_name||'—')}</b></div><div><span>Biểu mẫu</span><b>${esc(x.form_name||x.form_id)}</b></div><div><span>Ngày tiếp nhận</span><b>${fmt(x.submitted_at)}</b></div><div><span>Hướng dẫn tiếp theo</span><b>${esc(x.next_action||'Theo dõi cập nhật')}</b></div></div><div class="timeline">${steps.map((s,i)=>{const ev=timeline.find(t=>t.label===s);const active=seen.has(s);return `<div class="${active?'done':''}"><i>${active?'✓':i+1}</i><span><b>${s}</b><small>${ev?.note?esc(ev.note):active?fmt(ev?.created_at):'Chưa đến bước này'}</small></span></div>`}).join('')}</div>${x.result?`<div class="case-result"><span>KẾT QUẢ XỬ LÝ</span><p>${esc(x.result)}</p></div>`:''}</article>`}
 
 async function caseCenter(app){
-  setMeta('Tra cứu hồ sơ','Kiểm tra tiến trình xử lý hồ sơ Sky First.');
+  updateActiveNav('hoso');
+  setMeta('Tra cứu hồ sơ','Tra cứu trạng thái xử lý hồ sơ trực tuyến trên Hệ thống Thông tin Số Sky First.');
   const qs=new URLSearchParams(location.search), init=qs.get('code')||'';
-  app.innerHTML=`<section class="lookup-hero case-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">TRUNG TÂM TRA CỨU HỒ SƠ</span><h1>TRA CỨU <strong>HỒ SƠ</strong></h1><p>Mã hồ sơ không phải khóa truy cập dữ liệu riêng tư. Cổng yêu cầu email đã dùng khi gửi hồ sơ để xác minh trước khi hiển thị trạng thái.</p><div class="lookup-trust"><span>♙ Xác minh người gửi</span><span>✓ Bảo vệ dữ liệu riêng tư</span></div></div><div class="lookup-hero-art case-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="case-folder">▤<span>HỒ SƠ</span></div><div class="case-magnifier">⌕</div><div class="case-lock">♙</div></div></section><section class="lookup-search-panel case-search"><form id="caseForm" class="case-form"><div class="lookup-form-title"><span>▤</span><div><h2>Nhập thông tin để tra cứu hồ sơ</h2><p>Dùng đúng mã trên biên nhận và email đã đăng ký.</p></div></div><div class="field"><label for="caseCode">Mã hồ sơ</label><input id="caseCode" value="${esc(init)}" placeholder="Mã trên biên nhận số" autocomplete="off" required></div><div class="field"><label for="caseEmail">Email đã đăng ký</label><input id="caseEmail" type="email" placeholder="Nhập email đã dùng khi gửi hồ sơ" autocomplete="email" required></div><button class="portal-button" type="submit">⌕ &nbsp; TRA CỨU HỒ SƠ <span>→</span></button><p class="privacy-hint">Email chỉ dùng để xác minh yêu cầu tra cứu, không hiển thị lại trong kết quả.</p></form><div id="caseOut" aria-live="polite"></div></section><section class="dip-section tight public-benefits case-benefits"><article><i>♙</i><h3>Bảo mật thông tin</h3><p>Dữ liệu hồ sơ chỉ được hiển thị sau khi xác minh đúng thông tin đăng ký.</p></article><article><i>✓</i><h3>Trạng thái rõ ràng</h3><p>Theo dõi tiến trình và các việc cần thực hiện tiếp theo.</p></article><article><i>◷</i><h3>Cập nhật thuận tiện</h3><p>Tra cứu lại bằng mã hồ sơ đã được cấp trên biên nhận.</p></article></section>`;
-  const f=document.getElementById('caseForm'),out=document.getElementById('caseOut');f.onsubmit=async e=>{e.preventDefault();out.innerHTML='<div class="loading">Đang kiểm tra hồ sơ…</div>';const code=document.getElementById('caseCode').value.trim(),email=document.getElementById('caseEmail').value.trim();try{const d=await api('/api/lookup/submission',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code,email})});out.innerHTML=caseResult(d.item)}catch(err){out.innerHTML=failCard(err.message)}};
+  app.innerHTML=`<section class="lookup-hero case-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>TRA CỨU <strong>HỒ SƠ</strong></h1><p>Theo dõi tiến trình xử lý hồ sơ đã gửi. Để bảo vệ thông tin cá nhân và chống truy cập trái phép (IDOR), hệ thống kiểm tra đồng thời Mã hồ sơ và Email đăng ký ở phía máy chủ.</p><div class="lookup-trust"><span>🛡️ Xác thực 2 thông tin phía máy chủ</span><span>✓ Không lộ câu trả lời chi tiết</span></div></div><div class="lookup-hero-art case-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="case-folder">▤<span>HỒ SƠ</span></div><div class="case-magnifier">⌕</div><div class="case-lock">🛡️</div></div></section><section class="lookup-search-panel case-search"><form id="caseForm" class="case-form"><div class="lookup-form-title"><span>▤</span><div><h2>Nhập thông tin xác minh hồ sơ</h2><p>Vui lòng cung cấp đúng mã hồ sơ trên biên nhận và địa chỉ email đã dùng khi đăng ký.</p></div></div><div class="field"><label for="caseCode">Mã hồ sơ *</label><input id="caseCode" value="${esc(init)}" placeholder="Ví dụ: SFN-TV-2026-0001" autocomplete="off" required></div><div class="field"><label for="caseEmail">Email đã đăng ký *</label><input id="caseEmail" type="email" placeholder="Nhập email đã dùng khi nộp hồ sơ" autocomplete="email" required></div><button class="portal-button" type="submit">⌕ &nbsp; TRA CỨU HỒ SƠ <span>→</span></button><p class="privacy-hint">Địa chỉ email chỉ dùng để xác minh quyền tra cứu ở máy chủ, không được trả lại trong dữ liệu hiển thị.</p></form><div id="caseOut" aria-live="polite"></div></section>`;
+  const f=document.getElementById('caseForm'),out=document.getElementById('caseOut');
+  f.onsubmit=async e=>{e.preventDefault();out.innerHTML='<div class="loading">Đang kiểm tra hồ sơ…</div>';const code=document.getElementById('caseCode').value.trim(),email=document.getElementById('caseEmail').value.trim();try{const d=await api('/api/lookup/submission',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code,email})});out.innerHTML=caseResult(d.item)}catch(err){out.innerHTML=failCard('Không thể tra cứu hồ sơ với thông tin đã cung cấp. Vui lòng kiểm tra lại mã hồ sơ và email đăng ký.')}};
+}
+
+async function sponsorshipCenter(app,detailCode=''){
+  updateActiveNav('sponsorship');
+  setMeta('Minh bạch Tài trợ','Công khai minh bạch các chương trình vận động tài trợ, số tiền cam kết, thực nhận, đã chi và báo cáo đối soát.');
+  if(detailCode){
+    try{
+      const d=await api(`/api/public/sponsorship/${encodeURIComponent(detailCode)}`);
+      const c=d.campaign,txs=d.transactions||[],reps=d.reports||[];
+      app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">MINH BẠCH TÀI TRỢ · ${esc(c.code)}</span><h1>${esc(c.title)}</h1><p>${esc(c.summary||c.purpose||'Thông tin chi tiết chương trình tài trợ đã được phê duyệt công khai.')}</p><div class="actions"><a class="secondary" href="/tai-tro" style="color:#fff;border-color:#ffffff55;background:#ffffff1a;">← Quay lại danh sách chương trình tài trợ</a></div></section>
+      <section class="dip-section tight">
+        <div class="sponsorship-metrics-grid">
+          <article class="sp-metric-card"><small>01 · MỤC TIÊU TÀI TRỢ</small><strong>${esc(fmtVnd(c.target_amount))}</strong><span>Kinh phí mục tiêu của đợt vận động</span></article>
+          <article class="sp-metric-card"><small>02 · SỐ TIỀN ĐÃ CAM KẾT</small><strong>${esc(fmtVnd(c.pledged_amount))}</strong><span>Khoản cam kết (chưa tính vào thực nhận)</span></article>
+          <article class="sp-metric-card is-highlight"><small>03 · SỐ TIỀN THỰC NHẬN</small><strong>${esc(fmtVnd(c.received_amount))}</strong><span>Khoản đã thực tế tiếp nhận và xác minh</span></article>
+          <article class="sp-metric-card"><small>04 · SỐ TIỀN ĐÃ CHI</small><strong>${esc(fmtVnd(c.disbursed_amount))}</strong><span>Khoản đã giải ngân theo mục đích</span></article>
+          <article class="sp-metric-card"><small>05 · SỐ DƯ CÒN LẠI</small><strong>${esc(fmtVnd(c.remaining_amount))}</strong><span>Tính theo: Thực nhận trừ Đã chi</span></article>
+        </div>
+        <div class="card" style="margin-top:20px;">
+          <h3>Thông tin chương trình & nguyên tắc đối soát</h3>
+          <p><b>Mục đích sử dụng:</b> ${esc(c.purpose||c.summary||'Theo kế hoạch chương trình đã phê duyệt.')}</p>
+          <p><b>Thời gian thực hiện:</b> ${esc(c.start_at?fmt(c.start_at):'Đang cập nhật')} — ${esc(c.end_at?fmt(c.end_at):'Đang cập nhật')} · <b>Cập nhật lần cuối:</b> ${esc(fmt(c.updated_at))}</p>
+        </div>
+        <h2 style="margin:32px 0 14px;">Nhật ký giao dịch thu / chi công khai đã xác minh</h2>
+        ${txs.length?`<div class="card table-scroll"><table><thead><tr><th>Mã GD</th><th>Loại chỉ tiêu</th><th>Nội dung / Đơn vị (đã ẩn dữ liệu nhạy cảm)</th><th>Số tiền</th><th>Thời gian</th><th>Chứng từ</th></tr></thead><tbody>${txs.map(tx=>`<tr><td><b>${esc(tx.tx_code)}</b></td><td><span class="status">${esc(tx.tx_type==='pledge'?'Cam kết':tx.tx_type==='receipt'?'Thực nhận (Thu)':tx.tx_type==='disbursement'?'Giải ngân (Chi)':tx.tx_type)}</span></td><td><b>${esc(tx.public_party_label)}</b><br><span class="small muted">${esc(tx.purpose||'')}</span></td><td><b>${esc(fmtVnd(tx.amount))}</b></td><td>${esc(fmt(tx.occurred_at))}</td><td>${tx.voucher_file_id?`<a href="/api/files/${encodeURIComponent(tx.voucher_file_id)}" target="_blank" rel="noopener">Xem chứng từ ↗</a>`:'—'}</td></tr>`).join('')}</tbody></table></div>`:empty('Chưa có giao dịch công khai nào được công bố cho chương trình này.')}
+        <h2 style="margin:32px 0 14px;">Báo cáo & chứng từ tổng hợp</h2>
+        ${reps.length?`<div class="resource-list">${reps.map(r=>`<article><i>▤</i><div><span>KỲ BÁO CÁO: ${esc(r.report_period||'Tổng hợp')}</span><h3>${esc(r.title)}</h3><p class="small muted">${esc(r.summary||'')}</p></div>${r.file_id?`<a class="portal-button" href="/api/files/${encodeURIComponent(r.file_id)}" target="_blank" rel="noopener">Mở báo cáo →</a>`:''}</article>`).join('')}</div>`:empty('Chưa có báo cáo định kỳ được xuất bản cho chương trình này.')}
+      </section>`;
+      return;
+    }catch(err){
+      app.innerHTML=lookupShell('MINH BẠCH TÀI TRỢ','Không tìm thấy chương trình tài trợ yêu cầu.')+`<section class="dip-section tight">${failCard(err.message)}<div class="actions" style="margin-top:16px;"><a class="portal-button" href="/tai-tro">Quay lại trang Tài trợ →</a></div></section>`;
+      return;
+    }
+  }
+  const d=await api('/api/public/sponsorship');
+  const s=d.summary||{}, campaigns=d.campaigns||[], reports=d.reports||[];
+  app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">MINH BẠCH TÀI CHÍNH & TÀI TRỢ</span><h1>CÔNG KHAI <strong>TÀI TRỢ</strong></h1><p>Module minh bạch tài trợ độc lập của Hệ thống Thông tin Số Sky First. Phân biệt rõ ràng 5 chỉ tiêu: Mục tiêu tài trợ, Số tiền đã cam kết, Số tiền thực nhận, Số tiền đã chi và Số tiền còn lại.</p></section>
+  <section class="dip-section tight">
+    ${s.has_data?`
+      <div class="sponsorship-metrics-grid">
+        <article class="sp-metric-card"><small>01 · MỤC TIÊU TÀI TRỢ</small><strong>${esc(fmtVnd(s.target_amount))}</strong><span>Tổng mục tiêu các chương trình công khai</span></article>
+        <article class="sp-metric-card"><small>02 · SỐ TIỀN ĐÃ CAM KẾT</small><strong>${esc(fmtVnd(s.pledged_amount))}</strong><span>Khoản cam kết (tách biệt với thực nhận)</span></article>
+        <article class="sp-metric-card is-highlight"><small>03 · SỐ TIỀN THỰC NHẬN</small><strong>${esc(fmtVnd(s.received_amount))}</strong><span>Tổng tiền thực nhận đã xác minh</span></article>
+        <article class="sp-metric-card"><small>04 · SỐ TIỀN ĐÃ CHI</small><strong>${esc(fmtVnd(s.disbursed_amount))}</strong><span>Tổng tiền đã giải ngân có đối soát</span></article>
+        <article class="sp-metric-card"><small>05 · SỐ DƯ CÒN LẠI</small><strong>${esc(fmtVnd(s.remaining_amount))}</strong><span>Bằng: Số tiền thực nhận trừ Số tiền đã chi</span></article>
+      </div>
+      <p class="small muted" style="margin:12px 0 28px;">Thời điểm cập nhật dữ liệu gần nhất: <b>${esc(s.updated_at?fmt(s.updated_at):'Đang cập nhật')}</b> · Đơn vị tiền tệ: <b>Đồng Việt Nam (VND)</b>.</p>
+      ${sectionHead('CHƯƠNG TRÌNH & ĐỢT VẬN ĐỘNG','Danh sách chương trình tài trợ công khai','Chọn từng chương trình để xem chi tiết các khoản thu, chi và chứng từ đã được phê duyệt công bố.')}
+      <div class="program-catalog-grid">${campaigns.map(c=>`<article class="program-card"><div class="program-card-body"><span class="content-tag">${esc(c.code)}</span><h3>${esc(c.title)}</h3><p>${esc(c.summary||c.purpose||'')}</p><div class="sp-card-figures"><div><span>Mục tiêu:</span> <b>${esc(fmtVnd(c.target_amount))}</b></div><div><span>Cam kết:</span> <b>${esc(fmtVnd(c.pledged_amount))}</b></div><div><span>Thực nhận:</span> <b style="color:var(--dip-success)">${esc(fmtVnd(c.received_amount))}</b></div><div><span>Đã chi:</span> <b>${esc(fmtVnd(c.disbursed_amount))}</b></div></div><div class="program-card-foot"><span class="program-status is-active"><i></i>${esc(c.status==='active'?'Đang triển khai':c.status==='completed'?'Đã hoàn thành':c.status)}</span><a href="/tai-tro/${encodeURIComponent(c.code)}">Xem đối soát & chứng từ <b>→</b></a></div></div></article>`).join('')}</div>
+      ${reports.length?`<div style="margin-top:44px;">${sectionHead('BÁO CÁO CÔNG KHAI','Báo cáo tài chính & chứng từ','Các báo cáo định kỳ đã được kiểm tra và phê duyệt công khai.')}<div class="resource-list">${reports.map(r=>`<article><i>▤</i><div><span>${esc(r.campaign_code)} · ${esc(r.report_period||'Báo cáo')}</span><h3>${esc(r.title)}</h3></div>${r.file_id?`<a class="portal-button" href="/api/files/${encodeURIComponent(r.file_id)}" target="_blank" rel="noopener">Xem tài liệu →</a>`:''}</article>`).join('')}</div></div>`:''}
+    `:`
+      <div class="beautiful-empty" style="margin-bottom:28px;">
+        <i>♡</i>
+        <div>
+          <h3>Chưa có dữ liệu tài trợ công khai</h3>
+          <p>Hiện tại chưa có chương trình vận động tài trợ hoặc báo cáo tài chính nào được phê duyệt công bố. Hệ thống tuân thủ nguyên tắc minh bạch: không hiển thị số liệu giả lập, không gộp tiền cam kết với tiền thực nhận và chỉ công bố sau khi đã qua quy trình đối soát.</p>
+        </div>
+      </div>
+      <div class="public-benefits">
+        <article><i>01</i><h3>Tách biệt Cam kết & Thực nhận</h3><p>Số tiền cam kết và số tiền thực nhận được theo dõi và hiển thị thành hai chỉ tiêu độc lập, tuyệt đối không cộng gộp.</p></article>
+        <article><i>02</i><h3>Đối soát trước khi công bố</h3><p>Mọi khoản thu, khoản chi và báo cáo chứng từ phải được quản trị viên có thẩm quyền xác minh trước khi hiển thị công khai.</p></article>
+        <article><i>03</i><h3>Bảo vệ dữ liệu nhà tài trợ</h3><p>Không công khai số tài khoản ngân hàng, số định danh cá nhân hoặc thông tin liên hệ riêng tư của nhà tài trợ.</p></article>
+      </div>
+    `}
+  </section>`;
+  event('route_view',{category:'sponsorship'});
+}
+
+async function safetyCenter(app){
+  updateActiveNav('safety');
+  setMeta('An toàn & Bảo mật số','Hướng dẫn bảo vệ tài khoản, cảnh báo mạo danh lừa đảo, chính sách quyền riêng tư và kênh báo cáo sự cố an toàn.');
+  app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>AN TOÀN <strong>& BẢO MẬT SỐ</strong></h1><p>Hướng dẫn sử dụng hệ thống an toàn, bảo vệ dữ liệu cá nhân, nhận diện các hình thức mạo danh và kênh tiếp nhận báo cáo sự cố bảo mật chính thức.</p></section>
+  <section class="dip-section tight">
+    <div class="public-benefits">
+      <article>
+        <i>🛡️</i>
+        <h3>1. Bảo vệ tài khoản & thông tin xác thực</h3>
+        <p>Sử dụng mật khẩu tối thiểu 10 ký tự và bật xác thực hai bước (2FA/TOTP) đối với tài khoản quản trị. Tuyệt đối không chia sẻ mã OTP, liên kết kích hoạt tài khoản hoặc liên kết đặt lại mật khẩu cho bất kỳ ai.</p>
+      </article>
+      <article>
+        <i>⚠️</i>
+        <h3>2. Cảnh báo mạo danh & lừa đảo</h3>
+        <p>Sky First không bao giờ yêu cầu người dùng chuyển tiền để mua vị trí, chức danh hay giấy chứng nhận, và không bao giờ yêu cầu cung cấp mật khẩu qua email hoặc tin nhắn. Chỉ tin cậy tên miền chính thức <b>app.skyfirst.io.vn</b> và <b>skyfirst.io.vn</b>.</p>
+      </article>
+      <article>
+        <i>🔒</i>
+        <h3>3. Quyền riêng tư & Dữ liệu cá nhân</h3>
+        <p>Hệ thống chỉ thu thập dữ liệu cần thiết cho nghiệp vụ đăng ký, xử lý hồ sơ và xác thực chứng nhận. Mã hồ sơ chỉ hiển thị tiến trình khi xác minh đúng email đăng ký tại phía máy chủ.</p>
+      </article>
+    </div>
+
+    <div class="admin-grid2" style="margin-top:32px;display:grid;grid-template-columns:1fr 1fr;gap:22px;" id="privacy">
+      <div class="card">
+        <span class="section-kicker">HƯỚNG DẪN XỬ LÝ KHẨN CẤP</span>
+        <h2>Khi nghi ngờ lộ thông tin hoặc bị truy cập trái phép</h2>
+        <ol style="line-height:1.8;padding-left:20px;color:var(--dip-ink);">
+          <li>Đổi mật khẩu ngay lập tức và sử dụng chức năng <b>“Đăng xuất tất cả thiết bị”</b> để thu hồi toàn bộ phiên đăng nhập đang hoạt động.</li>
+          <li>Kiểm tra lại địa chỉ người gửi email: hệ thống tự động chỉ gửi từ <code>app@skyfirst.io.vn</code>; hỗ trợ kỹ thuật tại <code>support@skyfirst.io.vn</code>; liên hệ chung tại <code>lienhe@skyfirst.io.vn</code>.</li>
+          <li>Nếu phát hiện trang web giả mạo, đường dẫn lạ hoặc nghi ngờ lộ dữ liệu hồ sơ, hãy gửi báo cáo ngay qua biểu mẫu bên cạnh để bộ phận kỹ thuật kiểm tra và khóa bảo vệ.</li>
+        </ol>
+        <div class="notice" style="margin-top:16px;">
+          <b>Kênh liên hệ trực tiếp:</b><br>
+          • Hỗ trợ kỹ thuật & bảo mật: <a href="mailto:support@skyfirst.io.vn">support@skyfirst.io.vn</a><br>
+          • Liên hệ chung: <a href="mailto:lienhe@skyfirst.io.vn">lienhe@skyfirst.io.vn</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <span class="section-kicker">KÊNH TIẾP NHẬN CHÍNH THỨC</span>
+        <h2>Báo cáo sự cố an toàn, giả mạo hoặc quyền riêng tư</h2>
+        <p class="small muted">Không nhập mật khẩu, khóa bí mật hoặc token xác thực vào nội dung báo cáo.</p>
+        <form id="safetyReportForm">
+          <div class="row2">
+            <div class="field">
+              <label for="srCategory">Phân loại sự cố *</label>
+              <select id="srCategory" required>
+                <option value="Giả mạo / Lừa đảo">Cảnh báo trang / tài khoản giả mạo</option>
+                <option value="Truy cập trái phép">Nghi ngờ truy cập trái phép tài khoản</option>
+                <option value="Lộ dữ liệu / Quyền riêng tư">Vấn đề quyền riêng tư / dữ liệu cá nhân</option>
+                <option value="Lỗi bảo mật kỹ thuật">Báo cáo lỗ hổng / lỗi an toàn kỹ thuật</option>
+                <option value="Khác">Vấn đề an toàn khác</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="srSeverity">Mức độ ưu tiên *</label>
+              <select id="srSeverity" required>
+                <option value="Trung bình">Trung bình</option>
+                <option value="Cao">Cao</option>
+                <option value="Khẩn cấp">Khẩn cấp</option>
+                <option value="Thấp">Thấp</option>
+              </select>
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="srName">Họ và tên người báo cáo</label>
+              <input id="srName" placeholder="Có thể để trống nếu báo cáo ẩn danh">
+            </div>
+            <div class="field">
+              <label for="srEmail">Email nhận phản hồi</label>
+              <input id="srEmail" type="email" placeholder="name@example.com">
+            </div>
+          </div>
+          <div class="field">
+            <label for="srTitle">Tiêu đề sự cố *</label>
+            <input id="srTitle" required minlength="5" maxlength="200" placeholder="Tóm tắt ngắn gọn vấn đề phát hiện">
+          </div>
+          <div class="field">
+            <label for="srUrl">Đường dẫn (URL) hoặc mã hồ sơ liên quan</label>
+            <input id="srUrl" maxlength="400" placeholder="Ví dụ: https://... hoặc mã hồ sơ">
+          </div>
+          <div class="field">
+            <label for="srDesc">Mô tả chi tiết *</label>
+            <textarea id="srDesc" rows="4" required minlength="10" maxlength="4000" placeholder="Mô tả thời점, dấu hiệu phát hiện và nội dung cần kiểm tra (không ghi mật khẩu)..."></textarea>
+          </div>
+          <button type="submit" class="portal-button" id="srSubmitBtn">Gửi báo cáo an toàn →</button>
+        </form>
+        <div id="srResult" aria-live="polite" style="margin-top:14px;"></div>
+      </div>
+    </div>
+  </section>`;
+
+  const form=document.getElementById('safetyReportForm'), out=document.getElementById('srResult'), btn=document.getElementById('srSubmitBtn');
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    btn.disabled=true; btn.textContent='Đang gửi báo cáo…'; out.innerHTML='';
+    try{
+      const r=await api('/api/public/safety-reports',{
+        method:'POST',
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify({
+          category:document.getElementById('srCategory').value,
+          severity:document.getElementById('srSeverity').value,
+          reporter_name:document.getElementById('srName').value.trim(),
+          reporter_email:document.getElementById('srEmail').value.trim(),
+          title:document.getElementById('srTitle').value.trim(),
+          affected_url:document.getElementById('srUrl').value.trim(),
+          description:document.getElementById('srDesc').value.trim()
+        })
+      });
+      form.reset();
+      out.innerHTML=`<div class="notice good"><b>Đã tiếp nhận báo cáo an toàn: ${esc(r.code)}</b><br>${esc(r.message)}</div>`;
+    }catch(err){
+      out.innerHTML=failCard(err.message);
+    }finally{
+      btn.disabled=false; btn.textContent='Gửi báo cáo an toàn →';
+    }
+  };
+  event('route_view',{category:'safety'});
+}
+
+function renderVisualBlock(b={}){
+  const type=b.type||'paragraph';
+  const align=b.align||'left';
+  const style=`text-align:${esc(align)};`;
+  if(type==='hero'){
+    return `<section class="cms-block cms-block-hero" style="${style}"><h2>${esc(b.title||'')}</h2>${b.subtitle?`<p>${esc(b.subtitle)}</p>`:''}${b.ctaText?`<a class="portal-button" href="${esc(b.ctaHref||'#')}">${esc(b.ctaText)} →</a>`:''}</section>`;
+  }
+  if(type==='heading'){
+    const tag=['h1','h2','h3'].includes(b.level)?b.level:'h2';
+    return `<${tag} class="cms-block cms-block-heading" style="${style}">${esc(b.text||b.title||'')}</${tag}>`;
+  }
+  if(type==='paragraph'){
+    return `<div class="cms-block cms-block-paragraph" style="${style}">${esc(b.text||'').replace(/\n/g,'<br>')}</div>`;
+  }
+  if(type==='callout'){
+    const tone=['good','warn','bad'].includes(b.tone)?b.tone:'';
+    return `<div class="cms-block notice ${tone}"><b>${esc(b.title||'Thông báo')}</b><p style="margin:6px 0 0">${esc(b.text||'')}</p></div>`;
+  }
+  if(type==='image'){
+    const src=b.url||(b.fileId?`/api/files/${encodeURIComponent(b.fileId)}`:'');
+    return src?`<figure class="cms-block cms-block-image" style="${style}"><img src="${esc(src)}" alt="${esc(b.alt||b.caption||'Hình ảnh')}" style="max-width:100%;border-radius:16px;">${b.caption?`<figcaption class="small muted">${esc(b.caption)}</figcaption>`:''}</figure>`:'';
+  }
+  if(type==='button'){
+    return `<div class="cms-block" style="${style}"><a class="portal-button" href="${esc(b.href||'#')}">${esc(b.label||b.text||'Xem chi tiết')} →</a></div>`;
+  }
+  if(type==='list'){
+    const items=Array.isArray(b.items)?b.items:String(b.text||'').split(/\r?\n/).filter(Boolean);
+    return `<ul class="cms-block cms-block-list">${items.map(it=>`<li>${esc(it)}</li>`).join('')}</ul>`;
+  }
+  if(type==='table'){
+    const headers=Array.isArray(b.headers)?b.headers:['Cột 1','Cột 2'];
+    const rows=Array.isArray(b.rows)?b.rows:[];
+    return `<div class="cms-block card table-scroll"><table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${(Array.isArray(r)?r:[]).map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+  if(type==='columns'){
+    const cols=Array.isArray(b.columns)?b.columns:[];
+    return `<div class="cms-block cms-block-columns" style="display:grid;grid-template-columns:repeat(${Math.max(1,cols.length)},1fr);gap:18px;">${cols.map(c=>`<div class="card"><h3>${esc(c.title||'')}</h3><p>${esc(c.body||'')}</p></div>`).join('')}</div>`;
+  }
+  if(type==='pdf_embed'){
+    const fid=b.fileId||b.documentId||'';
+    const src=fid.startsWith('/')?fid:(fid?`/api/files/${encodeURIComponent(fid)}`:'');
+    return `<div class="cms-block card"><h3>${esc(b.title||'Tài liệu PDF đính kèm')}</h3>${src?`<iframe src="${esc(src)}" title="${esc(b.title||'PDF')}" style="width:100%;height:560px;border:1px solid var(--dip-line);border-radius:12px;"></iframe><div class="actions"><a class="portal-button" href="${esc(src)}?download=1">Tải xuống PDF →</a></div>`:`<p class="muted">Tài liệu PDF chưa được gắn hoặc tạm thời không khả dụng.</p>`}</div>`;
+  }
+  if(type==='form_embed'){
+    const fid=b.formId||'member';
+    return `<div class="cms-block card"><h3>${esc(b.title||'Biểu mẫu trực tuyến')}</h3><p class="muted">Nhấn vào nút bên dưới để mở và điền biểu mẫu trực tuyến.</p><a class="portal-button" href="/#form/${encodeURIComponent(fid)}">Mở biểu mẫu (${esc(fid)}) →</a></div>`;
+  }
+  return '';
+}
+
+async function cmsPageCenter(app,slug=''){
+  try{
+    const d=await api(`/api/public/pages/${encodeURIComponent(slug)}`);
+    const page=d.item;
+    setMeta(page.seo?.meta_title||page.title, page.seo?.meta_description||page.summary||'Trang nội dung Hệ thống Thông tin Số Sky First.');
+    app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">${esc(page.category||'TRANG NỘI DUNG')}</span><h1>${esc(page.title)}</h1>${page.summary?`<p>${esc(page.summary)}</p>`:''}</section>
+    <section class="dip-section tight"><div class="cms-rendered-page" style="display:grid;gap:20px;max-width:980px;margin:0 auto;">${(page.blocks||[]).map(renderVisualBlock).join('')}</div></section>`;
+  }catch(err){
+    app.innerHTML=lookupShell('KHÔNG TÌM THẤY TRANG','Trang nội dung này chưa được xuất bản hoặc đường dẫn không tồn tại.')+`<section class="dip-section tight"><a class="portal-button" href="/">Về Trang chủ →</a></section>`;
+  }
 }
 
 async function programsPage(app,kind,detailId=''){
   if(kind==='units'){
-    const d=await api('/api/public/units');const items=d.items||[];setMeta('Hệ sinh thái Sky First','Các đơn vị trong hệ sinh thái Sky First.');
-    app.innerHTML=`<section class="catalog-hero catalog-hero-ecosystem"><div class="catalog-hero-copy"><span class="hero-eyebrow">KHÁM PHÁ SKY FIRST</span><h1>Bốn hướng kết nối với <strong>Sky First</strong></h1><p>Tìm nội dung theo điều bạn quan tâm, không cần hiểu cấu trúc nội bộ.</p></div>${sceneArt('globe')}</section><section class="catalog-section"><div class="catalog-section-head"><div><span class="section-kicker">HỆ SINH THÁI SKY FIRST</span><h2>Đơn vị & nền tảng</h2><p>Thông tin đồng bộ từ hệ thống quản trị.</p></div></div><div class="ecosystem-detail-grid">${items.map((x,i)=>`<article class="ecosystem-detail-card"><span>${esc(x.code||'SKY FIRST')}</span><h3>${esc(x.name)}</h3><p>${esc(x.unit_type||'')}</p><small>${esc(x.status||'Trạng thái đang cập nhật')}</small></article>`).join('')||empty('Chưa có đơn vị công khai.')}</div></section>`;return;
+    const d=await api('/api/public/units');const items=d.items||[];setMeta('Đơn vị & Đối tác','Các đơn vị trực thuộc và đồng hành trong Hệ thống Thông tin Số Sky First.');
+    app.innerHTML=`<section class="catalog-hero catalog-hero-ecosystem"><div class="catalog-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>ĐƠN VỊ <strong>& ĐỐI TÁC</strong></h1><p>Danh sách đơn vị trực thuộc và đối tác đồng hành được ghi nhận chính thức trên hệ thống.</p></div>${sceneArt('globe')}</section><section class="catalog-section"><div class="ecosystem-detail-grid">${items.map(x=>`<article class="ecosystem-detail-card"><span>${esc(x.code||'SKY FIRST')}</span><h3>${esc(x.name)}</h3><p>${esc(x.unit_type||'')}</p><small>${esc(x.status||'Đang hoạt động')}</small></article>`).join('')||empty('Chưa có đơn vị công khai.')}</div></section>`;return;
   }
   if(kind==='classes'){
+    updateActiveNav('programs');
     const d=await api('/api/public/classes');const items=visiblePublicItems(d.items||[]).sort(comparePrograms);const selected=detailId?items.find(x=>String(x.id)===String(detailId)):null;
     if(detailId){
-      if(!selected){setMeta('Không tìm thấy chương trình','Chương trình không tồn tại hoặc chưa được công khai.');app.innerHTML=`<section class="detail-missing"><div>${sceneArt('program')}</div><span class="section-kicker">CHƯƠNG TRÌNH SKY FIRST</span><h1>Không tìm thấy chương trình</h1><p>Chương trình này có thể đã được gỡ khỏi danh sách công khai hoặc đường dẫn không còn hợp lệ.</p><a class="portal-button" href="#programs">Quay lại danh sách chương trình →</a></section>`;return;}
+      if(!selected){setMeta('Không tìm thấy chương trình','Chương trình không tồn tại hoặc chưa được công khai.');app.innerHTML=`<section class="detail-missing"><div>${sceneArt('program')}</div><span class="section-kicker">CHƯƠNG TRÌNH SKY FIRST</span><h1>Không tìm thấy chương trình</h1><p>Chương trình này có thể đã được gỡ khỏi danh sách công khai hoặc đường dẫn không còn hợp lệ.</p><a class="portal-button" href="/chuong-trinh">Quay lại danh sách chương trình →</a></section>`;return;}
       const data=jsonObject(selected.data_json),schedule=jsonObject(selected.schedule_json),summary=firstText(data,['description','summary','short_description','intro','content']);
       const detailRows=[selected.level?['Cấp độ',selected.level]:null,selected.status?['Trạng thái',publicStatusLabel(selected.status)]:null,firstText(schedule,['schedule','time','days','duration'])?['Lịch học',firstText(schedule,['schedule','time','days','duration'])]:null,firstText(schedule,['format','mode','modality'])?['Hình thức',firstText(schedule,['format','mode','modality'])]:null,firstText(data,['location','venue'])?['Địa điểm',firstText(data,['location','venue'])]:null,selected.capacity?['Sức chứa',String(selected.capacity)]:null].filter(Boolean);
       setMeta(selected.title,summary||'Thông tin chương trình được đồng bộ từ hệ thống quản trị Sky First.');
-      app.innerHTML=`<section class="program-detail-hero"><div class="program-detail-copy"><a class="back-link" href="#programs">← Tất cả chương trình</a><span class="hero-eyebrow">${esc(selected.unit_code||'SKY FIRST')}</span><h1>${esc(selected.title)}</h1>${selected.level?`<span class="program-level">${esc(selected.level)}</span>`:''}<p>${esc(summary||'Thông tin chi tiết về chương trình được đồng bộ từ hệ thống quản trị. Các nội dung chưa được cung cấp sẽ không tự tạo thành dữ liệu giả.')}</p><div class="program-detail-status"><span class="program-status ${activeLike(selected.status)?'is-active':''}"><i></i>${esc(publicStatusLabel(selected.status))}</span></div><a class="portal-button" href="mailto:ctt@skyfirst.io.vn?subject=${encodeURIComponent('Quan tâm chương trình: '+selected.title)}">Liên hệ về chương trình <span>→</span></a></div>${sceneArt(programArtKind(selected))}</section><section class="program-detail-content"><div class="program-detail-main"><span class="section-kicker">THÔNG TIN CHƯƠNG TRÌNH</span><h2>${esc(selected.title)}</h2><p>${esc(summary||'Hãy liên hệ Cổng Thông tin Số Sky First để được hướng dẫn thêm về chương trình này.')}</p>${firstText(data,['content','details','learning_outcomes'])?`<div class="program-long-copy">${esc(firstText(data,['content','details','learning_outcomes'])).replace(/\n/g,'<br>')}</div>`:''}</div><aside class="program-detail-facts"><h3>Thông tin tổng quan</h3>${detailRows.length?detailRows.map(([k,v])=>`<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join(''):`<p>Thông tin bổ sung đang được cập nhật từ hệ thống quản trị.</p>`}<a href="mailto:ctt@skyfirst.io.vn?subject=${encodeURIComponent('Hỏi về chương trình: '+selected.title)}">Cần hỗ trợ? <span>ctt@skyfirst.io.vn</span></a></aside></section><section class="catalog-section related-programs"><div class="catalog-section-head"><div><span class="section-kicker">KHÁM PHÁ THÊM</span><h2>Chương trình khác</h2></div><a href="#programs" class="section-more-link">Xem tất cả <span>→</span></a></div><div class="program-catalog-grid">${items.filter(x=>String(x.id)!==String(selected.id)).slice(0,3).map((x,i)=>programCard(x,i,'catalog')).join('')||empty('Chưa có chương trình liên quan.')}</div></section>`;return;
+      app.innerHTML=`<section class="program-detail-hero"><div class="program-detail-copy"><a class="back-link" href="/chuong-trinh">← Tất cả chương trình</a><span class="hero-eyebrow">${esc(selected.unit_code||'SKY FIRST')}</span><h1>${esc(selected.title)}</h1>${selected.level?`<span class="program-level">${esc(selected.level)}</span>`:''}<p>${esc(summary||'Thông tin chi tiết về chương trình được đồng bộ từ hệ thống quản trị.')}</p><div class="program-detail-status"><span class="program-status ${activeLike(selected.status)?'is-active':''}"><i></i>${esc(publicStatusLabel(selected.status))}</span></div><div class="actions"><a class="portal-button" href="#form/class">Đăng ký tham gia <span>→</span></a><a class="secondary" href="mailto:lienhe@skyfirst.io.vn?subject=${encodeURIComponent('Quan tâm chương trình: '+selected.title)}">Liên hệ tư vấn</a></div></div>${sceneArt(programArtKind(selected))}</section><section class="program-detail-content"><div class="program-detail-main"><span class="section-kicker">THÔNG TIN CHƯƠNG TRÌNH</span><h2>${esc(selected.title)}</h2><p>${esc(summary||'Hãy liên hệ Hệ thống Thông tin Số Sky First để được hướng dẫn thêm về chương trình này.')}</p>${firstText(data,['content','details','learning_outcomes'])?`<div class="program-long-copy">${esc(firstText(data,['content','details','learning_outcomes'])).replace(/\n/g,'<br>')}</div>`:''}</div><aside class="program-detail-facts"><h3>Thông tin tổng quan</h3>${detailRows.length?detailRows.map(([k,v])=>`<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join(''):`<p>Thông tin bổ sung đang được cập nhật từ hệ thống quản trị.</p>`}<a href="mailto:support@skyfirst.io.vn?subject=${encodeURIComponent('Hỏi về chương trình: '+selected.title)}">Cần hỗ trợ? <span>support@skyfirst.io.vn</span></a></aside></section>`;return;
     }
-    setMeta('Chương trình','Khám phá các chương trình công khai của Sky First.');
-    app.innerHTML=`<section class="catalog-hero catalog-hero-programs"><div class="catalog-hero-copy"><span class="hero-eyebrow">✦ KHÁM PHÁ SKY FIRST</span><h1>CHƯƠNG TRÌNH</h1><p>Tìm chương trình học tập, phát triển kỹ năng và kết nối cộng đồng được cập nhật từ hệ thống Sky First.</p><div class="catalog-search"><span>⌕</span><input id="programSearch" type="search" placeholder="Tìm chương trình, khóa học..." aria-label="Tìm chương trình"><button type="button" id="programSearchBtn">Khám phá <span>→</span></button></div><div class="catalog-filter-row" role="group" aria-label="Lọc chương trình"><button class="is-active" type="button" data-program-filter="all">Tất cả</button><button type="button" data-program-filter="education">Đào tạo</button><button type="button" data-program-filter="community">Cộng đồng</button></div></div>${sceneArt('program')}</section><section class="catalog-section"><div class="catalog-section-head"><div><span class="section-kicker">NỘI DUNG CÔNG KHAI</span><h2>Chương trình đang được cập nhật</h2><p>Nội dung thật được đồng bộ từ hệ thống quản trị. Bấm vào thẻ để mở trang chi tiết.</p></div><span class="catalog-live-note"><i></i>Đồng bộ dữ liệu</span></div><div class="program-catalog-grid" id="programCatalogGrid">${items.map((x,i)=>programCard(x,i,'catalog')).join('')||`<div class="catalog-empty">${sceneArt('program')}<div><h3>Chưa có chương trình công khai</h3><p>Chương trình sẽ xuất hiện tại đây khi được cập nhật và công khai từ hệ thống quản trị.</p><a href="mailto:ctt@skyfirst.io.vn">Liên hệ hỗ trợ →</a></div></div>`}</div><p class="catalog-no-results" id="programNoResults" hidden>Không tìm thấy chương trình phù hợp với từ khóa này.</p></section>`;
+    setMeta('Chương trình','Khám phá các chương trình giáo dục và cộng đồng trên Hệ thống Thông tin Số Sky First.');
+    app.innerHTML=`<section class="catalog-hero catalog-hero-programs"><div class="catalog-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>CHƯƠNG TRÌNH</h1><p>Khám phá các chương trình đào tạo, lớp học kỹ năng và hoạt động phát triển cộng đồng theo dữ liệu thực tế.</p><div class="catalog-search"><span>⌕</span><input id="programSearch" type="search" placeholder="Tìm chương trình, cấp độ, đơn vị..." aria-label="Tìm chương trình"><button type="button" id="programSearchBtn">Tìm kiếm <span>→</span></button></div><div class="catalog-filter-row" role="group" aria-label="Lọc chương trình"><button class="is-active" type="button" data-program-filter="all">Tất cả</button><button type="button" data-program-filter="education">Đào tạo</button><button type="button" data-program-filter="community">Cộng đồng</button></div></div>${sceneArt('program')}</section><section class="catalog-section"><div class="catalog-section-head"><div><span class="section-kicker">DANH MỤC CHƯƠNG TRÌNH</span><h2>Chương trình đang triển khai</h2><p>Chọn từng chương trình để xem chi tiết lịch trình, trạng thái mở đăng ký và biểu mẫu liên quan.</p></div><span class="catalog-live-note"><i></i>Dữ liệu thực tế</span></div><div class="program-catalog-grid" id="programCatalogGrid">${items.map((x,i)=>programCard(x,i,'catalog')).join('')||`<div class="catalog-empty">${sceneArt('program')}<div><h3>Chưa có chương trình công khai</h3><p>Chương trình sẽ xuất hiện tại đây khi được cập nhật và công bố từ hệ thống quản trị.</p><a href="mailto:lienhe@skyfirst.io.vn">Liên hệ hỗ trợ →</a></div></div>`}</div><p class="catalog-no-results" id="programNoResults" hidden>Không tìm thấy chương trình phù hợp với từ khóa này.</p></section>`;
     const search=document.getElementById('programSearch'),grid=document.getElementById('programCatalogGrid'),noResults=document.getElementById('programNoResults');let activeFilter='all';
     const apply=()=>{const q=(search?.value||'').trim().toLocaleLowerCase('vi');let count=0;grid?.querySelectorAll('.program-card').forEach(card=>{const text=(card.dataset.search||card.textContent||'').toLocaleLowerCase('vi');const category=card.dataset.category||'education';const matchText=!q||text.includes(q);const matchCat=activeFilter==='all'||(activeFilter==='education'?category==='education':category==='community');card.hidden=!(matchText&&matchCat);if(!card.hidden)count++});if(noResults)noResults.hidden=count>0||!items.length};
-    grid?.querySelectorAll('.program-card').forEach((card,i)=>{const x=items[i];if(!x)return;card.dataset.search=[x.title,x.level,x.unit_code,x.status,jsonObject(x.data_json).description].join(' ');card.dataset.category=/sfec|education|đào tạo|tiếng anh|reading|listening|speaking/i.test([x.unit_code,x.title].join(' '))?'education':'community'});
+    grid?.querySelectorAll('.program-card').forEach((card,i)=>{const x=items[i];if(!x)return;card.dataset.search=[x.title,x.level,x.unit_code,x.status,jsonObject(x.data_json).description].join(' ');card.dataset.category=/sfec|education|đào tạo|tiếng anh|reading|listening|speaking|lớp/i.test([x.unit_code,x.title].join(' '))?'education':'community'});
     search?.addEventListener('input',apply);document.getElementById('programSearchBtn')?.addEventListener('click',apply);document.querySelectorAll('[data-program-filter]').forEach(btn=>btn.addEventListener('click',()=>{activeFilter=btn.dataset.programFilter;document.querySelectorAll('[data-program-filter]').forEach(b=>b.classList.toggle('is-active',b===btn));apply()}));return;
   }
   if(kind==='events'){
+    updateActiveNav('events');
     const d=await api('/api/public/events'),items=visiblePublicItems(d.items||[]);const selected=detailId?items.find(x=>String(x.id)===String(detailId)):null;
-    if(detailId){if(!selected){setMeta('Không tìm thấy sự kiện','Sự kiện không tồn tại hoặc chưa được công khai.');app.innerHTML=`<section class="detail-missing"><div>${sceneArt('events')}</div><span class="section-kicker">HOẠT ĐỘNG & SỰ KIỆN</span><h1>Không tìm thấy sự kiện</h1><p>Sự kiện này có thể đã được gỡ khỏi danh sách công khai hoặc đường dẫn không còn hợp lệ.</p><a class="portal-button" href="#events">Quay lại danh sách sự kiện →</a></section>`;return;}
+    if(detailId){if(!selected){setMeta('Không tìm thấy sự kiện','Sự kiện không tồn tại hoặc chưa được công khai.');app.innerHTML=`<section class="detail-missing"><div>${sceneArt('events')}</div><span class="section-kicker">HOẠT ĐỘNG & SỰ KIỆN</span><h1>Không tìm thấy sự kiện</h1><p>Sự kiện này có thể đã được gỡ khỏi danh sách công khai hoặc đường dẫn không còn hợp lệ.</p><a class="portal-button" href="/su-kien">Quay lại danh sách sự kiện →</a></section>`;return;}
       const data=jsonObject(selected.data_json),summary=firstText(data,['summary','description','short_description','intro','content']);setMeta(selected.title,summary||'Thông tin sự kiện Sky First.');
-      app.innerHTML=`<section class="event-detail-hero"><div class="event-detail-copy"><a class="back-link" href="#events">← Tất cả sự kiện</a><span class="hero-eyebrow">${esc(selected.unit_code||'SKY FIRST')}</span><h1>${esc(selected.title)}</h1><p>${esc(summary||'Thông tin chi tiết sự kiện được đồng bộ từ hệ thống quản trị.')}</p><div class="event-detail-meta"><span>◷ ${esc(selected.start_at?fmt(selected.start_at):'Thời gian đang cập nhật')}</span><span class="program-status ${activeLike(selected.status)?'is-active':''}"><i></i>${esc(publicStatusLabel(selected.status,'event'))}</span></div><a class="portal-button" href="mailto:ctt@skyfirst.io.vn?subject=${encodeURIComponent('Hỏi về sự kiện: '+selected.title)}">Liên hệ về sự kiện <span>→</span></a></div>${sceneArt('events')}</section><section class="program-detail-content"><div class="program-detail-main"><span class="section-kicker">THÔNG TIN SỰ KIỆN</span><h2>${esc(selected.title)}</h2><p>${esc(summary||'Vui lòng liên hệ Cổng Thông tin Số Sky First để được hướng dẫn thêm.')}</p></div><aside class="program-detail-facts"><h3>Thông tin tổng quan</h3><div><span>Đơn vị</span><b>${esc(selected.unit_code||'SKY FIRST')}</b></div><div><span>Bắt đầu</span><b>${esc(selected.start_at?fmt(selected.start_at):'Chưa cập nhật')}</b></div><div><span>Kết thúc</span><b>${esc(selected.end_at?fmt(selected.end_at):'Chưa cập nhật')}</b></div><div><span>Trạng thái</span><b>${esc(publicStatusLabel(selected.status,'event'))}</b></div></aside></section>`;return;}
-    setMeta('Hoạt động & sự kiện','Khám phá lịch hoạt động và sự kiện công khai trong hệ sinh thái Sky First.');
-    app.innerHTML=`<section class="catalog-hero catalog-hero-events"><div class="catalog-hero-copy"><span class="hero-eyebrow">✦ KHÁM PHÁ SKY FIRST</span><h1>HOẠT ĐỘNG <strong>& SỰ KIỆN</strong></h1><p>Khám phá hoạt động, sự kiện và cơ hội kết nối trong hệ sinh thái Sky First.</p><div class="catalog-search"><span>⌕</span><input id="eventSearch" type="search" placeholder="Tìm sự kiện, hoạt động..." aria-label="Tìm sự kiện"><button type="button" id="eventSearchBtn">Khám phá <span>→</span></button></div><div class="catalog-filter-row" role="group" aria-label="Lọc sự kiện"><button class="is-active" type="button" data-event-filter="all">▦ Tất cả</button><button type="button" data-event-filter="upcoming">▣ Sắp diễn ra</button><button type="button" data-event-filter="ongoing">◉ Đang diễn ra</button><button type="button" data-event-filter="past">◷ Đã kết thúc</button></div></div>${sceneArt('events')}</section><section class="event-catalog-section"><div class="catalog-section-head"><div><span class="section-kicker">LỊCH SKY FIRST</span><h2>Hoạt động & sự kiện</h2><p>Trạng thái và thông tin sự kiện lấy từ hệ thống quản trị.</p></div><span class="catalog-live-note"><i></i>Thông tin công khai</span></div><div id="eventCatalogGrid" class="event-catalog-grid">${items.length?items.map((x,i)=>{const data=jsonObject(x.data_json),status=publicStatusLabel(x.status,'event');return `<a class="event-card" data-status="${esc(eventType(x))}" data-search="${esc([x.title,x.unit_code,status,firstText(data,['description','summary'])].join(' '))}" href="${esc(eventHref(x))}"><div class="event-card-visual">${sceneArt('events')}<span class="event-card-date">${esc(x.start_at?new Date(parseCttTime(x.start_at)).toLocaleDateString('vi-VN',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Ho_Chi_Minh'}):'Đang cập nhật')}</span></div><div class="event-card-body"><span class="program-unit">${esc(x.unit_code||'SKY FIRST')}</span><h3>${esc(x.title)}</h3><span class="program-status ${activeLike(x.status)?'is-active':''}"><i></i>${esc(status)}</span><span class="event-card-link">Xem chi tiết <b>→</b></span></div></a>`}).join(''):`<div class="event-empty">${sceneArt('events')}<div><h2>Chưa có sự kiện công khai</h2><p>Các hoạt động mới sẽ xuất hiện tại đây khi được cập nhật.</p><a class="portal-button" href="#programs">Khám phá chương trình <span>→</span></a></div></div>`}</div><p class="catalog-no-results" id="eventNoResults" hidden>Không có sự kiện phù hợp với bộ lọc hiện tại.</p></section>`;
+      app.innerHTML=`<section class="event-detail-hero"><div class="event-detail-copy"><a class="back-link" href="/su-kien">← Tất cả sự kiện</a><span class="hero-eyebrow">${esc(selected.unit_code||'SKY FIRST')}</span><h1>${esc(selected.title)}</h1><p>${esc(summary||'Thông tin chi tiết sự kiện được đồng bộ từ hệ thống quản trị.')}</p><div class="event-detail-meta"><span>◷ ${esc(selected.start_at?fmt(selected.start_at):'Thời gian đang cập nhật')}</span><span class="program-status ${activeLike(selected.status)?'is-active':''}"><i></i>${esc(publicStatusLabel(selected.status))}</span></div><div class="actions"><a class="portal-button" href="#form/event">Đăng ký tham gia <span>→</span></a><a class="secondary" href="mailto:lienhe@skyfirst.io.vn?subject=${encodeURIComponent('Hỏi về sự kiện: '+selected.title)}">Liên hệ ban tổ chức</a></div></div>${sceneArt('events')}</section><section class="program-detail-content"><div class="program-detail-main"><span class="section-kicker">THÔNG TIN SỰ KIỆN</span><h2>${esc(selected.title)}</h2><p>${esc(summary||'Vui lòng liên hệ Hệ thống Thông tin Số Sky First để được hướng dẫn thêm.')}</p></div><aside class="program-detail-facts"><h3>Thông tin tổng quan</h3><div><span>Đơn vị</span><b>${esc(selected.unit_code||'SKY FIRST')}</b></div><div><span>Bắt đầu</span><b>${esc(selected.start_at?fmt(selected.start_at):'Chưa cập nhật')}</b></div><div><span>Kết thúc</span><b>${esc(selected.end_at?fmt(selected.end_at):'Chưa cập nhật')}</b></div><div><span>Trạng thái</span><b>${esc(publicStatusLabel(selected.status))}</b></div></aside></section>`;return;}
+    setMeta('Sự kiện & Hoạt động','Lịch sự kiện và hoạt động thực tế trên Hệ thống Thông tin Số Sky First.');
+    app.innerHTML=`<section class="catalog-hero catalog-hero-events"><div class="catalog-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>SỰ KIỆN <strong>& HOẠT ĐỘNG</strong></h1><p>Theo dõi lịch sự kiện, thời gian tổ chức và trạng thái đăng ký thực tế. Không tạo sự kiện mẫu giả lập.</p><div class="catalog-search"><span>⌕</span><input id="eventSearch" type="search" placeholder="Tìm sự kiện, hoạt động..." aria-label="Tìm sự kiện"><button type="button" id="eventSearchBtn">Tìm kiếm <span>→</span></button></div><div class="catalog-filter-row" role="group" aria-label="Lọc sự kiện"><button class="is-active" type="button" data-event-filter="all">▦ Tất cả</button><button type="button" data-event-filter="upcoming">▣ Sắp diễn ra</button><button type="button" data-event-filter="ongoing">◉ Đang diễn ra</button><button type="button" data-event-filter="past">◷ Đã kết thúc</button></div></div>${sceneArt('events')}</section><section class="event-catalog-section"><div class="catalog-section-head"><div><span class="section-kicker">LỊCH SỰ KIỆN</span><h2>Danh sách sự kiện công khai</h2><p>Trạng thái và thời gian sự kiện được hiển thị theo múi giờ Việt Nam (UTC+7).</p></div><span class="catalog-live-note"><i></i>Dữ liệu thực tế</span></div><div id="eventCatalogGrid" class="event-catalog-grid">${items.length?items.map(x=>{const data=jsonObject(x.data_json),status=publicStatusLabel(x.status);return `<a class="event-card" data-status="${esc(eventType(x))}" data-search="${esc([x.title,x.unit_code,status,firstText(data,['description','summary'])].join(' '))}" href="${esc(eventHref(x))}"><div class="event-card-visual">${sceneArt('events')}<span class="event-card-date">${esc(x.start_at?new Date(parseCttTime(x.start_at)).toLocaleDateString('vi-VN',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Ho_Chi_Minh'}):'Đang cập nhật')}</span></div><div class="event-card-body"><span class="program-unit">${esc(x.unit_code||'SKY FIRST')}</span><h3>${esc(x.title)}</h3><span class="program-status ${activeLike(x.status)?'is-active':''}"><i></i>${esc(status)}</span><span class="event-card-link">Xem chi tiết <b>→</b></span></div></a>`}).join(''):`<div class="event-empty">${sceneArt('events')}<div><h2>Chưa có sự kiện công khai</h2><p>Hiện tại chưa có sự kiện nào đang mở công khai trên hệ thống. Khi có sự kiện mới được công bố, thông tin sẽ hiển thị tại đây.</p><a class="portal-button" href="/chuong-trinh">Xem các chương trình đang mở <span>→</span></a></div></div>`}</div><p class="catalog-no-results" id="eventNoResults" hidden>Không có sự kiện phù hợp với bộ lọc hiện tại.</p></section>`;
     const search=document.getElementById('eventSearch'),grid=document.getElementById('eventCatalogGrid'),noResults=document.getElementById('eventNoResults');let filter='all';const apply=()=>{const q=(search?.value||'').trim().toLocaleLowerCase('vi');let count=0;grid?.querySelectorAll('.event-card').forEach(card=>{const yes=(!q||(card.dataset.search||'').toLocaleLowerCase('vi').includes(q))&&(filter==='all'||card.dataset.status===filter);card.hidden=!yes;if(yes)count++});if(noResults)noResults.hidden=count>0||!items.length};search?.addEventListener('input',apply);document.getElementById('eventSearchBtn')?.addEventListener('click',apply);document.querySelectorAll('[data-event-filter]').forEach(btn=>btn.addEventListener('click',()=>{filter=btn.dataset.eventFilter;document.querySelectorAll('[data-event-filter]').forEach(b=>b.classList.toggle('is-active',b===btn));apply()}));return;
   }
   if(kind==='news'){
     const d=await api('/api/public/news'),items=d.items||[];const selected=detailId?items.find(x=>String(x.slug||x.id)===String(detailId)||String(x.id)===String(detailId)):null;
-    if(detailId){if(!selected){setMeta('Không tìm thấy tin tức','Tin tức không tồn tại hoặc không còn công khai.');app.innerHTML=`<section class="detail-missing"><div>${sceneArt('news')}</div><span class="section-kicker">TIN TỨC SKY FIRST</span><h1>Không tìm thấy bài viết</h1><p>Bài viết này có thể đã được gỡ khỏi danh sách công khai hoặc đường dẫn không còn hợp lệ.</p><a class="portal-button" href="#news">Quay lại tin tức →</a></section>`;return;}
+    if(detailId){if(!selected){setMeta('Không tìm thấy bài viết','Tin tức không tồn tại hoặc không còn công khai.');app.innerHTML=`<section class="detail-missing"><div>${sceneArt('news')}</div><span class="section-kicker">THÔNG BÁO SKY FIRST</span><h1>Không tìm thấy bài viết</h1><p>Bài viết này có thể đã được gỡ khỏi danh sách công khai hoặc đường dẫn không còn hợp lệ.</p><a class="portal-button" href="#news">Quay lại danh sách tin tức →</a></section>`;return;}
       setMeta(selected.title,String(selected.body||'').replace(/<[^>]*>/g,' ').slice(0,150));const tags=(()=>{try{return JSON.parse(selected.tags_json||'[]')}catch{return []}})();
-      app.innerHTML=`<article class="news-detail-page"><div class="news-detail-head"><a class="back-link" href="#news">← Tất cả tin tức</a><span class="hero-eyebrow">TIN TỨC & THÔNG BÁO</span><h1>${esc(selected.title)}</h1><div class="news-detail-meta"><span>${esc(selected.published_at?fmt(selected.published_at):'Ngày đăng đang cập nhật')}</span>${tags.map(t=>`<span>${esc(t)}</span>`).join('')}</div></div><div class="news-detail-cover">${sceneArt('news')}${selected.cover_file_id?`<img src="/media/${encodeURIComponent(selected.cover_file_id)}" alt="Ảnh đại diện: ${esc(selected.title)}" loading="lazy">`:`<em class="cover-default-note">MINH HỌA MẶC ĐỊNH · CHƯA CÓ ẢNH ĐẠI DIỆN</em>`}</div><div class="news-detail-body">${esc(String(selected.body||'').replace(/<[^>]*>/g,' ').trim()||'Nội dung bài viết đang được cập nhật.').replace(/\n/g,'<br>')}</div><div class="news-detail-foot"><span>Nội dung được công bố trên Cổng Thông tin Số Sky First.</span><a href="mailto:ctt@skyfirst.io.vn?subject=${encodeURIComponent('Trao đổi về tin: '+selected.title)}">Liên hệ <span>→</span></a></div></article>`;bindBrokenCoverImages(app,'.news-detail-cover','ẢNH ĐẠI DIỆN KHÔNG TẢI ĐƯỢC · MINH HỌA MẶC ĐỊNH');return;}
-    setMeta('Tin tức Sky First','Tin tức và thông báo được công bố trên Cổng Thông tin Số Sky First.');
-    app.innerHTML=`<section class="catalog-hero catalog-hero-news"><div class="catalog-hero-copy"><span class="hero-eyebrow">TIN TỨC & THÔNG BÁO</span><h1>TIN TỨC <strong>SKY FIRST</strong></h1><p>Thông tin mới được công bố trên Cổng Thông tin Số.</p><div class="catalog-search"><span>⌕</span><input id="newsSearch" type="search" placeholder="Tìm tin tức, thông báo..." aria-label="Tìm tin tức"><button type="button" id="newsSearchBtn">Tìm kiếm <span>→</span></button></div></div>${sceneArt('news')}</section><section class="catalog-section news-catalog-section"><div class="catalog-section-head"><div><span class="section-kicker">CẬP NHẬT MỚI NHẤT</span><h2>Theo dõi những cập nhật từ Sky First</h2><p>Tin tức và thông báo chỉ hiển thị khi được xuất bản từ hệ thống quản trị.</p></div></div><div class="news-catalog-grid" id="newsCatalogGrid">${items.length?items.map((x,i)=>`<a class="news-catalog-card ${i===0?'is-featured':''}" data-search="${esc([x.title,String(x.body||'').replace(/<[^>]*>/g,' '),x.tags_json].join(' '))}" href="${esc(storyHref(x))}"><div class="news-catalog-cover">${sceneArt('news')}${x.cover_file_id?`<img src="/media/${encodeURIComponent(x.cover_file_id)}" alt="Ảnh đại diện: ${esc(x.title)}" loading="lazy">`:''}${x.cover_file_id?'':`<em class="cover-default-note">MINH HỌA MẶC ĐỊNH · CHƯA CÓ ẢNH ĐẠI DIỆN</em>`}<span>${i===0?'TIN NỔI BẬT':'TIN TỨC'}</span></div><div class="news-catalog-copy"><small>${esc(x.published_at?fmt(x.published_at):'Ngày đăng đang cập nhật')}</small><h3>${esc(x.title)}</h3><p>${esc(String(x.body||'').replace(/<[^>]*>/g,' ').slice(0,200))}</p><b>Đọc tin <span>→</span></b></div></a>`).join(''):`<div class="catalog-empty">${sceneArt('news')}<div><h3>Chưa có tin tức công khai</h3><p>Các thông báo mới sẽ xuất hiện tại đây khi được xuất bản.</p></div></div>`}</div><p class="catalog-no-results" id="newsNoResults" hidden>Không tìm thấy tin tức phù hợp.</p></section>`;
+      app.innerHTML=`<article class="news-detail-page"><div class="news-detail-head"><a class="back-link" href="#news">← Tất cả tin tức</a><span class="hero-eyebrow">TIN TỨC & THÔNG BÁO</span><h1>${esc(selected.title)}</h1><div class="news-detail-meta"><span>${esc(selected.published_at?fmt(selected.published_at):'Ngày đăng đang cập nhật')}</span>${tags.map(t=>`<span>${esc(t)}</span>`).join('')}</div></div><div class="news-detail-cover">${sceneArt('news')}${selected.cover_file_id?`<img src="/media/${encodeURIComponent(selected.cover_file_id)}" alt="Ảnh đại diện: ${esc(selected.title)}" loading="lazy">`:`<em class="cover-default-note">MINH HỌA MẶC ĐỊNH · CHƯA CÓ ẢNH ĐẠI DIỆN</em>`}</div><div class="news-detail-body">${esc(String(selected.body||'').replace(/<[^>]*>/g,' ').trim()||'Nội dung bài viết đang được cập nhật.').replace(/\n/g,'<br>')}</div><div class="news-detail-foot"><span>Nội dung được công bố trên Hệ thống Thông tin Số Sky First.</span><a href="mailto:lienhe@skyfirst.io.vn?subject=${encodeURIComponent('Trao đổi về tin: '+selected.title)}">Liên hệ <span>→</span></a></div></article>`;bindBrokenCoverImages(app,'.news-detail-cover','ẢNH ĐẠI DIỆN KHÔNG TẢI ĐƯỢC · MINH HỌA MẶC ĐỊNH');return;}
+    setMeta('Tin tức & Thông báo','Tin tức và thông báo vận hành trên Hệ thống Thông tin Số Sky First.');
+    app.innerHTML=`<section class="catalog-hero catalog-hero-news"><div class="catalog-hero-copy"><span class="hero-eyebrow">TIN TỨC & THÔNG BÁO</span><h1>THÔNG BÁO <strong>HỆ THỐNG</strong></h1><p>Các thông báo và tin tức hoạt động chính thức.</p><div class="catalog-search"><span>⌕</span><input id="newsSearch" type="search" placeholder="Tìm tin tức, thông báo..." aria-label="Tìm tin tức"><button type="button" id="newsSearchBtn">Tìm kiếm <span>→</span></button></div></div>${sceneArt('news')}</section><section class="catalog-section news-catalog-section"><div class="news-catalog-grid" id="newsCatalogGrid">${items.length?items.map((x,i)=>`<a class="news-catalog-card ${i===0?'is-featured':''}" data-search="${esc([x.title,String(x.body||'').replace(/<[^>]*>/g,' '),x.tags_json].join(' '))}" href="${esc(storyHref(x))}"><div class="news-catalog-cover">${sceneArt('news')}${x.cover_file_id?`<img src="/media/${encodeURIComponent(x.cover_file_id)}" alt="Ảnh đại diện: ${esc(x.title)}" loading="lazy">`:''}${x.cover_file_id?'':`<em class="cover-default-note">MINH HỌA MẶC ĐỊNH · CHƯA CÓ ẢNH ĐẠI DIỆN</em>`}<span>${i===0?'TIN NỔI BẬT':'THÔNG BÁO'}</span></div><div class="news-catalog-copy"><small>${esc(x.published_at?fmt(x.published_at):'Ngày đăng đang cập nhật')}</small><h3>${esc(x.title)}</h3><p>${esc(String(x.body||'').replace(/<[^>]*>/g,' ').slice(0,200))}</p><b>Đọc chi tiết <span>→</span></b></div></a>`).join(''):`<div class="catalog-empty">${sceneArt('news')}<div><h3>Chưa có tin tức công khai</h3><p>Các thông báo mới sẽ xuất hiện tại đây khi được xuất bản.</p></div></div>`}</div><p class="catalog-no-results" id="newsNoResults" hidden>Không tìm thấy bài viết phù hợp.</p></section>`;
     const search=document.getElementById('newsSearch'),grid=document.getElementById('newsCatalogGrid'),noResults=document.getElementById('newsNoResults');const apply=()=>{const q=(search?.value||'').trim().toLocaleLowerCase('vi');let count=0;grid?.querySelectorAll('.news-catalog-card').forEach(card=>{const yes=!q||(card.dataset.search||'').toLocaleLowerCase('vi').includes(q);card.hidden=!yes;if(yes)count++});if(noResults)noResults.hidden=count>0||!items.length};search?.addEventListener('input',apply);document.getElementById('newsSearchBtn')?.addEventListener('click',apply);bindBrokenCoverImages(app,'.news-catalog-cover','ẢNH ĐẠI DIỆN KHÔNG TẢI ĐƯỢC · MINH HỌA MẶC ĐỊNH');return;
   }
   if(kind==='resources'){
-    const d=await api('/api/public/resources'),items=d.items||[];setMeta('Tài nguyên số','Tài liệu và tài nguyên công khai của Sky First.');
-    app.innerHTML=`<section class="catalog-hero catalog-hero-utility"><div class="catalog-hero-copy"><span class="hero-eyebrow">▦ TIỆN ÍCH SỐ</span><h1>Một nơi cho <strong>các tiện ích số</strong></h1><p>Thực hiện những tác vụ thường dùng mà không phải đi qua nhiều hệ thống.</p></div>${sceneArt('utility')}</section><section class="catalog-section utility-catalog"><div class="catalog-section-head"><div><span class="section-kicker">TRUY CẬP NHANH</span><h2>Chọn tiện ích cần dùng</h2></div></div><div class="utility-service-grid"><a href="/gcn"><span class="service-icon service-blue">▤</span><span><b>Tra cứu giấy đã phát hành</b><small>Kiểm tra Giấy chứng nhận, Giấy xác nhận và Bằng khen.</small></span><strong>→</strong></a><a href="/ho-so"><span class="service-icon service-violet">▱</span><span><b>Theo dõi hồ sơ</b><small>Xem tiến trình xử lý và việc cần thực hiện tiếp theo.</small></span><strong>→</strong></a><a href="/bieu-mau"><span class="service-icon service-amber">▧</span><span><b>Biểu mẫu trực tuyến</b><small>Gửi thông tin và tài liệu trực tuyến.</small></span><strong>→</strong></a><button type="button" id="utilitySearchPage"><span class="service-icon service-mint">⌕</span><span><b>Tìm kiếm toàn Cổng</b><small>Tìm nhanh thông tin từ nhiều khu vực.</small></span><strong>→</strong></button></div>${items.length?`<div class="resource-list utility-resource-list"><h2>Tài nguyên công khai</h2>${items.map(x=>`<article><i>${icon('resource')}</i><div><span>${esc(x.doc_type||'TÀI LIỆU')}</span><h3>${esc(x.title)}</h3></div>${x.file_id?`<a href="/api/files/${encodeURIComponent(x.file_id)}">Mở tài liệu →</a>`:''}</article>`).join('')}</div>`:`<div class="utility-public-note">Tài nguyên và tài liệu công khai sẽ xuất hiện tại đây khi được xuất bản từ hệ thống quản trị.</div>`}</section>`;
-    document.getElementById('utilitySearchPage')?.addEventListener('click',()=>openSearch(''));return;
+    updateActiveNav('resources');
+    const d=await api('/api/public/resources'),items=d.items||[];
+    setMeta('Thư viện Tài liệu & PDF','Thư viện tài liệu số, văn bản, hướng dẫn có phân loại, xem trước PDF trực tiếp và kiểm soát tải xuống.');
+    const categories=[...new Set(items.map(x=>x.category||x.doc_type||'Tài liệu'))];
+    const previewDocId=new URLSearchParams(location.search).get('preview')||detailId||'';
+    const previewDoc=previewDocId?items.find(x=>String(x.id)===String(previewDocId)||String(x.code)===String(previewDocId)):null;
+    app.innerHTML=`<section class="catalog-hero catalog-hero-utility"><div class="catalog-hero-copy"><span class="hero-eyebrow">THƯ VIỆN PDF & TÀI LIỆU SỐ</span><h1>TÀI LIỆU <strong>& HƯỚNG DẪN</strong></h1><p>Tra cứu, xem trước trực tiếp tệp PDF và tải xuống các tài liệu, quy chế, hướng dẫn được phép công bố trên Hệ thống Thông tin Số Sky First.</p><div class="catalog-search"><span>⌕</span><input id="docSearch" type="search" placeholder="Tìm theo tên tài liệu, mã văn bản, từ khóa..." aria-label="Tìm tài liệu"><button type="button" id="docSearchBtn">Tìm kiếm <span>→</span></button></div><div class="catalog-filter-row" id="docCategoryFilters"><button class="is-active" type="button" data-doc-cat="all">Tất cả danh mục</button>${categories.map(c=>`<button type="button" data-doc-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div></div>${sceneArt('utility')}</section>
+    <section class="catalog-section utility-catalog">
+      ${previewDoc&&previewDoc.preview_url?`<div class="card pdf-preview-panel" style="margin-bottom:28px;"><div class="toolbar"><div style="margin-right:auto"><span class="pill">${esc(previewDoc.code)} · Phiên bản v${esc(previewDoc.current_version||1)}</span><h2 style="margin:6px 0 0">${esc(previewDoc.title)}</h2></div>${previewDoc.download_url?`<a class="portal-button" href="${esc(previewDoc.download_url)}">Tải xuống PDF →</a>`:''}<a class="secondary" href="/tai-lieu">Đóng xem trước</a></div><iframe src="${esc(previewDoc.preview_url)}" title="Xem trước PDF: ${esc(previewDoc.title)}" style="width:100%;height:620px;border:1px solid var(--dip-line);border-radius:14px;margin-top:14px;"></iframe></div>`:''}
+      <div class="catalog-section-head"><div><span class="section-kicker">THƯ VIỆN TÀI LIỆU CÔNG KHAI</span><h2>Danh mục tài liệu & văn bản</h2><p>Chỉ hiển thị các tài liệu có trạng thái công khai và còn hiệu lực.</p></div></div>
+      ${items.length?`<div class="resource-list utility-resource-list" id="docCatalogList">${items.map(x=>`<article class="doc-item-row" data-cat="${esc(x.category||x.doc_type||'Tài liệu')}" data-search="${esc([x.title,x.code,x.doc_type,x.category,x.description,x.keywords].join(' '))}"><i>${icon('resource')}</i><div><span>${esc(x.code)} · ${esc(x.category||x.doc_type||'TÀI LIỆU')} · Phiên bản v${esc(x.current_version||1)}</span><h3>${esc(x.title)}</h3>${x.description?`<p class="small muted">${esc(x.description)}</p>`:''}<small>Cập nhật: ${esc(x.issued_at?fmt(x.issued_at):fmt(x.updated_at))}</small></div><div class="actions">${x.preview_url?`<a class="secondary" href="/tai-lieu?preview=${encodeURIComponent(x.id)}">Xem trước PDF</a>`:''}${x.download_url?`<a class="portal-button" href="${esc(x.download_url)}">Tải xuống →</a>`:`<span class="small muted">Chỉ xem trực tuyến</span>`}</div></article>`).join('')}</div><p class="catalog-no-results" id="docNoResults" hidden>Không tìm thấy tài liệu phù hợp với điều kiện lọc.</p>`:`<div class="utility-public-note">Hiện chưa có tài liệu công khai được xuất bản trong thư viện. Khi quản trị viên tải lên và công bố tài liệu PDF, danh sách sẽ hiển thị tại đây.</div>`}
+    </section>`;
+    const search=document.getElementById('docSearch'),list=document.getElementById('docCatalogList'),noRes=document.getElementById('docNoResults');let activeCat='all';
+    const apply=()=>{const q=(search?.value||'').trim().toLocaleLowerCase('vi');let count=0;list?.querySelectorAll('.doc-item-row').forEach(row=>{const yes=(!q||(row.dataset.search||'').toLocaleLowerCase('vi').includes(q))&&(activeCat==='all'||row.dataset.cat===activeCat);row.hidden=!yes;if(yes)count++});if(noRes)noRes.hidden=count>0||!items.length};
+    search?.addEventListener('input',apply);document.getElementById('docSearchBtn')?.addEventListener('click',apply);
+    document.querySelectorAll('[data-doc-cat]').forEach(btn=>btn.addEventListener('click',()=>{activeCat=btn.dataset.docCat;document.querySelectorAll('[data-doc-cat]').forEach(b=>b.classList.toggle('is-active',b===btn));apply()}));
+    return;
   }
 }
+
 function bindBrokenCoverImages(root,selector,label){
   root.querySelectorAll(`${selector} img`).forEach(img=>img.addEventListener('error',()=>{
     const container=img.parentElement;img.remove();if(!container||container.querySelector('.cover-default-note'))return;
@@ -199,22 +763,85 @@ function openSearch(seed=''){const el=document.getElementById('searchCenter');if
 function closeSearch(){const el=document.getElementById('searchCenter');if(!el)return;el.hidden=true;el.setAttribute('aria-hidden','true');document.body.classList.remove('searching');searchReturnFocus?.focus?.();searchReturnFocus=null}
 function recent(){try{return JSON.parse(localStorage.getItem('sfn_recent_searches')||'[]')}catch{return[]}}
 function saveRecent(q){const a=[q,...recent().filter(x=>x!==q)].slice(0,6);localStorage.setItem('sfn_recent_searches',JSON.stringify(a))}
-function renderRecent(){const el=document.getElementById('recentSearches'),a=recent(),suggestions=['Biểu mẫu','Chương trình','Sự kiện','Giấy chứng nhận'];if(!el)return;el.innerHTML=`${a.length?`<span>Tìm gần đây</span><div>${a.map(q=>`<button type="button" data-recent="${esc(q)}">${esc(q)}</button>`).join('')}</div>`:''}<span>Gợi ý</span><div>${suggestions.map(q=>`<button type="button" data-recent="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;el.querySelectorAll('[data-recent]').forEach(b=>b.onclick=()=>{const q=b.dataset.recent;document.getElementById('globalSearch').value=q;doSearch(q)})}
-function resultHref(x){if(x.type==='credential')return `/gcn/${encodeURIComponent(x.ref)}`;if(x.type==='form')return `/#form/${encodeURIComponent(x.ref)}`;if(x.type==='event')return `/#events/${encodeURIComponent(x.ref)}`;if(x.type==='program')return `/#programs/${encodeURIComponent(x.ref)}`;if(x.type==='unit')return '/#ecosystem';if(x.type==='resource')return '/#utilities';if(x.type==='news')return `/#news/${encodeURIComponent(x.ref)}`;if(x.type==='page')return x.ref||'/';return '/#news'}
+function renderRecent(){const el=document.getElementById('recentSearches'),a=recent(),suggestions=['Chương trình','Sự kiện','Tài liệu','Biểu mẫu','Chứng nhận','Tài trợ','An toàn'];if(!el)return;el.innerHTML=`${a.length?`<span>Tìm gần đây</span><div>${a.map(q=>`<button type="button" data-recent="${esc(q)}">${esc(q)}</button>`).join('')}</div>`:''}<span>Gợi ý tra cứu</span><div>${suggestions.map(q=>`<button type="button" data-recent="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;el.querySelectorAll('[data-recent]').forEach(b=>b.onclick=()=>{const q=b.dataset.recent;document.getElementById('globalSearch').value=q;doSearch(q)})}
+function resultHref(x){if(x.type==='credential')return `/gcn/${encodeURIComponent(x.ref)}`;if(x.type==='form')return `/#form/${encodeURIComponent(x.ref)}`;if(x.type==='event')return `/su-kien/${encodeURIComponent(x.ref)}`;if(x.type==='program')return `/chuong-trinh/${encodeURIComponent(x.ref)}`;if(x.type==='unit')return '/#units';if(x.type==='resource')return `/tai-lieu?preview=${encodeURIComponent(x.ref)}`;if(x.type==='sponsorship')return `/tai-tro/${encodeURIComponent(x.ref)}`;if(x.type==='cms_page')return `/trang/${encodeURIComponent(x.ref)}`;if(x.type==='news')return `/#news/${encodeURIComponent(x.ref)}`;if(x.type==='page')return x.ref||'/';return '/'}
 function highlight(value){const text=String(value??''),q=searchState.query.trim();if(!q)return esc(text);const parts=text.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`,'ig'));return parts.map(p=>p.toLowerCase()===q.toLowerCase()?`<mark>${esc(p)}</mark>`:esc(p)).join('')}
-function renderSearch(){const out=document.getElementById('globalResults'),filters=document.getElementById('searchFilters');if(!out||!filters)return;const cats=[...new Set(searchState.items.map(x=>x.type))];filters.innerHTML=searchState.items.length?['all',...cats].map(c=>`<button type="button" class="${searchState.filter===c?'active':''}" data-filter="${c}">${c==='all'?'Tất cả':c}</button>`).join(''):'';filters.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{searchState.filter=b.dataset.filter;searchState.index=-1;renderSearch()});const items=searchState.items.filter(x=>searchState.filter==='all'||x.type===searchState.filter);out.innerHTML=items.length?`<div class="search-count">${items.length} kết quả</div>${items.map((x,i)=>`<a class="search-result ${i===searchState.index?'active':''}" data-result-index="${i}" href="${resultHref(x)}"><i>${icon(x.type)}</i><span><small>${esc(x.type)}</small><b>${highlight(x.title)}</b><em>${highlight(x.description||'')}</em></span><strong>→</strong></a>`).join('')}`:`<div class="search-zero"><i>⌕</i><h3>Không có kết quả phù hợp</h3><p>Thử từ khóa ngắn hơn, tên chương trình, đơn vị, tài liệu hoặc mã trên giấy chính xác.</p></div>`}
-async function doSearch(q){q=String(q||'').trim();searchState.query=q;if(q.length<2){searchState.items=[];renderSearch();return}const out=document.getElementById('globalResults');if(out)out.innerHTML='<div class="loading">Đang tìm trong Sky First…</div>';try{const d=await api(`/api/public/search?q=${encodeURIComponent(q)}`);searchState.items=d.items||[];searchState.filter='all';searchState.index=-1;saveRecent(q);renderRecent();renderSearch();event(searchState.items.length?'search_success':'search_zero_result',{category:'search',count:searchState.items.length})}catch(e){if(out)out.innerHTML=failCard(e.message)}}
+const SEARCH_TYPE_LABELS={all:'Tất cả',page:'Chức năng',program:'Chương trình',event:'Sự kiện',resource:'Tài liệu',form:'Biểu mẫu',credential:'Chứng nhận',sponsorship:'Tài trợ',cms_page:'Trang thông tin',news:'Thông báo',unit:'Đơn vị'};
+function renderSearch(){const out=document.getElementById('globalResults'),filters=document.getElementById('searchFilters');if(!out||!filters)return;const cats=[...new Set(searchState.items.map(x=>x.type))];filters.innerHTML=searchState.items.length?['all',...cats].map(c=>`<button type="button" class="${searchState.filter===c?'active':''}" data-filter="${c}">${esc(SEARCH_TYPE_LABELS[c]||c)}</button>`).join(''):'';filters.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{searchState.filter=b.dataset.filter;searchState.index=-1;renderSearch()});const items=searchState.items.filter(x=>searchState.filter==='all'||x.type===searchState.filter);out.innerHTML=items.length?`<div class="search-count">${items.length} kết quả phù hợp</div>${items.map((x,i)=>`<a class="search-result ${i===searchState.index?'active':''}" data-result-index="${i}" href="${resultHref(x)}"><i>${icon(x.type)}</i><span><small>${esc(SEARCH_TYPE_LABELS[x.type]||x.type)}</small><b>${highlight(x.title)}</b><em>${highlight(x.description||'')}</em></span><strong>→</strong></a>`).join('')}`:`<div class="search-zero"><i>⌕</i><h3>Không tìm thấy kết quả phù hợp</h3><p>Hãy thử từ khóa ngắn hơn, tên chương trình, sự kiện, tài liệu hoặc mã chứng nhận chính xác.</p></div>`}
+async function doSearch(q){q=String(q||'').trim();searchState.query=q;if(q.length<2){searchState.items=[];renderSearch();return}const out=document.getElementById('globalResults');if(out)out.innerHTML='<div class="loading">Đang tìm kiếm trên Hệ thống Thông tin Số Sky First…</div>';try{const d=await api(`/api/public/search?q=${encodeURIComponent(q)}`);searchState.items=d.items||[];searchState.filter='all';searchState.index=-1;saveRecent(q);renderRecent();renderSearch();event(searchState.items.length?'search_success':'search_zero_result',{category:'search',count:searchState.items.length})}catch(e){if(out)out.innerHTML=failCard(e.message)}}
+
 function initShell(){
-  document.querySelectorAll('.mega-trigger').forEach(btn=>btn.addEventListener('click',e=>{const item=e.currentTarget.closest('.mega-item'),open=item.classList.toggle('open');document.querySelectorAll('.mega-item').forEach(x=>{if(x!==item)x.classList.remove('open')});e.currentTarget.setAttribute('aria-expanded',String(open))}));
-  document.addEventListener('click',e=>{if(!e.target.closest('.mega-item'))document.querySelectorAll('.mega-item').forEach(x=>x.classList.remove('open'))});
-  const mt=document.getElementById('menuToggle'),nav=document.getElementById('mainNav');if(mt&&nav)mt.onclick=()=>{const open=nav.classList.toggle('mobile-open');mt.setAttribute('aria-expanded',String(open))};
-  document.getElementById('searchOpen')?.addEventListener('click',()=>openSearch(''));document.getElementById('searchClose')?.addEventListener('click',closeSearch);
-  const input=document.getElementById('globalSearch');if(input)input.addEventListener('input',e=>{clearTimeout(searchState.timer);searchState.timer=setTimeout(()=>doSearch(e.target.value),180)});
-  document.addEventListener('keydown',e=>{if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){e.preventDefault();openSearch('')}if(e.key==='Escape'&&!document.getElementById('searchCenter')?.hidden)closeSearch();if(!document.getElementById('searchCenter')?.hidden&&(e.key==='ArrowDown'||e.key==='ArrowUp')){e.preventDefault();const items=[...document.querySelectorAll('.search-result')];if(!items.length)return;searchState.index=Math.max(0,Math.min(items.length-1,searchState.index+(e.key==='ArrowDown'?1:-1)));items.forEach((x,i)=>x.classList.toggle('active',i===searchState.index));items[searchState.index]?.scrollIntoView({block:'nearest'})}if(!document.getElementById('searchCenter')?.hidden&&e.key==='Enter'&&searchState.index>=0){const items=[...document.querySelectorAll('.search-result')];items[searchState.index]?.click()}if(!document.getElementById('searchCenter')?.hidden&&e.key==='Tab'){const box=document.getElementById('searchCenter'),focusable=[...box.querySelectorAll('button:not([disabled]),a[href],input:not([disabled])')].filter(x=>!x.hidden&&x.offsetParent!==null);if(focusable.length){const first=focusable[0],last=focusable[focusable.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}}});
+  const mt=document.getElementById('menuToggle'),nav=document.getElementById('mainNav');
+  if(mt&&nav)mt.onclick=()=>{const open=nav.classList.toggle('mobile-open');mt.setAttribute('aria-expanded',String(open))};
+  document.querySelectorAll('.lang-btn').forEach(btn=>btn.addEventListener('click',()=>{
+    applyLanguage(btn.dataset.lang);
+    const appEl=document.getElementById('app');
+    if(appEl && !document.body.classList.contains('admin-mode')){
+      const rawHash=(location.hash||'').slice(1);
+      const [route,param]=rawHash.split('/');
+      render({app:appEl,path:location.pathname.replace(/\/+$/,'/')||'/',route:route||'',param:param?decodeURIComponent(param):''});
+    }
+  }));
+  applyLanguage(getLang());
+  document.getElementById('searchOpen')?.addEventListener('click',()=>openSearch(''));
+  document.getElementById('searchClose')?.addEventListener('click',closeSearch);
+  const input=document.getElementById('globalSearch');
+  if(input)input.addEventListener('input',e=>{clearTimeout(searchState.timer);searchState.timer=setTimeout(()=>doSearch(e.target.value),180)});
+  document.addEventListener('keydown',e=>{
+    if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){e.preventDefault();openSearch('')}
+    if(e.key==='Escape'&&!document.getElementById('searchCenter')?.hidden)closeSearch();
+    if(!document.getElementById('searchCenter')?.hidden&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
+      e.preventDefault();const items=[...document.querySelectorAll('.search-result')];if(!items.length)return;
+      searchState.index=Math.max(0,Math.min(items.length-1,searchState.index+(e.key==='ArrowDown'?1:-1)));
+      items.forEach((x,i)=>x.classList.toggle('active',i===searchState.index));
+      items[searchState.index]?.scrollIntoView({block:'nearest'});
+    }
+    if(!document.getElementById('searchCenter')?.hidden&&e.key==='Enter'&&searchState.index>=0){
+      const items=[...document.querySelectorAll('.search-result')];items[searchState.index]?.click();
+    }
+  });
 }
 
-function canRender(path,route){return ['/','/tra-cuu','/gcn','/ho-so','/bieu-mau'].includes(path)||path.startsWith('/gcn/')||['home','forms','lookup','classes','events','units','news','programs','activities','resources','utilities','about','fields','ecosystem','connect','privacy','terms'].includes(route)}
-async function render(ctx){document.body.classList.add('public-digital');document.body.classList.remove('admin-mode');const {app,path,route,param}=ctx;if(path==='/tra-cuu'||route==='lookup')return lookupCenter(app);if(path==='/gcn'||path.startsWith('/gcn/'))return credentialCenter(app,path);if(path==='/ho-so')return caseCenter(app);if(path==='/bieu-mau'||route==='forms')return formCenter(app);if(route==='classes'||route==='programs')return programsPage(app,'classes',param||'');if(route==='events'||route==='activities')return programsPage(app,'events',param||'');if(route==='units'||route==='ecosystem')return programsPage(app,'units');if(route==='news')return programsPage(app,'news',param||'');if(route==='resources'||route==='utilities')return programsPage(app,'resources');return home(app)}
+function canRender(path,route){
+  if(['/','/tra-cuu','/gcn','/ho-so','/bieu-mau','/chuong-trinh','/su-kien','/tai-lieu','/tai-tro','/an-toan','/tim-kiem'].includes(path)) return true;
+  if(['/gcn/','/chuong-trinh/','/su-kien/','/tai-lieu/','/tai-tro/','/trang/'].some(p=>path.startsWith(p))) return true;
+  return ['home','forms','lookup','classes','events','units','news','programs','activities','resources','utilities','sponsorship','safety','page','about','fields','ecosystem','connect','privacy','terms'].includes(route);
+}
 
-window.SkyFirstDigital={canRender,render,openSearch};
+async function render(ctx){
+  document.body.classList.add('public-digital');
+  document.body.classList.remove('admin-mode');
+  const {app,path,route,param}=ctx;
+  const pathSegs=path.split('/').filter(Boolean);
+  const pathDetail=pathSegs[1]?decodeURIComponent(pathSegs[1]):'';
+
+  // Hash-based subroutes take precedence when present on "/"
+  if(route==='lookup') return lookupCenter(app);
+  if(route==='forms') return formCenter(app);
+  if(route==='classes'||route==='programs') return programsPage(app,'classes',param||'');
+  if(route==='events'||route==='activities') return programsPage(app,'events',param||'');
+  if(route==='units'||route==='ecosystem') return programsPage(app,'units');
+  if(route==='news') return programsPage(app,'news',param||'');
+  if(route==='resources'||route==='utilities') return programsPage(app,'resources',param||'');
+  if(route==='sponsorship') return sponsorshipCenter(app,param||'');
+  if(route==='safety'||route==='privacy') return safetyCenter(app);
+  if(route==='page') return cmsPageCenter(app,param||'');
+
+  // Path-based routes
+  if(path==='/tra-cuu') return lookupCenter(app);
+  if(path==='/gcn'||path.startsWith('/gcn/')) return credentialCenter(app,path);
+  if(path==='/ho-so') return caseCenter(app);
+  if(path==='/bieu-mau') return formCenter(app);
+  if(path==='/chuong-trinh'||path.startsWith('/chuong-trinh/')) return programsPage(app,'classes',pathDetail||param||'');
+  if(path==='/su-kien'||path.startsWith('/su-kien/')) return programsPage(app,'events',pathDetail||param||'');
+  if(path==='/tai-lieu'||path.startsWith('/tai-lieu/')) return programsPage(app,'resources',pathDetail||param||'');
+  if(path==='/tai-tro'||path.startsWith('/tai-tro/')) return sponsorshipCenter(app,pathDetail||param||'');
+  if(path==='/an-toan') return safetyCenter(app);
+  if(path.startsWith('/trang/')) return cmsPageCenter(app,pathDetail||param||'');
+  if(path==='/tim-kiem'){await home(app);openSearch(new URLSearchParams(location.search).get('q')||'');return;}
+
+  return home(app);
+}
+
+window.SkyFirstDigital={canRender,render,openSearch,applyLanguage};
 initShell();
