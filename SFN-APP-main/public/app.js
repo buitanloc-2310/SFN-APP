@@ -115,6 +115,7 @@ function applySiteConfig(){
   const fe=document.getElementById("footerEmailText"),fel=document.getElementById("footerEmailLink");if(fe&&c.footer_email)fe.textContent=c.footer_email;if(fel&&c.footer_email)fel.href="mailto:"+c.footer_email;
   const fs=document.getElementById("footerSupportText"),fsl=document.getElementById("footerSupportLink");if(fs&&c.footer_support_email)fs.textContent=c.footer_support_email;if(fsl&&c.footer_support_email)fsl.href="mailto:"+c.footer_support_email;
   const fc=document.getElementById("footerCopyright");if(fc&&c.footer_copyright)fc.textContent=c.footer_copyright;
+  const fcit=document.getElementById("footerCitationNotice");if(fcit&&c.footer_citation_notice)fcit.textContent=c.footer_citation_notice;
   const setLink=(id,textId,url,labelId,label)=>{const a=document.getElementById(id),t=document.getElementById(textId),l=labelId&&document.getElementById(labelId);if(a&&url)a.href=url;if(t&&url)t.textContent=url.replace(/^https?:\/\//,"").replace(/\/$/,"");if(l&&label)l.textContent=label};
   setLink("portalMainLink","portalMainText",c.portal_main_url,"portalMainLabel",c.portal_main_label);
   setLink("portalTnvLink","portalTnvText",c.portal_tnv_url);setLink("portalSfecLink","portalSfecText",c.portal_sfec_url);setLink("portalSlcLink","portalSlcText",c.portal_slc_url);setLink("portalMemberLink","portalMemberText",c.portal_member_url);
@@ -618,6 +619,35 @@ function renderLogin(){
     try{const d=await api("/api/auth/login",{method:"POST",body:{email:f.get("email"),password:f.get("password"),portal:"admin"}});if(d.needs_2fa)return show2FA(d.challenge);state.user=d.user;if(accountBtn)accountBtn.textContent=state.user.full_name||state.user.email;if(d.must_change_password)return forcePasswordChange(f.get("password"));location.hash="admin/dashboard"}catch(err){toast(errorText(err),"bad")}finally{if(submit&&document.body.classList.contains('admin-mode')){submit.disabled=false;submit.removeAttribute('aria-busy');if(submit.dataset.label)submit.innerHTML=submit.dataset.label;}}
   };
 }
+window.showForgot=function(){
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">AN TOÀN TÀI KHOẢN QUẢN TRỊ</span><h2>Hỗ trợ đặt lại mật khẩu</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+  <div class="notice" style="margin-bottom:14px;">
+    <b>Quy trình bảo mật:</b> Để bảo vệ hệ thống quản trị, việc đặt lại mật khẩu được thực hiện thông qua xác minh của <b>Quản trị viên hệ thống</b> thay vì gửi liên kết tự động không kiểm soát.<br>
+    • Email hỗ trợ kỹ thuật: <a href="mailto:support@skyfirst.io.vn"><b>support@skyfirst.io.vn</b></a><br>
+    • Hotline hỗ trợ: <a href="tel:0924910210"><b>0924 910 210</b></a>
+  </div>
+  <form id="forgotPwForm">
+    <div class="field"><label for="forgotEmailInput">Email tài khoản quản trị cần hỗ trợ *</label><input id="forgotEmailInput" name="email" type="email" required placeholder="Nhập email tài khoản quản trị" autocomplete="email"></div>
+    <div class="field"><label for="forgotNoteInput">Thông tin xác minh / Ghi chú gửi Quản trị viên</label><textarea id="forgotNoteInput" name="note" rows="3" placeholder="Nêu rõ họ tên, đơn vị hoặc nội dung cần hỗ trợ..."></textarea></div>
+    <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Đóng</button><button type="submit" class="primary" id="forgotSubmitBtn">Gửi yêu cầu hỗ trợ</button></div>
+  </form>`);
+  document.getElementById("forgotPwForm").onsubmit=async e=>{
+    e.preventDefault();
+    const email=document.getElementById("forgotEmailInput").value.trim();
+    const note=document.getElementById("forgotNoteInput").value.trim();
+    const btn=document.getElementById("forgotSubmitBtn");
+    btn.disabled=true;btn.textContent="Đang gửi…";
+    try{
+      const r=await api("/api/auth/forgot",{method:"POST",body:{email,note}});
+      closeModal();
+      toast(r.message||"Đã ghi nhận yêu cầu hỗ trợ đặt lại mật khẩu. Vui lòng liên hệ Quản trị viên qua support@skyfirst.io.vn hoặc 0924 910 210.");
+    }catch(err){
+      toast(errorText(err),"bad");
+      btn.disabled=false;btn.textContent="Gửi yêu cầu hỗ trợ";
+    }
+  };
+};
+
 function show2FA(challenge){
   modal(`<h2>Xác minh 2 bước</h2><form id="twofaForm"><div class="field"><label>Mã 6 số từ ứng dụng xác thực</label><input name="code" inputmode="numeric" maxlength="6" required></div><button class="primary">Xác minh</button></form>`);
 
@@ -1038,15 +1068,67 @@ async function renderAdmin(){
 
 async function adminDashboard(main){
   const health=await api("/api/health").catch(()=>({ok:false,database:false,storage:false}));
-  let c={submissions:"—",pending:"—",people:"—",certificates:"—",approvals:"—",tickets:"—",tasks:"—"};
+  let c={submissions:0,pending:0,approved_submissions:0,rejected_submissions:0,forms:0,people:0,certificates:0,revoked_certificates:0,superseded_certificates:0,documents:0,published_documents:0,cms_pages:0,published_pages:0,approvals:0,tickets:0,tasks:0,safety_open:0};
+  let emailBreakdown={sent:0,pending:0,failed:0,provider_configured:false};
+  let recentAudit=[],warnings=[],timeSeries=[];
   let dataOk=false;
-  try{const d=await api("/api/admin/dashboard");c=d.counts||c;dataOk=true}catch(err){console.error("ADMIN_DASHBOARD_DATA",err)}
+  try{
+    const d=await api("/api/admin/dashboard");
+    c={...c,...(d.counts||{})};
+    emailBreakdown={...emailBreakdown,...(d.email_breakdown||{})};
+    recentAudit=d.recent_audit||[];
+    warnings=d.warnings||[];
+    timeSeries=d.time_series||[];
+    dataOk=true;
+  }catch(err){console.error("ADMIN_DASHBOARD_DATA",err)}
 
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">TRUNG TÂM QUẢN TRỊ</span><h1>Quản trị Sky First</h1><p class="muted">Theo dõi nhanh dữ liệu, trạng thái hệ thống và truy cập các tác vụ thường dùng.</p></div><span class="system-pill ${health.ok?"ok":"warn"}">${health.ok?"● Hệ thống đang hoạt động":"● Cần kiểm tra hệ thống"}</span></div>
-  <div class="system-status-grid"><div class="status-card"><span>Ứng dụng</span><b>${health.ok?"Hoạt động":"Gián đoạn"}</b></div><div class="status-card"><span>Cơ sở dữ liệu</span><b>${health.database?"Đã kết nối":"Không khả dụng"}</b></div><div class="status-card"><span>Lưu trữ tệp</span><b>${health.storage?"Đã kết nối":"Không khả dụng"}</b></div><div class="status-card"><span>Dữ liệu Dashboard</span><b>${dataOk?"Đọc được":"Tạm lỗi"}</b></div></div>
-  <div class="kpis"><div class="kpi"><b>${c.submissions}</b>Hồ sơ</div><div class="kpi"><b>${c.pending}</b>Cần xử lý</div><div class="kpi"><b>${c.people}</b>Nhân sự</div><div class="kpi"><b>${c.certificates}</b>GCN/GXN đã cấp</div><div class="kpi"><b>${c.approvals}</b>Chờ phê duyệt</div><div class="kpi"><b>${c.tickets}</b>Ticket mở</div><div class="kpi"><b>${c.tasks}</b>Nhiệm vụ</div></div>
-  <div class="admin-quick-grid"><button class="admin-quick" onclick="location.hash='admin/submissions'">${lineIcon("users")}<b>Xử lý hồ sơ</b><span>Tiếp nhận và cập nhật trạng thái</span></button><button class="admin-quick" onclick="location.hash='admin/certificates'">${lineIcon("badge")}<b>Phát hành giấy</b><span>Giấy chứng nhận, Giấy xác nhận và Bảng khen</span></button><button class="admin-quick" onclick="location.hash='admin/media'">${lineIcon("book")}<b>Thêm tài nguyên</b><span>Tải ảnh và tệp sử dụng trên Cổng</span></button><button class="admin-quick" onclick="location.hash='admin/maintenance'">${lineIcon("shield")}<b>Chỉnh sửa Trang chủ</b><span>Nội dung, giao diện và trạng thái công khai</span></button></div>
-  <div class="card" style="margin-top:16px"><h2>Quản trị an toàn</h2><p class="muted">Các module được tách theo chức năng. Tài nguyên hình ảnh được lưu trữ tách biệt; cấu hình công khai có giá trị mặc định an toàn; dữ liệu nghiệp vụ được bảo toàn nguyên vẹn trong cơ sở dữ liệu hệ thống.</p></div>`;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">SUPER ADMIN · HỆ THỐNG QUẢN TRỊ TẬP TRUNG</span><h1>Tổng quan Hệ thống Thông tin Số Sky First</h1><p class="muted">Số liệu thời gian thực từ cơ sở dữ liệu D1, tình trạng tài liệu, chứng nhận, email tự động và nhật ký hoạt động gần đây.</p></div><span class="system-pill ${health.ok?"ok":"warn"}">${health.ok?"● Hệ thống đang hoạt động":"● Cần kiểm tra hệ thống"}</span></div>
+  <div class="system-status-grid">
+    <div class="status-card"><span>Ứng dụng Worker</span><b>${health.ok?"Hoạt động":"Gián đoạn"}</b></div>
+    <div class="status-card"><span>Cơ sở dữ liệu D1</span><b>${health.database?"Đã kết nối":"Không khả dụng"}</b></div>
+    <div class="status-card"><span>Lưu trữ R2</span><b>${health.storage?"Đã kết nối":"Không khả dụng"}</b></div>
+    <div class="status-card"><span>Dịch vụ Email</span><b>${emailBreakdown.provider_configured?"Đã cấu hình":"Chờ cấu hình khóa"}</b></div>
+  </div>
+  ${warnings.length?`<div style="display:grid;gap:8px;margin:14px 0;">${warnings.map(w=>`<div class="notice ${w.level==='bad'?'bad':w.level==='warn'?'warn':''}"><b>Cảnh báo hệ thống (${E(w.code)}):</b> ${E(w.message)}</div>`).join("")}</div>`:""}
+  <div class="kpis">
+    <div class="kpi"><b>${E(c.submissions)}</b>Tổng số hồ sơ (${E(c.forms)} biểu mẫu)</div>
+    <div class="kpi"><b>${E(c.pending)}</b>Hồ sơ mới & đang xử lý</div>
+    <div class="kpi"><b>${E(c.approved_submissions)}</b>Hồ sơ đã duyệt / hoàn tất</div>
+    <div class="kpi"><b>${E(c.certificates)}</b>Chứng nhận có hiệu lực (${E(c.revoked_certificates)} thu hồi)</div>
+    <div class="kpi"><b>${E(c.published_documents)} / ${E(c.documents)}</b>Tài liệu PDF công bố</div>
+    <div class="kpi"><b>${E(c.published_pages)} / ${E(c.cms_pages)}</b>Trang CMS xuất bản</div>
+    <div class="kpi"><b>${E(c.approvals)}</b>Yêu cầu chờ phê duyệt</div>
+    <div class="kpi"><b>${E(c.tickets)}</b>Ticket hỗ trợ (${E(c.safety_open)} an toàn)</div>
+  </div>
+  <div class="admin-quick-grid">
+    <button class="admin-quick" onclick="location.hash='admin/submissions'">${lineIcon("users")}<b>Xử lý hồ sơ & Biểu mẫu</b><span>Tiếp nhận, phân công và phê duyệt hồ sơ</span></button>
+    <button class="admin-quick" onclick="location.hash='admin/page-builder'">${lineIcon("spark")}<b>CMS & Trình dựng trang</b><span>Quản trị nội dung động và xuất bản trang</span></button>
+    <button class="admin-quick" onclick="location.hash='admin/documents'">${lineIcon("book")}<b>Thư viện PDF & Tài liệu</b><span>Quản lý phiên bản, quyền tải và vòng đời</span></button>
+    <button class="admin-quick" onclick="location.hash='admin/certificates'">${lineIcon("badge")}<b>Chứng nhận (GCN/GXN/BK)</b><span>Đề nghị, duyệt hai bước, phát hành & thu hồi</span></button>
+  </div>
+  <div class="admin-grid2" style="margin-top:18px;">
+    <section class="card">
+      <span class="eyebrow">TRẠNG THÁI GỬI EMAIL TỰ ĐỘNG</span>
+      <h2>Thống kê Trung tâm Email (email_universal_auto.html)</h2>
+      <div class="kpis" style="margin-top:10px;">
+        <div class="kpi"><b>${E(emailBreakdown.sent)}</b>Đã gửi tới nhà cung cấp</div>
+        <div class="kpi"><b>${E(emailBreakdown.pending)}</b>Chờ cấu hình gửi (Pending)</div>
+        <div class="kpi"><b>${E(emailBreakdown.failed)}</b>Gửi thất bại</div>
+      </div>
+      <div class="actions" style="margin-top:12px;"><button type="button" class="secondary" onclick="location.hash='admin/email'">Mở Trung tâm Email tự động →</button></div>
+    </section>
+    <section class="card">
+      <span class="eyebrow">THỐNG KÊ THEO THỜI GIAN</span>
+      <h2>Lượng hồ sơ tiếp nhận theo ngày</h2>
+      ${timeSeries.length?`<div class="table-scroll" style="margin-top:10px;"><table><thead><tr><th>Ngày</th><th>Số lượng hồ sơ tiếp nhận</th></tr></thead><tbody>${timeSeries.map(t=>`<tr><td><b>${E(t.day)}</b></td><td><b>${E(t.c)}</b> hồ sơ</td></tr>`).join("")}</tbody></table></div>`:`<p class="muted" style="margin-top:10px;">Chưa có dữ liệu hồ sơ theo chuỗi thời gian. Khi có hồ sơ gửi lên hệ thống, thống kê theo ngày sẽ tự động hiển thị tại đây.</p>`}
+    </section>
+  </div>
+  <section class="card" style="margin-top:18px;">
+    <div class="toolbar"><div style="margin-right:auto"><span class="eyebrow">NHẬT KÝ HOẠT ĐỘNG GẦN ĐÂY</span><h2 style="margin:4px 0 0">Hoạt động quản trị & xác thực mới nhất</h2></div><button type="button" class="secondary" onclick="location.hash='admin/audit'">Xem toàn bộ Nhật ký kiểm toán →</button></div>
+    <div class="table-scroll"><table><thead><tr><th>Thời điểm</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th></tr></thead><tbody>
+      ${recentAudit.map(a=>`<tr><td>${fmt(a.created_at)}</td><td><b>${E(a.actor_email||"Hệ thống")}</b></td><td>${E(a.action)}</td><td><code>${E(a.entity_type||"")} ${E(a.entity_id||"")}</code></td></tr>`).join("")||`<tr><td colspan="4" class="muted">Chưa có hoạt động quản trị nào được ghi nhận.</td></tr>`}
+    </tbody></table></div>
+  </section>`;
 }
 
 
@@ -1123,9 +1205,13 @@ window.viewSubmission=async code=>{
     const r=d.item;
 
     modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>${E(r.code)}</h2><p>${E(r.full_name)} • ${E(r.email)}</p>
-    <div class="field"><label>Trạng thái</label><select id="subStatus">${["Đã tiếp nhận","Đang xem xét","Cần bổ sung","Mời phỏng vấn","Đang đánh giá","Đã duyệt","Không phù hợp","Hoàn tất"].map(s=>`<option ${s===r.status?"selected":""}>${E(s)}</option>`).join("")}</select></div>
-    <div class="field"><label>Điểm tổng hợp</label><input id="subScore" type="number" step="0.1" value="${E(r.score??"")}"></div>
-    <div class="field"><label>Ghi chú nội bộ</label><textarea id="subNote">${E(r.internal_note||"")}</textarea></div>
+    <div class="row2">
+      <div class="field"><label>Trạng thái xử lý</label><select id="subStatus">${["Đã tiếp nhận","Đang xem xét","Cần bổ sung","Mời phỏng vấn","Đang đánh giá","Đã duyệt","Không phù hợp","Hoàn tất"].map(s=>`<option ${s===r.status?"selected":""}>${E(s)}</option>`).join("")}</select></div>
+      <div class="field"><label>Điểm tổng hợp</label><input id="subScore" type="number" step="0.1" value="${E(r.score??"")}"></div>
+    </div>
+    <div class="field"><label>Lý do phê duyệt / từ chối / yêu cầu bổ sung (hiển thị trên tiến trình & email thông báo)</label><input id="subPublicNote" value="${E(r.result_summary||"")}" placeholder="Nhập tóm tắt kết quả hoặc nội dung yêu cầu bổ sung..."></div>
+    <div class="field"><label>Hướng dẫn bước tiếp theo cho người nộp</label><input id="subNextAction" value="${E(r.next_action||"")}" placeholder="VD: Bổ sung minh chứng trước ngày... / Kiểm tra email lịch hẹn"></div>
+    <div class="field"><label>Ghi chú nội bộ (chỉ quản trị viên xem, không trả về tra cứu công khai)</label><textarea id="subNote">${E(r.internal_note||"")}</textarea></div>
     <h3>Câu trả lời</h3>${Object.entries(r.answers||{}).map(([k,v])=>`<div class="card" style="margin:6px 0"><b>${E(k)}</b><br>${E(typeof v==="object"?JSON.stringify(v):v)}</div>`).join("")}
     <h3>Tệp</h3>${(d.files||[]).map(f=>`<p><a href="/api/files/${encodeURIComponent(f.id)}" target="_blank">${E(f.filename)}</a> (${Math.round((f.size||0)/1024)} KB)</p>`).join("")||"<p>Không có.</p>"}
     <div class="actions"><button class="primary" onclick="saveSubmission('${E(r.code)}')">Lưu xử lý</button><button class="secondary" onclick="scheduleInterview('${E(r.code)}')">Lịch phỏng vấn</button><button class="secondary" onclick="addEvaluation('${E(r.code)}')">Chấm đánh giá</button><button class="secondary" onclick="requestGenericApproval('submission','${E(r.code)}')">Gửi phê duyệt</button>${["member","core","volunteer"].includes(r.form_id)&&r.status==="Đã duyệt"?`<button class="secondary" onclick="convertPerson('${E(r.code)}')">Tiếp nhận thành nhân sự</button>`:""}</div>`);
@@ -1141,6 +1227,9 @@ window.saveSubmission=async code=>{
       body:{
         status:document.getElementById("subStatus").value,
         score:Number(document.getElementById("subScore").value)||null,
+        note:document.getElementById("subPublicNote")?.value||"",
+        result_summary:document.getElementById("subPublicNote")?.value||"",
+        next_action:document.getElementById("subNextAction")?.value||"",
         internal_note:document.getElementById("subNote").value
       }
     });
@@ -1356,6 +1445,18 @@ window.saveTerm=encoded=>{
     toast("Đã cập nhật điều khoản.");
     adminTerms(document.getElementById("adminMain"));
   }).catch(e=>toast(errorText(e),"bad"));
+
+window.viewEmailTemplateVersions=async key=>{
+  try{
+    const d=await api(`/api/admin/email-templates/${encodeURIComponent(key)}/versions`);
+    const items=d.items||[];
+    modal(`<div class="admin-modal-head"><div><span class="eyebrow">LỊCH SỬ PHIÊN BẢN MẪU EMAIL</span><h2>${E(key)}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+    <div class="table-scroll"><table><thead><tr><th>Phiên bản</th><th>Tiêu đề mẫu</th><th>Thời điểm lưu</th></tr></thead><tbody>
+      ${items.map(v=>`<tr><td><b>v${E(v.version)}</b></td><td>${E(v.subject_template)}</td><td>${fmt(v.created_at)}</td></tr>`).join("")||`<tr><td colspan="3" class="muted">Mẫu đang ở phiên bản gốc (v1) từ cơ sở dữ liệu. Khi chỉnh sửa và lưu mẫu, phiên bản mới sẽ được ghi nhận tại đây.</td></tr>`}
+    </tbody></table></div>
+    <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Đóng</button></div>`);
+  }catch(e){toast(errorText(e),"bad")}
+};
 };
 
 async function adminTeaching(main){
@@ -1987,18 +2088,21 @@ window.deleteFile=async idf=>{
 };
 
 const EMAIL_TEMPLATE_META = {
-  submission_confirmation: {name:"Xác nhận tiếp nhận hồ sơ", group:"Hồ sơ & Biểu mẫu", trigger:"Khi người dùng gửi biểu mẫu hồ sơ thành công", file:"application-received.html"},
-  registration_confirmation: {name:"Xác nhận đăng ký chương trình/sự kiện", group:"Chương trình & Sự kiện", trigger:"Khi đăng ký lớp học hoặc sự kiện thành công", file:"registration-confirmation.html"},
-  certificate_issued: {name:"Thông báo phát hành chứng nhận", group:"Chứng nhận", trigger:"Khi chứng nhận được cấp mã và phát hành chính thức", file:"certificate-issued.html"},
-  status_update: {name:"Cập nhật trạng thái hồ sơ", group:"Hồ sơ & Biểu mẫu", trigger:"Khi hồ sơ chuyển trạng thái xử lý thông thường", file:"application-status-updated.html"},
-  information_required: {name:"Yêu cầu bổ sung thông tin", group:"Hồ sơ & Biểu mẫu", trigger:"Khi hồ sơ chuyển sang trạng thái 'Cần bổ sung'", file:"information-required.html"},
-  application_result: {name:"Thông báo kết quả xử lý hồ sơ", group:"Hồ sơ & Biểu mẫu", trigger:"Khi hồ sơ hoàn tất / đã duyệt / có kết quả cuối", file:"application-result.html"},
-  account_invite: {name:"Kích hoạt / Thông báo tài khoản", group:"Tài khoản & Bảo mật", trigger:"Khi tạo tài khoản quản trị mới hoặc đặt lại mật khẩu tạm", file:"account-notification.html"},
-  support_ticket_received: {name:"Xác nhận yêu cầu hỗ trợ / an toàn", group:"Hỗ trợ & An toàn", trigger:"Khi người dùng gửi biểu mẫu hỗ trợ hoặc báo cáo sự cố an toàn", file:"support-ticket-received.html"},
-  fundraising_update: {name:"Thông báo cập nhật minh bạch tài trợ", group:"Tài trợ", trigger:"Khi công bố báo cáo hoặc cập nhật chương trình tài trợ", file:"fundraising-update.html"},
-  submission_internal: {name:"Thông báo hồ sơ mới (Nội bộ)", group:"Quản trị nội bộ", trigger:"Gửi về địa chỉ tiếp nhận nội bộ khi có hồ sơ mới", file:"internal"},
-  verify_email: {name:"Xác minh địa chỉ email", group:"Tài khoản & Bảo mật", trigger:"Khi yêu cầu xác minh email tài khoản", file:"internal"},
-  password_reset: {name:"Đặt lại mật khẩu", group:"Tài khoản & Bảo mật", trigger:"Khi người dùng yêu cầu khôi phục mật khẩu", file:"internal"}
+  submission_confirmation: {name:"Xác nhận tiếp nhận hồ sơ", group:"Hồ sơ & Biểu mẫu", trigger:"Khi người dùng gửi biểu mẫu hồ sơ thành công", file:"email_universal_auto.html"},
+  registration_confirmation: {name:"Xác nhận đăng ký chương trình/sự kiện", group:"Chương trình & Sự kiện", trigger:"Khi đăng ký lớp học hoặc sự kiện thành công", file:"email_universal_auto.html"},
+  certificate_issued: {name:"Thông báo phát hành chứng nhận", group:"Chứng nhận", trigger:"Khi chứng nhận được cấp mã và phát hành chính thức", file:"email_universal_auto.html"},
+  certificate_revoked: {name:"Thông báo thu hồi / thay thế chứng nhận", group:"Chứng nhận", trigger:"Khi chứng nhận bị thu hồi hoặc được thay thế", file:"email_universal_auto.html"},
+  status_update: {name:"Cập nhật trạng thái hồ sơ", group:"Hồ sơ & Biểu mẫu", trigger:"Khi hồ sơ chuyển trạng thái xử lý thông thường", file:"email_universal_auto.html"},
+  information_required: {name:"Yêu cầu bổ sung thông tin", group:"Hồ sơ & Biểu mẫu", trigger:"Khi hồ sơ chuyển sang trạng thái 'Cần bổ sung'", file:"email_universal_auto.html"},
+  application_result: {name:"Thông báo kết quả xử lý hồ sơ", group:"Hồ sơ & Biểu mẫu", trigger:"Khi hồ sơ hoàn tất / đã duyệt / có kết quả cuối", file:"email_universal_auto.html"},
+  interview_scheduled: {name:"Thông báo lịch phỏng vấn / làm việc", group:"Hồ sơ & Biểu mẫu", trigger:"Khi tạo lịch phỏng vấn cho hồ sơ ứng viên", file:"email_universal_auto.html"},
+  account_invite: {name:"Kích hoạt / Thông báo tài khoản", group:"Tài khoản & Bảo mật", trigger:"Khi tạo tài khoản quản trị mới", file:"email_universal_auto.html"},
+  support_ticket_received: {name:"Xác nhận yêu cầu hỗ trợ / an toàn", group:"Hỗ trợ & An toàn", trigger:"Khi người dùng gửi biểu mẫu hỗ trợ hoặc báo cáo sự cố an toàn", file:"email_universal_auto.html"},
+  support_ticket_reply: {name:"Phản hồi yêu cầu hỗ trợ", group:"Hỗ trợ & An toàn", trigger:"Khi bộ phận hỗ trợ gửi phản hồi trên ticket", file:"email_universal_auto.html"},
+  fundraising_update: {name:"Thông báo cập nhật minh bạch tài trợ", group:"Tài trợ", trigger:"Khi công bố báo cáo hoặc cập nhật chương trình tài trợ", file:"email_universal_auto.html"},
+  submission_internal: {name:"Thông báo hồ sơ mới (Quản trị viên)", group:"Quản trị nội bộ", trigger:"Gửi về địa chỉ tiếp nhận nội bộ khi có hồ sơ mới", file:"email_universal_auto.html"},
+  verify_email: {name:"Xác minh địa chỉ email", group:"Tài khoản & Bảo mật", trigger:"Khi yêu cầu xác minh email tài khoản", file:"email_universal_auto.html"},
+  password_reset: {name:"Hướng dẫn đặt lại mật khẩu", group:"Tài khoản & Bảo mật", trigger:"Khi quản trị viên cấp liên kết đặt lại mật khẩu", file:"email_universal_auto.html"}
 };
 
 async function adminEmail(main){
@@ -2021,7 +2125,7 @@ async function adminEmail(main){
           <td><span class="pill">${E(m.group)}</span></td>
           <td><span class="status ${x.enabled?"":"status-warn"}">${x.enabled?"Đang sử dụng":"Tạm ngừng"}</span></td>
           <td>${fmt(x.updated_at)}</td>
-          <td><div class="admin-row-actions"><button type="button" class="secondary" onclick="previewEmailTemplate('${E(x.key)}')">Xem trước</button><button type="button" class="secondary" onclick="editEmailTemplate('${E(x.key)}')">Chỉnh sửa</button><button type="button" class="ghost" onclick="testEmailTemplate('${E(x.key)}')">Gửi thử</button></div></td>
+          <td><div class="admin-row-actions"><button type="button" class="secondary" onclick="previewEmailTemplate('${E(x.key)}')">Xem trước</button><button type="button" class="secondary" onclick="editEmailTemplate('${E(x.key)}')">Chỉnh sửa</button><button type="button" class="secondary" onclick="viewEmailTemplateVersions('${E(x.key)}')">Phiên bản</button><button type="button" class="ghost" onclick="testEmailTemplate('${E(x.key)}')">Gửi thử</button></div></td>
         </tr>`;
       }).join("")}
     </tbody></table></div>
@@ -2236,7 +2340,7 @@ async function adminDocumentsLibrary(main){
       <td><span class="pill">${d.visibility==="public"?"Công khai":"Nội bộ / Hạn chế"}</span></td>
       <td><span class="status">${E(d.status)}</span></td>
       <td>${d.file_id?`<a href="/api/files/${encodeURIComponent(d.file_id)}" target="_blank">Xem PDF (${E(d.file_id.slice(0,12))}…) ↗</a>`:"Chưa gắn tệp"}</td>
-      <td><div class="admin-row-actions"><button type="button" class="secondary" onclick="manageDocumentVersions('${E(d.id)}')">Phiên bản PDF</button><button type="button" class="secondary" onclick="openDocumentEditor('${E(d.id)}')">Sửa</button><button type="button" class="danger" onclick="confirmDeleteGeneric('documents','${E(d.id)}')">Xóa</button></div></td>
+      <td><div class="admin-row-actions"><button type="button" class="secondary" onclick="manageDocumentVersions('${E(d.id)}')">Phiên bản PDF</button><button type="button" class="secondary" onclick="manageDocumentLifecycle('${E(d.id)}')">Vòng đời / Hồ sơ</button><button type="button" class="secondary" onclick="openDocumentEditor('${E(d.id)}')">Sửa</button><button type="button" class="danger" onclick="confirmDeleteGeneric('documents','${E(d.id)}')">Xóa</button></div></td>
     </tr>`).join("")||`<tr><td colspan="6" class="muted">Chưa có tài liệu nào.</td></tr>`;
   };
   search.addEventListener("input",draw);draw();
@@ -2311,6 +2415,50 @@ window.restoreDocVersion=async(docId,verId)=>{
     await api(`/api/admin/documents/${encodeURIComponent(docId)}/versions/${encodeURIComponent(verId)}/restore`,{method:"POST"});
     toast("Đã khôi phục phiên bản tài liệu.");manageDocumentVersions(docId);adminDocumentsLibrary(document.getElementById("adminMain"));
   }catch(e){toast(errorText(e),"bad")}
+};
+
+window.manageDocumentLifecycle=docId=>{
+  const d=(state.admin.documents||[]).find(x=>x.id===docId);if(!d)return;
+  let meta={}; try{meta=JSON.parse(d.metadata_json||"{}")}catch{}
+  const history=Array.isArray(meta.lifecycle_history)?meta.lifecycle_history:[];
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">QUẢN LÝ VÒNG ĐỜI TÀI LIỆU & LIÊN KẾT HỒ SƠ</span><h2>${E(d.code)} — ${E(d.title)}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+  <p>Trạng thái hiện tại: <span class="status">${E(d.status)}</span> · Phạm vi: <b>${d.visibility==="public"?"Công khai":"Nội bộ"}</b> · Hồ sơ liên kết: <b>${E(meta.related_record_code||"Chưa gắn")}</b></p>
+  <form id="docLifecycleForm" class="card" style="margin-bottom:14px;">
+    <div class="row2">
+      <div class="field"><label>Thao tác nghiệp vụ *</label>
+        <select id="dlcAction" required>
+          <option value="publish">Công bố công khai (Có hiệu lực)</option>
+          <option value="unpublish">Ngừng công bố (Chuyển về Nội bộ)</option>
+          <option value="revoke">Thu hồi tài liệu (Đã thu hồi)</option>
+          <option value="replace">Thay thế bằng tài liệu mới</option>
+          <option value="restore">Khôi phục hiệu lực</option>
+          <option value="link_record">Gắn với mã hồ sơ / bản ghi liên quan</option>
+        </select>
+      </div>
+      <div class="field"><label>Mã hồ sơ liên quan / Mã tài liệu thay thế</label><input id="dlcRefCode" value="${E(meta.related_record_code||meta.replaced_by_code||"")}" placeholder="VD: SFN-TNV-2026-0001 hoặc TL-2026-02"></div>
+    </div>
+    <div class="field"><label>Lý do / Ghi chú nhật ký *</label><input id="dlcReason" required placeholder="Nhập lý do thực hiện thao tác vòng đời..."></div>
+    <button type="submit" class="primary">Thực hiện & Ghi lịch sử</button>
+  </form>
+  <h3>Lịch sử vòng đời tài liệu (${history.length})</h3>
+  <div class="table-scroll"><table><thead><tr><th>Thời điểm</th><th>Thao tác</th><th>Trạng thái trước → sau</th><th>Người thực hiện</th><th>Lý do</th></tr></thead><tbody>
+    ${history.map(h=>`<tr><td>${fmt(h.timestamp)}</td><td><b>${E(h.action)}</b></td><td>${E(h.previous_status)} → <b>${E(h.new_status)}</b></td><td>${E(h.actor_email||"Quản trị viên")}</td><td>${E(h.reason||"")}</td></tr>`).join("")||`<tr><td colspan="5" class="muted">Chưa có lịch sử chuyển trạng thái vòng đời.</td></tr>`}
+  </tbody></table></div>`);
+  document.getElementById("docLifecycleForm").onsubmit=async e=>{
+    e.preventDefault();
+    const action=document.getElementById("dlcAction").value;
+    const ref=document.getElementById("dlcRefCode").value.trim();
+    const reason=document.getElementById("dlcReason").value.trim();
+    try{
+      await api(`/api/admin/documents/${encodeURIComponent(d.id)}/lifecycle`,{
+        method:"POST",
+        body:{action,reason,related_record_code:ref,replacement_code:ref}
+      });
+      closeModal();
+      toast("Đã cập nhật vòng đời tài liệu.");
+      await adminDocumentsLibrary(document.getElementById("adminMain"));
+    }catch(err){toast(errorText(err),"bad")}
+  };
 };
 
 // ================= QUẢN TRỊ ĐA WEBSITE (#admin/websites) =================
@@ -2677,9 +2825,9 @@ window.saveHeaderSettings=()=>saveSettingItems({header_show_brand:document.getEl
 
 async function adminFooter(main){
   const m=await loadSettingsMap();
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">GIAO DIỆN & LIÊN KẾT</span><h1>Cuối trang / Footer</h1><p class="muted">Chỉnh thông tin liên hệ và toàn bộ liên kết hệ sinh thái. Thay đổi được áp dụng công khai sau khi lưu.</p></div></div><div class="admin-grid2"><div class="card"><h2>Thông tin liên hệ</h2><div class="field"><label>Mô tả ngắn</label><textarea id="ftDesc">${E(m.footer_description||"")}</textarea></div><div class="field"><label>Email liên hệ</label><input id="ftEmail" value="${E(m.footer_email||"lienhe@skyfirst.io.vn")}"></div><div class="field"><label>Email hỗ trợ</label><input id="ftSupport" value="${E(m.footer_support_email||"support@skyfirst.io.vn")}"></div><div class="field"><label>Email Cổng Thông tin</label><input id="ftPortalEmail" value="${E(m.footer_portal_email||"app@skyfirst.io.vn")}"></div><div class="field"><label>Điện thoại / Zalo</label><input id="ftHotline" value="${E(m.hotline||"0924 910 210")}"></div><div class="field"><label>Dòng bản quyền</label><input id="ftCopyright" value="${E(m.footer_copyright||"© 2026 Sky First (SFN)")}"></div></div><div class="card"><h2>Tra cứu & Hệ thống</h2><div class="field"><label>Tên Trang thông tin điện tử</label><input id="ftMainLabel" value="${E(m.portal_main_label||"Trang thông tin điện tử Sky First")}"></div><div class="field"><label>Trang thông tin điện tử</label><input id="ftMain" value="${E(m.portal_main_url||"https://skyfirst.io.vn")}"></div><div class="field"><label>Cổng Tình nguyện viên</label><input id="ftTnv" value="${E(m.portal_tnv_url||"https://tnv.skyfirst.io.vn")}"></div><div class="field"><label>Cổng SFEC</label><input id="ftSfec" value="${E(m.portal_sfec_url||"https://sfec.skyfirst.io.vn")}"></div><div class="field"><label>Trung tâm Học tập số</label><input id="ftSlc" value="${E(m.portal_slc_url||"https://slc.skyfirst.io.vn")}"></div><div class="field"><label>Trang Thành viên</label><input id="ftMember" value="${E(m.portal_member_url||"https://member.skyfirst.io.vn")}"></div></div></div><button class="primary" onclick="saveFooterSettings()">Lưu toàn bộ Footer</button>`;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">GIAO DIỆN & LIÊN KẾT</span><h1>Cuối trang / Footer</h1><p class="muted">Chỉnh thông tin liên hệ và toàn bộ liên kết hệ sinh thái. Thay đổi được áp dụng công khai sau khi lưu.</p></div></div><div class="admin-grid2"><div class="card"><h2>Thông tin liên hệ</h2><div class="field"><label>Mô tả ngắn</label><textarea id="ftDesc">${E(m.footer_description||"")}</textarea></div><div class="field"><label>Email liên hệ</label><input id="ftEmail" value="${E(m.footer_email||"lienhe@skyfirst.io.vn")}"></div><div class="field"><label>Email hỗ trợ</label><input id="ftSupport" value="${E(m.footer_support_email||"support@skyfirst.io.vn")}"></div><div class="field"><label>Email Cổng Thông tin</label><input id="ftPortalEmail" value="${E(m.footer_portal_email||"app@skyfirst.io.vn")}"></div><div class="field"><label>Điện thoại / Zalo</label><input id="ftHotline" value="${E(m.hotline||"0924 910 210")}"></div><div class="field"><label>Dòng bản quyền</label><input id="ftCopyright" value="${E(m.footer_copyright||"© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền.")}"></div><div class="field"><label>Thông điệp trích dẫn nguồn & bản quyền</label><textarea id="ftCitationNotice" rows="3">${E(m.footer_citation_notice||"Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân.")}</textarea></div></div><div class="card"><h2>Tra cứu & Hệ thống</h2><div class="field"><label>Tên Trang thông tin điện tử</label><input id="ftMainLabel" value="${E(m.portal_main_label||"Trang thông tin điện tử Sky First")}"></div><div class="field"><label>Trang thông tin điện tử</label><input id="ftMain" value="${E(m.portal_main_url||"https://skyfirst.io.vn")}"></div><div class="field"><label>Cổng Tình nguyện viên</label><input id="ftTnv" value="${E(m.portal_tnv_url||"https://tnv.skyfirst.io.vn")}"></div><div class="field"><label>Cổng SFEC</label><input id="ftSfec" value="${E(m.portal_sfec_url||"https://sfec.skyfirst.io.vn")}"></div><div class="field"><label>Trung tâm Học tập số</label><input id="ftSlc" value="${E(m.portal_slc_url||"https://slc.skyfirst.io.vn")}"></div><div class="field"><label>Trang Thành viên</label><input id="ftMember" value="${E(m.portal_member_url||"https://member.skyfirst.io.vn")}"></div></div></div><button class="primary" onclick="saveFooterSettings()">Lưu toàn bộ Footer</button>`;
 }
-window.saveFooterSettings=()=>saveSettingItems({footer_description:document.getElementById("ftDesc").value,footer_email:document.getElementById("ftEmail").value,footer_support_email:document.getElementById("ftSupport").value,footer_portal_email:document.getElementById("ftPortalEmail").value,hotline:document.getElementById("ftHotline").value,footer_copyright:document.getElementById("ftCopyright").value,portal_main_label:document.getElementById("ftMainLabel").value,portal_main_url:document.getElementById("ftMain").value,portal_tnv_url:document.getElementById("ftTnv").value,portal_sfec_url:document.getElementById("ftSfec").value,portal_slc_url:document.getElementById("ftSlc").value,portal_member_url:document.getElementById("ftMember").value},"Đã cập nhật Footer và liên kết hệ sinh thái.");
+window.saveFooterSettings=()=>saveSettingItems({footer_description:document.getElementById("ftDesc").value,footer_email:document.getElementById("ftEmail").value,footer_support_email:document.getElementById("ftSupport").value,footer_portal_email:document.getElementById("ftPortalEmail").value,hotline:document.getElementById("ftHotline").value,footer_copyright:document.getElementById("ftCopyright").value,footer_citation_notice:document.getElementById("ftCitationNotice")?.value||"", portal_main_label:document.getElementById("ftMainLabel").value,portal_main_url:document.getElementById("ftMain").value,portal_tnv_url:document.getElementById("ftTnv").value,portal_sfec_url:document.getElementById("ftSfec").value,portal_slc_url:document.getElementById("ftSlc").value,portal_member_url:document.getElementById("ftMember").value},"Đã cập nhật Footer và liên kết hệ sinh thái.");
 
 async function adminMaintenance(main){
   const m=await loadSettingsMap();

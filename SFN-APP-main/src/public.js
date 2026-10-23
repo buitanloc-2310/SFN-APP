@@ -1,10 +1,19 @@
-
 import {
   json, readJson, uid, randomToken, sha256, ageFromDob, flattenFields, sanitizeFilename,
   requestIp, ipHash, rateLimit, escapeHtml, safeEq
 } from "./utils.js";
 import {getAuthUser} from "./auth.js";
 import {sendTemplatedEmail, answersToEmail} from "./email.js";
+
+export const LOOKUP_DATA_POLICY_VI =
+  "Hệ thống chỉ cung cấp các thông tin được phép công khai theo chính sách dữ liệu của Sky First Network. Thông tin cá nhân và dữ liệu nội bộ không thuộc phạm vi công khai phải được bảo vệ, không trả về trong phản hồi tra cứu hoặc hiển thị trên giao diện người dùng.";
+export const LOOKUP_TIMESTAMP_NOTICE_VI =
+  "Kết quả tra cứu phản ánh trạng thái của bản ghi trong cơ sở dữ liệu Hệ thống Thông tin Số Sky First tại thời điểm thực hiện truy vấn.";
+
+export const LOOKUP_DATA_POLICY_EN =
+  "The system only provides information permitted for public disclosure under Sky First Network's data policy. Personal information and non-public internal data are protected and never returned in lookup responses or displayed on the user interface.";
+export const LOOKUP_TIMESTAMP_NOTICE_EN =
+  "Lookup results reflect the status of the record in the Sky First Digital Information System database at the time of the query.";
 
 async function getSetting(env,key,fallback=null){
   try{
@@ -241,15 +250,51 @@ async function tableExists(env,table){
     const ok=!!row;schemaCache.set(key,ok);return ok;
   }catch{return false}
 }
-function normalizeCredentialStatus(value){
+function normalizeCredentialStatus(value, expiresAt = ""){
   const raw=String(value||"").trim();
   const s=raw.toLowerCase();
+  if(expiresAt){
+    const expTime=new Date(expiresAt).getTime();
+    if(Number.isFinite(expTime) && expTime < Date.now() && !s.includes("revoke") && !s.includes("supersed")){
+      return {status:"expired",text:"HẾT HIỆU LỰC",public:true};
+    }
+  }
   if(!s) return {status:"issued",text:"CÓ HIỆU LỰC",public:true};
+  if(s.includes("expired")||s.includes("hết hiệu lực")||s.includes("het hieu luc")||s.includes("hết hạn")) return {status:"expired",text:"HẾT HIỆU LỰC",public:true};
   if(s.includes("supersed")||s.includes("thay thế")||s.includes("thay the")) return {status:"superseded",text:"ĐÃ ĐƯỢC THAY THẾ",public:true};
   if(s.includes("revoke")||s.includes("thu hồi")||s.includes("thu hoi")||s.includes("hủy")||s.includes("huy")) return {status:"revoked",text:"ĐÃ THU HỒI",public:true};
   if(["issued","active","valid","có hiệu lực","co hieu luc","đã cấp","da cap","đã phát hành","da phat hanh","còn hiệu lực","con hieu luc"].includes(s)) return {status:"issued",text:"CÓ HIỆU LỰC",public:true};
   if(s.includes("pending")||s.includes("draft")||s.includes("approved")||s.includes("chờ")||s.includes("cho ")||s.includes("nháp")||s.includes("nhap")) return {status:s,text:raw||"CHƯA PHÁT HÀNH",public:false};
   return {status:raw||"issued",text:raw||"CÓ HIỆU LỰC",public:true};
+}
+
+async function formatPublicCredentialRow(env, row, registry = null, fallbackCode = "") {
+  if (!row) return null;
+  let metadata={}; try{metadata=JSON.parse(row.metadata_json||"{}")}catch{}
+  const normalized=normalizeCredentialStatus(row.status, metadata.expires_at || row.expires_at || "");
+  if(!normalized.public) return null;
+  let replacement=null;
+  if(row.superseded_by_id){
+    try{replacement=await env.DB.prepare("SELECT * FROM certificates WHERE id=? LIMIT 1").bind(row.superseded_by_id).first()}catch{}
+  }
+  return {
+    code:row.public_id||row.code||row.legacy_code||registry?.lookup_code||fallbackCode,
+    legacy_code:row.legacy_code||(/^\d{3}-|\/(GCN|GXN|BK)-SFN\//i.test(row.code||"")?row.code:null),
+    type:row.cert_type||registry?.document_type||"Giấy đã phát hành",
+    full_name:row.full_name||"",
+    content:row.content||"",
+    issued_at:row.issued_at||row.created_at||"",
+    expires_at:metadata.expires_at||"",
+    status:normalized.status,
+    status_text:normalized.text,
+    revoked_at:row.revoked_at||"",
+    revocation_reason:row.revocation_reason||"",
+    unit_name:metadata.unit_name||metadata.issuer||"Sky First",
+    role:metadata.role||metadata.position||"",
+    program:metadata.program||metadata.activity||metadata.event||"",
+    file_url:metadata.file_url||metadata.url||"",
+    replacement_code:replacement?.public_id||replacement?.code||replacement?.legacy_code||""
+  };
 }
 
 async function lookupCredential(env,rawCode){
@@ -287,6 +332,7 @@ async function lookupCredential(env,rawCode){
       full_name:"",
       content:"Mã giấy đã được ghi nhận trong hệ thống Sky First.",
       issued_at:registry.created_at||"",
+      expires_at:"",
       status:active?"issued":"revoked",
       status_text:active?"CÓ HIỆU LỰC":"ĐÃ THU HỒI",
       revoked_at:"",revocation_reason:"",unit_name:"Sky First",role:"",program:"",file_url:"",replacement_code:""
@@ -294,23 +340,38 @@ async function lookupCredential(env,rawCode){
   }
   if(!row) return null;
 
-  const normalized=normalizeCredentialStatus(row.status);
-  if(!normalized.public) return null;
-  let metadata={}; try{metadata=JSON.parse(row.metadata_json||"{}")}catch{}
-  let replacement=null;
-  if(row.superseded_by_id){
-    try{replacement=await env.DB.prepare("SELECT * FROM certificates WHERE id=? LIMIT 1").bind(row.superseded_by_id).first()}catch{}
+  return formatPublicCredentialRow(env, row, registry, code);
+}
+
+async function lookupCredentialsByContact(env, {email = "", phone = ""}) {
+  if (!env.DB || !(await tableExists(env, "certificates"))) return [];
+  const cleanEmail = String(email || "").trim().toLowerCase();
+  const cleanPhone = String(phone || "").replace(/[^\d+]/g, "");
+  if (!cleanEmail && cleanPhone.length < 8) return [];
+
+  let rows = [];
+  if (cleanEmail) {
+    const rs = await env.DB.prepare(
+      "SELECT * FROM certificates WHERE lower(email)=lower(?) ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 25"
+    )
+      .bind(cleanEmail)
+      .all();
+    rows = rs.results || [];
+  } else if (cleanPhone) {
+    const rs = await env.DB.prepare(
+      "SELECT * FROM certificates WHERE metadata_json LIKE ? ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 25"
+    )
+      .bind(`%${cleanPhone}%`)
+      .all();
+    rows = rs.results || [];
   }
-  return {
-    code:row.public_id||row.code||row.legacy_code||registry?.lookup_code||code,
-    legacy_code:row.legacy_code||(/^\d{3}-|\/(GCN|GXN|BK)-SFN\//i.test(row.code||"")?row.code:null),
-    type:row.cert_type||registry?.document_type||"Giấy đã phát hành",
-    full_name:row.full_name||"",content:row.content||"",issued_at:row.issued_at||row.created_at||"",
-    status:normalized.status,status_text:normalized.text,revoked_at:row.revoked_at||"",revocation_reason:row.revocation_reason||"",
-    unit_name:metadata.unit_name||metadata.issuer||"Sky First",
-    role:metadata.role||metadata.position||"",program:metadata.program||metadata.activity||metadata.event||"",
-    file_url:metadata.file_url||metadata.url||"",replacement_code:replacement?.public_id||replacement?.code||replacement?.legacy_code||""
-  };
+
+  const publicItems = [];
+  for (const r of rows) {
+    const formatted = await formatPublicCredentialRow(env, r, null, r.code || "");
+    if (formatted) publicItems.push(formatted);
+  }
+  return publicItems;
 }
 
 export async function publicRoute(request,env,url,ctx){
@@ -446,7 +507,12 @@ export async function publicRoute(request,env,url,ctx){
       portal_sfec_url:await getSetting(env,"portal_sfec_url","https://sfec.skyfirst.io.vn"),
       portal_slc_url:await getSetting(env,"portal_slc_url","https://slc.skyfirst.io.vn"),
       portal_member_url:await getSetting(env,"portal_member_url","https://member.skyfirst.io.vn"),
-      footer_copyright:await getSetting(env,"footer_copyright","© 2026 Hệ thống Thông tin Số Sky First (app.skyfirst.io.vn)"),
+      footer_copyright:await getSetting(env,"footer_copyright","© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền."),
+      footer_copyright_en:await getSetting(env,"footer_copyright_en","© 2026 Sky First Digital Information System. All rights reserved."),
+      footer_citation_notice:await getSetting(env,"footer_citation_notice","Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân."),
+      footer_citation_notice_en:await getSetting(env,"footer_citation_notice_en","All cited information must clearly state the source and link to the original content where possible; content must not be distorted and must comply with copyright, intellectual property, and personal data protection regulations."),
+      lookup_data_policy_notice:LOOKUP_DATA_POLICY_VI,
+      lookup_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
       modules:mods.results||[],
       forms:forms.results||[],
       google_oauth:!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_REDIRECT_URI),
@@ -513,6 +579,7 @@ export async function publicRoute(request,env,url,ctx){
         description:meta.description||"",
         keywords:meta.keywords||"",
         website_id:meta.website_id||"app",
+        related_record_code:meta.related_record_code||"",
         allow_download:meta.allow_download!==false,
         current_version:ver?.version_number||Number(meta.version||1),
         mime:ver?.mime||meta.mime||(fid?"application/pdf":""),
@@ -802,8 +869,8 @@ export async function publicRoute(request,env,url,ctx){
     const profileImageBlock=profileImageUrl?`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:20px;background:linear-gradient(120deg,#faf4ff,#fff7f2);border:1px solid #eadcf0;border-radius:18px;"><tr><td align="center" style="padding:20px"><div style="font-size:12px;font-weight:800;letter-spacing:1.1px;color:#765d7c;text-transform:uppercase;margin-bottom:12px">ẢNH CÁ NHÂN</div><img src="${escapeHtml(profileImageUrl)}" alt="Ảnh cá nhân" width="132" style="display:block;width:132px;height:164px;object-fit:cover;border-radius:14px;border:4px solid #fff;box-shadow:0 8px 22px rgba(89,40,101,.16)"></td></tr></table>`:"";
     const vars={
       code,form_name:row.name,full_name:fullName,email,...emailParts,
-      FULL_NAME:escapeHtml(fullName),EMAIL:escapeHtml(email),APPLICATION_ID:escapeHtml(code),
-      APPLICATION_TYPE:escapeHtml(row.name),SUBMITTED_AT:escapeHtml(submittedAt),STATUS:"ĐÃ TIẾP NHẬN",
+      FULL_NAME:fullName,EMAIL:email,APPLICATION_ID:code,
+      APPLICATION_TYPE:row.name,SUBMITTED_AT:submittedAt,STATUS:"ĐÃ TIẾP NHẬN",
       PROFILE_IMAGE_BLOCK:profileImageBlock
     };
     const receiver=row.recipient_email||await getSetting(env,"receiver_email","app@skyfirst.io.vn");
@@ -834,7 +901,9 @@ export async function publicRoute(request,env,url,ctx){
     if(!code||!email){
       return json({
         error:"MISSING_FIELDS",
-        message:"Vui lòng nhập đầy đủ mã hồ sơ và email đã đăng ký."
+        message:"Vui lòng nhập đầy đủ mã hồ sơ và email đã đăng ký.",
+        data_policy_notice:LOOKUP_DATA_POLICY_VI,
+        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
       },400);
     }
 
@@ -854,7 +923,9 @@ export async function publicRoute(request,env,url,ctx){
     if(!row){
       return json({
         error:"NOT_FOUND",
-        message:"Không tìm thấy hồ sơ phù hợp với mã và email đã nhập."
+        message:"Không tìm thấy hồ sơ phù hợp với mã và email đã nhập.",
+        data_policy_notice:LOOKUP_DATA_POLICY_VI,
+        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
       },404);
     }
 
@@ -869,18 +940,66 @@ export async function publicRoute(request,env,url,ctx){
         code:row.code,full_name:row.full_name||"",form_id:row.form_id||"",form_name:row.form_name||"",audience:row.audience||"",
         status:row.status||"",submitted_at:row.created_at||"",updated_at:row.updated_at||"",
         next_action:row.next_action||"Theo dõi cập nhật từ Sky First.",result:row.result_summary||"",timeline
-      }
+      },
+      queried_at:new Date().toISOString(),
+      data_policy_notice:LOOKUP_DATA_POLICY_VI,
+      query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
     },200,{"Cache-Control":"private, no-store"});
   }
 
   const credentialPath=p.match(/^\/api\/public\/credentials\/(.+)$/);
-  if((p==="/api/lookup/certificate"||credentialPath)&&request.method==="GET"){
+  if((p==="/api/lookup/certificate"||credentialPath)&&(request.method==="GET"||request.method==="POST")){
     const rl=await rateLimit(env,`credential-lookup:${await ipHash(request)}`,90,60);if(!rl.ok)return json({error:"RATE_LIMIT",message:"Quá nhiều yêu cầu xác thực. Vui lòng thử lại sau."},429,{"Cache-Control":"no-store"});
-    const code=credentialPath?decodeURIComponent(credentialPath[1]):String(url.searchParams.get("code")||"").trim();
-    if(!code) return json({error:"MISSING_FIELDS",message:"Vui lòng nhập mã GCN/GXN/BK cần xác thực."},400,{"Cache-Control":"no-store"});
-    const item=await lookupCredential(env,code);
-    if(!item) return json({error:"NOT_FOUND",message:"Không tìm thấy thông tin xác thực phù hợp với mã đã nhập."},404,{"Cache-Control":"no-store"});
-    return json({item,verified:item.status==="issued"},200,{"Cache-Control":"no-store"});
+    const body=request.method==="POST"?(await readJson(request)||{}):{};
+    const code=credentialPath?decodeURIComponent(credentialPath[1]):String(body.code??url.searchParams.get("code")??"").trim();
+    const email=String(body.email??url.searchParams.get("email")??"").trim().toLowerCase();
+    const phone=String(body.phone??url.searchParams.get("phone")??"").trim();
+
+    if(!code && !email && !phone){
+      return json({
+        error:"MISSING_FIELDS",
+        message:"Vui lòng nhập mã GCN/GXN/BK (hoặc email / số điện thoại đã đăng ký) cần xác thực.",
+        data_policy_notice:LOOKUP_DATA_POLICY_VI,
+        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+      },400,{"Cache-Control":"no-store"});
+    }
+
+    if(code){
+      const item=await lookupCredential(env,code);
+      if(!item){
+        return json({
+          error:"NOT_FOUND",
+          message:"Không tìm thấy thông tin xác thực phù hợp với mã đã nhập.",
+          data_policy_notice:LOOKUP_DATA_POLICY_VI,
+          query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+        },404,{"Cache-Control":"no-store"});
+      }
+      return json({
+        item,
+        verified:item.status==="issued",
+        queried_at:new Date().toISOString(),
+        data_policy_notice:LOOKUP_DATA_POLICY_VI,
+        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+      },200,{"Cache-Control":"no-store"});
+    }
+
+    const items=await lookupCredentialsByContact(env,{email,phone});
+    if(!items.length){
+      return json({
+        error:"NOT_FOUND",
+        message:"Không tìm thấy bản ghi chứng nhận công khai phù hợp với thông tin đã nhập.",
+        data_policy_notice:LOOKUP_DATA_POLICY_VI,
+        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+      },404,{"Cache-Control":"no-store"});
+    }
+    return json({
+      item:items[0],
+      items,
+      verified:items[0].status==="issued",
+      queried_at:new Date().toISOString(),
+      data_policy_notice:LOOKUP_DATA_POLICY_VI,
+      query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+    },200,{"Cache-Control":"no-store"});
   }
 
   if(p==="/api/public/analytics"&&request.method==="POST"){

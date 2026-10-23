@@ -6,6 +6,8 @@ const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),'..');
 const required=[
   'src/index.js','src/auth.js','src/public.js','src/admin.js','src/me.js','src/utils.js','src/email.js','src/permissions.js',
   'public/index.html','public/bootstrap.js','public/digital-portal.js','public/app.js','public/styles.css','public/digital.css','public/sw.js','public/manifest.webmanifest',
+  'public/email-template.html',
+  'public/email-templates/email_universal_auto.html',
   'public/email-templates/application-received.html',
   'public/email-templates/registration-confirmation.html',
   'public/email-templates/certificate-issued.html',
@@ -16,7 +18,7 @@ const required=[
   'public/email-templates/support-ticket-received.html',
   'public/email-templates/fundraising-update.html',
   'migrations/0001_schema.sql','migrations/0002_seed.sql','migrations/0005_digital_information_infrastructure.sql',
-  'migrations/0008_sky_first_digital_information_system.sql','wrangler.jsonc'
+  'migrations/0008_sky_first_digital_information_system.sql','migrations/0009_super_website_universal_email_and_cms.sql','wrangler.jsonc'
 ];
 let ok=true;
 for(const f of required){
@@ -35,8 +37,15 @@ if(!indexHtml.includes('Hệ thống Thông tin Số Sky First') || !indexHtml.i
   console.error('IDENTITY CHECK FAILED in public/index.html');
   ok=false;
 }
+const universalHtml=fs.readFileSync(path.join(root,'public/email-templates/email_universal_auto.html'),'utf8');
+for(const token of ['{{PREHEADER}}','{{EMAIL_CATEGORY}}','{{EMAIL_HEADING}}','{{RECIPIENT_NAME}}','{{INTRO_TEXT}}','{{REQUEST_ID}}','{{REGISTRATION_TYPE}}','{{SUBMITTED_AT}}','{{STATUS}}','{{ADDITIONAL_INFO}}','{{BODY_HTML}}','{{NEXT_STEPS}}','{{ACTION_URL}}','{{ACTION_LABEL}}']){
+  if(!universalHtml.includes(token)){
+    console.error('MISSING UNIVERSAL EMAIL TOKEN in email_universal_auto.html:',token);
+    ok=false;
+  }
+}
 if(ok){
-  console.log('Sky First Digital Information System (app.skyfirst.io.vn) validation: OK');
+  console.log('Sky First Digital Information System V9 Super Website (app.skyfirst.io.vn) validation: OK');
   process.exit(0);
 }
 process.exit(1);

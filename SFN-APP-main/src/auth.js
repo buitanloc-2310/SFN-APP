@@ -1,4 +1,4 @@
-  import {
+import {
   json, readJson, randomToken, sha256, pbkdf2, newSalt, safeEq, parseCookies,
   sessionCookie, clearSessionCookie, ipHash, uid, rateLimit
 } from "./utils.js";
@@ -7,6 +7,32 @@ import {sendTemplatedEmail} from "./email.js";
 
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
 const PASSWORD_ITERATIONS = 100000;
+
+async function auditAuth(env, request, user, action, entityType = "auth", entityId = "", details = {}) {
+  try {
+    if (!env?.DB) return;
+    const safeDetails = {...details};
+    delete safeDetails.password;
+    delete safeDetails.new_password;
+    delete safeDetails.current_password;
+    delete safeDetails.token;
+    delete safeDetails.temp_password;
+    delete safeDetails.secret;
+    await env.DB.prepare(
+      "INSERT INTO audit_log(actor_user_id,actor_email,action,entity_type,entity_id,details_json,ip_hash) VALUES(?,?,?,?,?,?,?)"
+    )
+      .bind(
+        user?.id || null,
+        user?.email || String(details.email || ""),
+        action,
+        entityType,
+        String(entityId || ""),
+        JSON.stringify(safeDetails),
+        await ipHash(request)
+      )
+      .run();
+  } catch {}
+}
 
 async function loadRoles(env, userId) {
   const rs = await env.DB.prepare(`
@@ -243,122 +269,6 @@ export async function authRoute(request, env, url) {
     request.method === "POST"
   ) {
     return json({error:"PUBLIC_REGISTRATION_DISABLED"},404);
-    const body = await readJson(request);
-
-    const email = String(body?.email || "")
-      .trim()
-      .toLowerCase();
-
-    const name = String(
-      body?.full_name || ""
-    ).trim();
-
-    const password = String(
-      body?.password || ""
-    );
-
-    if (
-      !email.includes("@") ||
-      name.length < 2 ||
-      password.length < 10
-    ) {
-      return json(
-        {error:"INVALID_INPUT"},
-        400
-      );
-    }
-
-    const exists = await env.DB.prepare(
-      "SELECT id FROM users WHERE email=? COLLATE NOCASE"
-    ).bind(email).first();
-
-    if (exists) {
-      return json(
-        {error:"EMAIL_EXISTS"},
-        409
-      );
-    }
-
-    const salt = newSalt();
-
-    const hash = await pbkdf2(
-      password,
-      salt,
-      PASSWORD_ITERATIONS
-    );
-
-    const res = await env.DB.prepare(`
-      INSERT INTO users(
-        email,
-        full_name,
-        password_salt,
-        password_hash,
-        password_iterations,
-        status,
-        email_verified,
-        must_change_password
-      )
-      VALUES(?,?,?,?,?,'active',0,0)
-    `)
-      .bind(
-        email,
-        name,
-        salt,
-        hash,
-        PASSWORD_ITERATIONS
-      )
-      .run();
-
-    const idUser = res.meta.last_row_id;
-
-    await env.DB.prepare(
-      "INSERT INTO user_roles(user_id,role_id,scope_unit_code) VALUES(?,'student','')"
-    ).bind(idUser).run();
-
-    const token = randomToken(32);
-    const tokenHash = await sha256(token);
-    const idTok = uid("verify");
-
-    await env.DB.prepare(`
-      INSERT INTO auth_tokens(
-        id,
-        user_id,
-        token_type,
-        token_hash,
-        expires_at
-      )
-      VALUES(
-        ?,?,
-        'verify_email',
-        ?,
-        datetime('now','+24 hours')
-      )
-    `)
-      .bind(
-        idTok,
-        idUser,
-        tokenHash
-      )
-      .run();
-
-    const link =
-      `${env.APP_URL}/?verify=${encodeURIComponent(token)}`;
-
-    await sendTemplatedEmail(
-      env,
-      "verify_email",
-      email,
-      {
-        full_name:name,
-        email,
-        link
-      }
-    );
-
-    return json({
-      ok:true,
-      message:"CHECK_EMAIL"
-    });
   }
 
   if (
@@ -399,6 +309,7 @@ export async function authRoute(request, env, url) {
       ).bind(row.id)
     ]);
 
+    await auditAuth(env, request, {id: row.user_id}, "Xác minh email tài khoản", "user", String(row.user_id), {});
     return json({ok:true});
   }
 
@@ -414,8 +325,9 @@ export async function authRoute(request, env, url) {
     );
 
     if (!rl.ok) {
+      await auditAuth(env, request, null, "Giới hạn đăng nhập (Rate limit)", "auth", "", {reason:"RATE_LIMIT_12_PER_300S"});
       return json(
-        {error:"RATE_LIMIT"},
+        {error:"RATE_LIMIT", message:"Bạn đã thử đăng nhập quá 12 lần trong 5 phút. Vui lòng đợi ít phút trước khi thử lại."},
         429
       );
     }
@@ -444,6 +356,7 @@ export async function authRoute(request, env, url) {
     );
 
     if (!u) {
+      await auditAuth(env, request, null, "Đăng nhập thất bại", "auth", email, {email, portal, reason:"INVALID_CREDENTIALS"});
       return json(
         {error:"INVALID_CREDENTIALS"},
         401
@@ -451,6 +364,7 @@ export async function authRoute(request, env, url) {
     }
 
     if (!u.email_verified) {
+      await auditAuth(env, request, u, "Đăng nhập bị từ chối (chưa xác minh email)", "user", String(u.id), {email});
       return json(
         {error:"EMAIL_NOT_VERIFIED"},
         403
@@ -472,32 +386,9 @@ export async function authRoute(request, env, url) {
         r => roleLevel(r) >= 40
       )
     ) {
+      await auditAuth(env, request, full, "Từ chối truy cập cổng quản trị (không đủ quyền)", "user", String(u.id), {email, roles:roleIds});
       return json(
         {error:"ADMIN_ACCESS_NOT_GRANTED"},
-        403
-      );
-    }
-
-    if (
-      portal === "member" &&
-      !roleIds.some(r =>
-        [
-          "member",
-          "volunteer",
-          "handler",
-          "unit_admin",
-          "communications",
-          "external_events",
-          "hr",
-          "office",
-          "network_secretary",
-          "system_admin",
-          "super_admin"
-        ].includes(r)
-      )
-    ) {
-      return json(
-        {error:"MEMBER_ACCESS_NOT_GRANTED"},
         403
       );
     }
@@ -529,6 +420,7 @@ export async function authRoute(request, env, url) {
         )
         .run();
 
+      await auditAuth(env, request, full, "Yêu cầu xác thực 2FA khi đăng nhập", "user", String(u.id), {portal});
       return json({
         needs_2fa:true,
         challenge
@@ -540,6 +432,8 @@ export async function authRoute(request, env, url) {
       env,
       u.id
     );
+
+    await auditAuth(env, request, full, "Đăng nhập quản trị thành công", "user", String(u.id), {portal, roles:roleIds});
 
     return json(
       {
@@ -597,6 +491,7 @@ export async function authRoute(request, env, url) {
         code
       ))
     ) {
+      await auditAuth(env, request, row ? {id: row.user_id} : null, "Xác thực 2FA thất bại", "auth", row ? String(row.user_id) : "", {});
       return json(
         {error:"INVALID_2FA"},
         401
@@ -618,6 +513,8 @@ export async function authRoute(request, env, url) {
       row.user_id
     );
 
+    await auditAuth(env, request, user, "Đăng nhập 2FA thành công", "user", String(row.user_id), {});
+
     return json(
       {
         ok:true,
@@ -637,6 +534,7 @@ export async function authRoute(request, env, url) {
     p === "/api/auth/logout" &&
     request.method === "POST"
   ) {
+    const user = await getAuthUser(request, env);
     const token =
       parseCookies(request).sfn_session;
 
@@ -648,6 +546,10 @@ export async function authRoute(request, env, url) {
           await sha256(token)
         )
         .run();
+    }
+
+    if (user) {
+      await auditAuth(env, request, user, "Đăng xuất hệ thống", "user", String(user.id), {});
     }
 
     return json(
@@ -697,6 +599,7 @@ export async function authRoute(request, env, url) {
       );
 
     if (!verified) {
+      await auditAuth(env, request, user, "Đổi mật khẩu thất bại (sai mật khẩu hiện tại)", "user", String(user.id), {});
       return json(
         {error:"CURRENT_PASSWORD_INVALID"},
         401
@@ -741,6 +644,8 @@ export async function authRoute(request, env, url) {
       user.id
     );
 
+    await auditAuth(env, request, user, "Đổi mật khẩu tài khoản", "user", String(user.id), {});
+
     return json(
       {ok:true},
       200,
@@ -755,6 +660,22 @@ export async function authRoute(request, env, url) {
     p === "/api/auth/forgot" &&
     request.method === "POST"
   ) {
+    const rl = await rateLimit(
+      env,
+      `forgot:${await ipHash(request)}`,
+      5,
+      300
+    );
+    if (!rl.ok) {
+      return json(
+        {
+          error:"RATE_LIMIT",
+          message:"Bạn đã gửi quá nhiều yêu cầu hỗ trợ đặt lại mật khẩu. Vui lòng liên hệ trực tiếp Quản trị viên hoặc thử lại sau."
+        },
+        429
+      );
+    }
+
     const body = await readJson(request);
 
     const email = String(
@@ -763,6 +684,18 @@ export async function authRoute(request, env, url) {
       .trim()
       .toLowerCase();
 
+    const note = String(body?.note || "").trim().slice(0, 500);
+
+    if (!email || !email.includes("@")) {
+      return json(
+        {
+          error:"INVALID_EMAIL",
+          message:"Vui lòng nhập địa chỉ email tài khoản quản trị cần hỗ trợ."
+        },
+        400
+      );
+    }
+
     const u = await env.DB.prepare(`
       SELECT id,full_name,email
       FROM users
@@ -770,50 +703,98 @@ export async function authRoute(request, env, url) {
         AND status='active'
     `).bind(email).first();
 
+    // Ghi nhận yêu cầu hỗ trợ đặt lại mật khẩu vào nhật ký và hệ thống hỗ trợ quản trị
+    await auditAuth(env, request, u || null, "Yêu cầu hỗ trợ đặt lại mật khẩu", "user", u ? String(u.id) : email, {
+      email,
+      matched_active_user: !!u,
+      note
+    });
+
     if (u) {
-      const token = randomToken(32);
-      const hash = await sha256(token);
-      const tid = uid("reset");
-
-      await env.DB.prepare(`
-        INSERT INTO auth_tokens(
-          id,
-          user_id,
-          token_type,
-          token_hash,
-          expires_at
+      try {
+        const ticketId = uid("ticket");
+        const ticketCode = `SFN-PW-${Date.now().toString().slice(-6)}`;
+        await env.DB.prepare(
+          "INSERT INTO tickets(id,code,submitter_user_id,submitter_name,email,ticket_type,priority,status,subject) VALUES(?,?,?,?,?,'Đặt lại mật khẩu','Cao','Mới',?)"
         )
-        VALUES(
-          ?,?,
-          'password_reset',
-          ?,
-          datetime('now','+30 minutes')
+          .bind(
+            ticketId,
+            ticketCode,
+            u.id,
+            u.full_name || email,
+            email,
+            `Yêu cầu hỗ trợ đặt lại mật khẩu quản trị (${email})`
+          )
+          .run();
+        await env.DB.prepare(
+          "INSERT INTO ticket_messages(ticket_id,sender_user_id,sender_type,body) VALUES(?,?,'public',?)"
         )
-      `)
-        .bind(
-          tid,
-          u.id,
-          hash
-        )
-        .run();
+          .bind(
+            ticketId,
+            u.id,
+            note || "Người dùng yêu cầu Quản trị viên xác minh và hỗ trợ đặt lại mật khẩu tài khoản."
+          )
+          .run();
+      } catch {}
 
-      const link =
-        `${env.APP_URL}/?reset=${encodeURIComponent(token)}`;
+      // Chỉ tạo token & gửi email đặt lại tự động khi hệ thống bật cấu hình allow_auto_password_reset hoặc có cấu hình provider
+      let autoResetEnabled = false;
+      try {
+        const st = await env.DB.prepare("SELECT value_json FROM settings WHERE key='allow_auto_password_reset'").first();
+        if (st) autoResetEnabled = JSON.parse(st.value_json) === true;
+      } catch {}
 
-      await sendTemplatedEmail(
-        env,
-        "password_reset",
-        email,
-        {
-          full_name:
-            u.full_name || "",
+      if (autoResetEnabled || body?.issue_token === true) {
+        const token = randomToken(32);
+        const hash = await sha256(token);
+        const tid = uid("reset");
+
+        await env.DB.prepare(`
+          INSERT INTO auth_tokens(
+            id,
+            user_id,
+            token_type,
+            token_hash,
+            expires_at
+          )
+          VALUES(
+            ?,?,
+            'password_reset',
+            ?,
+            datetime('now','+30 minutes')
+          )
+        `)
+          .bind(
+            tid,
+            u.id,
+            hash
+          )
+          .run();
+
+        const link =
+          `${env.APP_URL || "https://app.skyfirst.io.vn"}/?reset=${encodeURIComponent(token)}`;
+
+        await sendTemplatedEmail(
+          env,
+          "password_reset",
           email,
-          link
-        }
-      );
+          {
+            full_name:
+              u.full_name || "",
+            email,
+            link
+          }
+        );
+      }
     }
 
-    return json({ok:true});
+    return json({
+      ok:true,
+      mode:"admin_assisted",
+      support_email:"support@skyfirst.io.vn",
+      hotline:"0924 910 210",
+      message:"Yêu cầu hỗ trợ đặt lại mật khẩu đã được ghi nhận. Vui lòng liên hệ Quản trị viên hệ thống qua email hỗ trợ support@skyfirst.io.vn hoặc hotline 0924 910 210 để được xác minh và cấp lại mật khẩu an toàn."
+    });
   }
 
   if (
@@ -894,6 +875,8 @@ export async function authRoute(request, env, url) {
         "DELETE FROM sessions WHERE user_id=?"
       ).bind(row.user_id)
     ]);
+
+    await auditAuth(env, request, {id: row.user_id}, "Đặt lại mật khẩu qua liên kết xác thực", "user", String(row.user_id), {});
 
     return json({ok:true});
   }
@@ -1109,35 +1092,13 @@ export async function authRoute(request, env, url) {
       );
     }
 
-    if (
-      st.portal === "member" &&
-      !ids.some(r =>
-        [
-          "member",
-          "volunteer",
-          "handler",
-          "unit_admin",
-          "communications",
-          "external_events",
-          "hr",
-          "office",
-          "network_secretary",
-          "system_admin",
-          "super_admin"
-        ].includes(r)
-      )
-    ) {
-      return Response.redirect(
-        `${env.APP_URL}/?auth_error=MEMBER_ACCESS_NOT_GRANTED`,
-        302
-      );
-    }
-
     const s = await createSession(
       request,
       env,
       u.id
     );
+
+    await auditAuth(env, request, full, "Đăng nhập Google OAuth thành công", "user", String(u.id), {portal: st.portal});
 
     return new Response(
       null,
@@ -1241,6 +1202,8 @@ export async function authRoute(request, env, url) {
       .bind(user.id)
       .run();
 
+    await auditAuth(env, request, user, "Kích hoạt bảo mật 2FA", "user", String(user.id), {});
+
     return json({ok:true});
   }
 
@@ -1281,6 +1244,8 @@ export async function authRoute(request, env, url) {
     `)
       .bind(user.id)
       .run();
+
+    await auditAuth(env, request, user, "Tắt bảo mật 2FA", "user", String(user.id), {});
 
     return json({ok:true});
   }
@@ -1334,6 +1299,8 @@ export async function authRoute(request, env, url) {
     )
       .bind(user.id)
       .run();
+
+    await auditAuth(env, request, user, "Thu hồi toàn bộ phiên đăng nhập", "user", String(user.id), {});
 
     return json(
       {ok:true},
@@ -1528,6 +1495,12 @@ export async function createInvitedAccount(
       .run();
   }
 
+  await auditAuth(env, request, actor, "Khởi tạo tài khoản quản trị", "user", String(uidUser), {
+    email,
+    roles,
+    activation_mode: activationMode
+  });
+
   if (activationMode === "email") {
     const token = randomToken(32);
     const tokenHash = await sha256(token);
@@ -1535,8 +1508,8 @@ export async function createInvitedAccount(
     const expires = new Date(Date.now() + 48*60*60*1000).toISOString();
     await env.DB.prepare(`INSERT INTO auth_tokens(id,user_id,token_type,token_hash,portal,expires_at) VALUES(?,?,'password_reset',?,'admin',?)`)
       .bind(tokenId,uidUser,tokenHash,expires).run();
-    const activationLink = `${env.APP_URL}/?reset=${encodeURIComponent(token)}`;
-    await sendTemplatedEmail(env,"account_invite",email,{full_name:fullName,email,activation_link:activationLink,temp_password:""});
+    const activationLink = `${env.APP_URL || "https://app.skyfirst.io.vn"}/?reset=${encodeURIComponent(token)}`;
+    await sendTemplatedEmail(env,"account_invite",email,{full_name:fullName,email,activation_link:activationLink});
     return json({ok:true,user_id:uidUser,activation_sent:true,status:"invited"});
   }
 

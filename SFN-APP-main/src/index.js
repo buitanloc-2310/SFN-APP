@@ -42,6 +42,74 @@ function secure(resp){
   return new Response(resp.body,{status:resp.status,statusText:resp.statusText,headers:h});
 }
 
+async function serveSeoRoutes(request, env, url) {
+  if (request.method !== "GET") return null;
+  const baseUrl = (env.APP_URL || "https://app.skyfirst.io.vn").replace(/\/+$/, "");
+
+  if (url.pathname === "/robots.txt") {
+    const body = [
+      "User-agent: *",
+      "Allow: /",
+      "Disallow: /admin",
+      "Disallow: /admin/",
+      "Disallow: /api/",
+      `Sitemap: ${baseUrl}/sitemap.xml`
+    ].join("\n");
+    return new Response(body, {
+      status: 200,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "public, max-age=3600"
+      }
+    });
+  }
+
+  if (url.pathname === "/sitemap.xml") {
+    const publicPaths = [
+      "/",
+      "/chuong-trinh",
+      "/su-kien",
+      "/tai-lieu",
+      "/bieu-mau",
+      "/tra-cuu",
+      "/gcn",
+      "/ho-so",
+      "/tai-tro",
+      "/an-toan"
+    ];
+    let cmsSlugs = [];
+    try {
+      if (env.DB) {
+        const rs = await env.DB.prepare(
+          "SELECT slug, updated_at FROM cms_pages WHERE status='published' AND website_id='app' ORDER BY updated_at DESC LIMIT 200"
+        ).all();
+        cmsSlugs = rs.results || [];
+      }
+    } catch {}
+    const nowIso = new Date().toISOString().slice(0, 10);
+    const urlsXml = [
+      ...publicPaths.map(
+        (p) =>
+          `  <url><loc>${baseUrl}${p}</loc><lastmod>${nowIso}</lastmod><changefreq>${p === "/" ? "daily" : "weekly"}</changefreq><priority>${p === "/" ? "1.0" : "0.8"}</priority></url>`
+      ),
+      ...cmsSlugs.map(
+        (pg) =>
+          `  <url><loc>${baseUrl}/trang/${encodeURIComponent(pg.slug)}</loc><lastmod>${String(pg.updated_at || nowIso).slice(0, 10)}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>`
+      )
+    ].join("\n");
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlsXml}\n</urlset>`;
+    return new Response(xml, {
+      status: 200,
+      headers: {
+        "content-type": "application/xml; charset=utf-8",
+        "cache-control": "public, max-age=3600"
+      }
+    });
+  }
+
+  return null;
+}
+
 async function servePublicMedia(request,env,url){
   if(request.method!=="GET" || !url.pathname.startsWith("/media/")) return null;
   if(!env.FILES) return json({error:"STORAGE_UNAVAILABLE",message:"Dịch vụ lưu trữ tệp hiện tạm thời chưa khả dụng."},503);
@@ -164,6 +232,7 @@ async function handle(request,env,ctx){
     storage:!!env.FILES
   });
 
+  const seoResp=await serveSeoRoutes(request,env,url); if(seoResp) return seoResp;
   const mediaResp=await servePublicMedia(request,env,url); if(mediaResp) return mediaResp;
   const emailFileResp=await serveEmailFile(request,env,url); if(emailFileResp) return emailFileResp;
   const fileResp=await serveFile(request,env,url); if(fileResp) return fileResp;

@@ -56,7 +56,17 @@ function firstText(obj,keys){for(const key of keys){const v=obj?.[key];if(typeof
 function isHiddenPublicStatus(status=''){return /(^|\b)(nháp|draft|private|ẩn|đã ẩn|unpublished)(\b|$)/i.test(String(status||''))}
 function visiblePublicItems(items=[]){return (items||[]).filter(x=>!isHiddenPublicStatus(x.status))}
 function programArtKind(item={}){const t=String(item.title||'').toLowerCase();if(t.includes('reading')||t.includes('đọc'))return 'reading';if(t.includes('listening')||t.includes('nghe'))return 'listening';if(t.includes('speaking')||t.includes('nói'))return 'speaking';return 'program'}
-function publicStatusLabel(status){const s=String(status||'').trim();if(!s)return 'Trạng thái đang cập nhật';if(/draft|nháp|private|ẩn/i.test(s))return 'Chưa công khai';return s}
+function publicStatusLabel(status){
+  const s=String(status||'').trim();
+  const en=getLang()==='en';
+  if(!s)return en?'Status updating':'Trạng thái đang cập nhật';
+  if(/draft|nháp|private|ẩn/i.test(s))return en?'Unpublished':'Chưa công khai';
+  if(en){
+    const map={'Đang mở đăng ký':'Open for Registration','Đang hoạt động':'Active','Sắp diễn ra':'Upcoming','Đang diễn ra':'Ongoing','Đã kết thúc':'Completed','Có hiệu lực':'Valid / Active','Đã tiếp nhận':'Received','Đang xem xét':'Under Review','Cần bổ sung':'Additional Info Required','Mời phỏng vấn':'Interview Scheduled','Đã duyệt':'Approved','Hoàn tất':'Completed','Không phù hợp':'Not Selected','CÓ HIỆU LỰC':'VALID / ISSUED','ĐÃ THU HỒI':'REVOKED','ĐÃ ĐƯỢC THAY THẾ':'SUPERSEDED','HẾT HIỆU LỰC':'EXPIRED'};
+    return map[s]||s;
+  }
+  return s;
+}
 
 const I18N = {
   vi: {
@@ -103,7 +113,22 @@ const I18N = {
     search_header: "TÌM KIẾM HỆ THỐNG",
     search_eyebrow: "TÌM KIẾM TRÊN HỆ THỐNG THÔNG TIN SỐ · Sky First",
     search_title: "Khám phá thông tin & dịch vụ số",
-    search_hint: "Chỉ tìm kiếm trên dữ liệu công khai. Dùng phím ↑ ↓ để chọn, Enter để mở."
+    search_hint: "Chỉ tìm kiếm trên dữ liệu công khai. Dùng phím ↑ ↓ để chọn, Enter để mở.",
+    skip_nav: "Bỏ qua điều hướng",
+    footer_brand_title: "Hệ thống Thông tin Số Sky First",
+    footer_link_certs: "Chứng nhận (/gcn)",
+    footer_link_cases: "Hồ sơ (/ho-so)",
+    footer_link_sponsorship: "Tài trợ (/tai-tro)",
+    footer_link_safety: "An toàn (/an-toan)",
+    footer_sys_email_label: "Hệ thống:",
+    footer_contact_email_label: "Liên hệ chung:",
+    footer_support_email_label: "Hỗ trợ kỹ thuật:",
+    footer_hotline_label: "Hotline:",
+    footer_copyright: "© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền.",
+    footer_citation_notice: "Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân.",
+    footer_admin_login: "Đăng Nhập Quản Trị",
+    lookup_policy_1: "Hệ thống chỉ cung cấp các thông tin được phép công khai theo chính sách dữ liệu của Sky First Network. Thông tin cá nhân và dữ liệu nội bộ không thuộc phạm vi công khai phải được bảo vệ, không trả về trong phản hồi tra cứu hoặc hiển thị trên giao diện người dùng.",
+    lookup_policy_2: "Kết quả tra cứu phản ánh trạng thái của bản ghi trong cơ sở dữ liệu Hệ thống Thông tin Số Sky First tại thời điểm thực hiện truy vấn."
   },
   en: {
     brand_sub: "DIGITAL INFORMATION SYSTEM",
@@ -149,7 +174,22 @@ const I18N = {
     search_header: "SYSTEM SEARCH",
     search_eyebrow: "Search · Sky First Digital Information System",
     search_title: "Discover public information & services",
-    search_hint: "Searches public records only. Use ↑ ↓ arrows to navigate, Enter to open."
+    search_hint: "Searches public records only. Use ↑ ↓ arrows to navigate, Enter to open.",
+    skip_nav: "Skip to main content",
+    footer_brand_title: "Sky First Digital Information System",
+    footer_link_certs: "Certificates (/gcn)",
+    footer_link_cases: "Records (/ho-so)",
+    footer_link_sponsorship: "Sponsorship (/tai-tro)",
+    footer_link_safety: "Safety (/an-toan)",
+    footer_sys_email_label: "System:",
+    footer_contact_email_label: "General Contact:",
+    footer_support_email_label: "Technical Support:",
+    footer_hotline_label: "Hotline:",
+    footer_copyright: "© 2026 Sky First Digital Information System. All rights reserved.",
+    footer_citation_notice: "All cited information must clearly state the source and link to the original content where possible; content must not be distorted and must comply with copyright, intellectual property, and personal data protection regulations.",
+    footer_admin_login: "Admin Login",
+    lookup_policy_1: "The system only provides information permitted for public disclosure under Sky First Network's data policy. Personal information and non-public internal data are protected and never returned in lookup responses or displayed on the user interface.",
+    lookup_policy_2: "Lookup results reflect the status of the record in the Sky First Digital Information System database at the time of the query."
   }
 };
 
@@ -444,22 +484,75 @@ async function formCenter(app){
 
 function lookupShell(title,desc){return `<section class="page-hero compact lookup-entry-hero"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>${esc(title)}</h1><p>${esc(desc)}</p></section>`}
 
+function lookupPolicyBanner(){
+  return `<div class="notice lookup-policy-banner" style="margin:18px auto;max-width:1080px;">
+    <p style="margin:0 0 6px;"><b>Chính sách dữ liệu tra cứu:</b> ${esc(t('lookup_policy_1'))}</p>
+    <p style="margin:0;font-size:13px;opacity:.92;">${esc(t('lookup_policy_2'))}</p>
+  </div>`;
+}
+
 async function lookupCenter(app){
   updateActiveNav('gcn');
   setMeta('Tra cứu thông tin','Chọn phân hệ tra cứu Chứng nhận (/gcn) hoặc Hồ sơ (/ho-so) trên Hệ thống Thông tin Số Sky First.');
-  app.innerHTML=lookupShell('TRUNG TÂM TRA CỨU','Chọn đúng phân hệ cần tra cứu: Chứng nhận đã phát hành (/gcn), Hồ sơ đã gửi (/ho-so) hoặc Minh bạch Tài trợ (/tai-tro).')+`<section class="lookup-choice-v3"><a class="lookup-choice paper" href="/gcn"><div class="choice-art"><span>✓</span><i>▦</i></div><small>CHỨNG NHẬN (/GCN)</small><h2>Tra cứu Giấy chứng nhận, Giấy xác nhận & Bằng khen</h2><p>Tra cứu tính hợp lệ và trạng thái hiệu lực bằng mã chứng nhận được in trên giấy.</p><b>Mở tra cứu chứng nhận →</b></a><a class="lookup-choice case" href="/ho-so"><div class="choice-art"><span>⌁</span><i>•••</i></div><small>HỒ SƠ (/HO-SO)</small><h2>Tra cứu tiến trình xử lý hồ sơ</h2><p>Xác minh bằng mã hồ sơ và địa chỉ email đã đăng ký để bảo vệ thông tin cá nhân.</p><b>Mở tra cứu hồ sơ →</b></a></section>`;
+  app.innerHTML=lookupShell('TRUNG TÂM TRA CỨU','Chọn đúng phân hệ cần tra cứu: Chứng nhận đã phát hành (/gcn), Hồ sơ đã gửi (/ho-so) hoặc Minh bạch Tài trợ (/tai-tro).')+lookupPolicyBanner()+`<section class="lookup-choice-v3"><a class="lookup-choice paper" href="/gcn"><div class="choice-art"><span>✓</span><i>▦</i></div><small>CHỨNG NHẬN (/GCN)</small><h2>Tra cứu Giấy chứng nhận, Giấy xác nhận & Bằng khen</h2><p>Tra cứu tính hợp lệ và trạng thái hiệu lực bằng mã chứng nhận hoặc thông tin đăng ký được xác thực.</p><b>Mở tra cứu chứng nhận →</b></a><a class="lookup-choice case" href="/ho-so"><div class="choice-art"><span>⌁</span><i>•••</i></div><small>HỒ SƠ (/HO-SO)</small><h2>Tra cứu tiến trình xử lý hồ sơ</h2><p>Xác minh bằng mã hồ sơ và địa chỉ email đã đăng ký để bảo vệ thông tin cá nhân.</p><b>Mở tra cứu hồ sơ →</b></a></section>`;
 }
 
-function credentialResult(x){return `<article class="verification-record ${statusClass(x.status_text)}"><div class="verify-state"><i>${x.status==='issued'?'✓':x.status==='revoked'?'!':'↻'}</i><div><span>KẾT QUẢ ĐỐI CHIẾU CHỨNG NHẬN</span><h2>${esc(x.status_text)}</h2></div></div><dl><div><dt>Mã chứng nhận</dt><dd>${esc(x.code)}</dd></div><div><dt>Loại văn bản</dt><dd>${esc(x.type)}</dd></div><div><dt>Người được ghi nhận</dt><dd>${esc(x.full_name)}</dd></div><div class="wide"><dt>Nội dung ghi nhận</dt><dd>${esc(x.content)}</dd></div>${x.program?`<div><dt>Chương trình / Hoạt động</dt><dd>${esc(x.program)}</dd></div>`:''}<div><dt>Đơn vị phát hành</dt><dd>${esc(x.unit_name)}</dd></div><div><dt>Ngày phát hành</dt><dd>${esc(x.issued_at?fmt(x.issued_at):'—')}</dd></div><div><dt>Trạng thái hiệu lực</dt><dd>${esc(x.status_text)}</dd></div>${x.replacement_code?`<div class="wide"><dt>Được thay thế bởi mã mới</dt><dd><a href="/gcn/${encodeURIComponent(x.replacement_code)}">${esc(x.replacement_code)}</a></dd></div>`:''}${x.revocation_reason?`<div class="wide"><dt>Lý do thu hồi</dt><dd>${esc(x.revocation_reason)}</dd></div>`:''}</dl><p class="record-note">Bản ghi này phản ánh trạng thái thực tế trong cơ sở dữ liệu Hệ thống Thông tin Số Sky First. Chỉ hỗ trợ tra cứu bằng mã chứng nhận; không tra cứu bằng số điện thoại hoặc email.</p></article>`}
-function failCard(msg){return `<div class="result-fail" role="alert"><i>×</i><div><h3>Không thể xác minh thông tin</h3><p>${esc(msg||'Không tìm thấy dữ liệu phù hợp với thông tin đã cung cấp.')}</p></div></div>`}
+function credentialResult(x){return `<article class="verification-record ${statusClass(x.status_text)}"><div class="verify-state"><i>${x.status==='issued'?'✓':x.status==='revoked'?'!':'↻'}</i><div><span>KẾT QUẢ ĐỐI CHIẾU CHỨNG NHẬN</span><h2>${esc(publicStatusLabel(x.status_text))}</h2></div></div><dl><div><dt>Mã chứng nhận</dt><dd>${esc(x.code)}</dd></div><div><dt>Loại văn bản</dt><dd>${esc(x.type)}</dd></div><div><dt>Người được ghi nhận</dt><dd>${esc(x.full_name)}</dd></div><div class="wide"><dt>Nội dung ghi nhận</dt><dd>${esc(x.content)}</dd></div>${x.program?`<div><dt>Chương trình / Hoạt động</dt><dd>${esc(x.program)}</dd></div>`:''}<div><dt>Đơn vị phát hành</dt><dd>${esc(x.unit_name)}</dd></div><div><dt>Ngày phát hành</dt><dd>${esc(x.issued_at?fmt(x.issued_at):'—')}</dd></div><div><dt>Trạng thái hiệu lực</dt><dd>${esc(publicStatusLabel(x.status_text))}</dd></div>${x.replacement_code?`<div class="wide"><dt>Được thay thế bởi mã mới</dt><dd><a href="/gcn/${encodeURIComponent(x.replacement_code)}">${esc(x.replacement_code)}</a></dd></div>`:''}${x.revocation_reason?`<div class="wide"><dt>Lý do thu hồi</dt><dd>${esc(x.revocation_reason)}</dd></div>`:''}</dl><p class="record-note">${esc(t('lookup_policy_2'))}<br><small>${esc(t('lookup_policy_1'))}</small></p></article>`}
+function failCard(msg){return `<div class="result-fail" role="alert"><i>×</i><div><h3>${getLang()==='en'?'Verification Failed':'Không thể xác minh thông tin'}</h3><p>${esc(msg||'Không tìm thấy dữ liệu phù hợp với thông tin đã cung cấp.')}</p></div></div>`}
 
 async function credentialCenter(app,path){
   updateActiveNav('gcn');
-  setMeta('Tra cứu chứng nhận','Tra cứu Giấy chứng nhận, Giấy xác nhận và Bằng khen bằng mã chứng nhận trên Hệ thống Thông tin Số Sky First.');
+  setMeta('Tra cứu chứng nhận','Tra cứu Giấy chứng nhận, Giấy xác nhận và Bằng khen trên Hệ thống Thông tin Số Sky First.');
   const pathCode=decodeURIComponent(path.split('/').filter(Boolean)[1]||''); const queryCode=new URLSearchParams(location.search).get('code')||''; const init=pathCode||queryCode;
-  app.innerHTML=`<section class="lookup-hero credential-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>TRA CỨU <strong>CHỨNG NHẬN</strong></h1><p>Xác thực trạng thái hiệu lực, thu hồi hoặc thay thế của Giấy chứng nhận, Giấy xác nhận và Bằng khen bằng mã chứng nhận.</p><div class="lookup-trust"><span>✓ Tra cứu duy nhất bằng mã chứng nhận</span><span>⌁ Đối chiếu trực tiếp cơ sở dữ liệu</span><span>▦ Hỗ trợ quét mã QR</span></div></div><div class="lookup-hero-art credential-art-new" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="credential-document"><span>Sky First</span><i>CHỨNG NHẬN</i><b>★</b><small>▦ QR</small></div><div class="credential-shield">✓</div></div></section><section class="lookup-search-panel credential-search credential-search-v3"><h2>Nhập mã chứng nhận để xác thực</h2><form id="credentialForm"><label for="credentialCode">Mã chứng nhận (GCN / GXN / BK)</label><div class="lookup-big"><span>⌕</span><input id="credentialCode" value="${esc(init)}" placeholder="Ví dụ: SFN-GCN-12345678 hoặc 001-GCN-SFN/2026" autocomplete="off" required><button type="submit">⌕ &nbsp; XÁC THỰC</button></div><div class="lookup-secondary-actions"><button class="secondary" type="button" id="scanQr">▦ &nbsp; Quét mã QR</button><a href="#huong-dan">Quy tắc xác thực chứng nhận ↓</a></div></form><div id="credentialOut" aria-live="polite"></div></section><section class="dip-section tight public-benefits credential-benefits"><article><i>✓</i><h3>Trạng thái minh bạch</h3><p>Phân biệt rõ chứng nhận đang có hiệu lực, đã bị thu hồi hoặc đã được thay thế bằng mã mới.</p></article><article><i>◇</i><h3>Không lộ dữ liệu cá nhân</h3><p>Hệ thống chỉ tra cứu theo mã chứng nhận, không cho phép tìm kiếm bằng số điện thoại hay email cá nhân.</p></article><article><i>▦</i><h3>Tương thích mã cũ & mới</h3><p>Hỗ trợ đồng thời mã định danh ngẫu nhiên mới và các mã chứng nhận đã phát hành trước đây.</p></article></section><section class="dip-section tone faq-v3" id="huong-dan"><details><summary>Vì sao hệ thống không hỗ trợ tra cứu chứng nhận bằng email hay số điện thoại?</summary><p>Để bảo vệ quyền riêng tư và ngăn việc dò tìm danh sách chứng nhận của người khác, Hệ thống Thông tin Số Sky First chỉ cho phép tra cứu khi có mã chứng nhận cụ thể hoặc quét trực tiếp mã QR in trên chứng nhận.</p></details><details><summary>Chứng nhận bị thu hồi hoặc thay thế hiển thị như thế nào?</summary><p>Nếu chứng nhận bị thu hồi, hệ thống hiển thị cảnh báo ĐÃ THU HỒI kèm lý do. Nếu chứng nhận được cấp lại do điều chỉnh thông tin, hệ thống hiển thị ĐÃ ĐƯỢC THAY THẾ và dẫn tới mã chứng nhận mới.</p></details></section>`;
+  app.innerHTML=`<section class="lookup-hero credential-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>TRA CỨU <strong>CHỨNG NHẬN</strong></h1><p>Xác thực trạng thái hiệu lực, hết hạn, thu hồi hoặc thay thế của Giấy chứng nhận, Giấy xác nhận và Bằng khen.</p><div class="lookup-trust"><span>✓ Đối chiếu trực tiếp cơ sở dữ liệu D1</span><span>⌁ Hỗ trợ tra cứu theo mã hoặc email/SĐT đăng ký</span><span>▦ Hỗ trợ quét mã QR</span></div></div><div class="lookup-hero-art credential-art-new" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="credential-document"><span>Sky First</span><i>CHỨNG NHẬN</i><b>★</b><small>▦ QR</small></div><div class="credential-shield">✓</div></div></section>
+  <section class="lookup-search-panel credential-search credential-search-v3">
+    <h2>Nhập mã chứng nhận hoặc thông tin đăng ký để xác thực</h2>
+    <form id="credentialForm">
+      <label for="credentialCode">Mã chứng nhận (GCN / GXN / BK)</label>
+      <div class="lookup-big"><span>⌕</span><input id="credentialCode" value="${esc(init)}" placeholder="Ví dụ: SFN-GCN-12345678 hoặc 001-GCN-SFN/2026" autocomplete="off"><button type="submit">⌕ &nbsp; XÁC THỰC THEO MÃ</button></div>
+      <div class="lookup-secondary-actions"><button class="secondary" type="button" id="scanQr">▦ &nbsp; Quét mã QR</button><button class="secondary" type="button" id="toggleContactLookup">Tra cứu bằng Email / Số điện thoại</button><a href="#huong-dan">Quy tắc xác thực chứng nhận ↓</a></div>
+    </form>
+    <form id="credentialContactForm" class="card" style="margin-top:14px;display:none;">
+      <h3 style="margin-top:0">Tra cứu chứng nhận bằng Email hoặc Số điện thoại đã đăng ký</h3>
+      <div class="row2">
+        <div class="field"><label for="credEmailInput">Email người được cấp</label><input id="credEmailInput" type="email" placeholder="name@example.com" autocomplete="email"></div>
+        <div class="field"><label for="credPhoneInput">Hoặc Số điện thoại</label><input id="credPhoneInput" type="tel" placeholder="09xxxxxxxx" autocomplete="tel"></div>
+      </div>
+      <button type="submit" class="portal-button">⌕ &nbsp; Tra cứu theo Email / SĐT</button>
+    </form>
+    ${lookupPolicyBanner()}
+    <div id="credentialOut" aria-live="polite"></div>
+  </section>
+  <section class="dip-section tight public-benefits credential-benefits"><article><i>✓</i><h3>Trạng thái minh bạch</h3><p>Phân biệt rõ chứng nhận đang có hiệu lực, hết hiệu lực, đã bị thu hồi hoặc đã được thay thế bằng mã mới.</p></article><article><i>◇</i><h3>Bảo vệ dữ liệu cá nhân</h3><p>${esc(t('lookup_policy_1'))}</p></article><article><i>▦</i><h3>Tương thích mã cũ & mới</h3><p>Hỗ trợ đồng thời mã định danh ngẫu nhiên mới và các mã chứng nhận đã phát hành trước đây.</p></article></section>
+  <section class="dip-section tone faq-v3" id="huong-dan"><details><summary>Chính sách bảo vệ dữ liệu khi tra cứu chứng nhận</summary><p>${esc(t('lookup_policy_1'))} ${esc(t('lookup_policy_2'))}</p></details><details><summary>Chứng nhận bị thu hồi hoặc thay thế hiển thị như thế nào?</summary><p>Nếu chứng nhận bị thu hồi, hệ thống hiển thị cảnh báo ĐÃ THU HỒI kèm lý do. Nếu chứng nhận được cấp lại do điều chỉnh thông tin, hệ thống hiển thị ĐÃ ĐƯỢC THAY THẾ và dẫn tới mã chứng nhận mới.</p></details></section>`;
   const form=document.getElementById('credentialForm'), input=document.getElementById('credentialCode'), out=document.getElementById('credentialOut');
-  form.onsubmit=async e=>{e.preventDefault();const code=input.value.trim();if(!code)return;out.innerHTML='<div class="loading">Đang đối chiếu mã chứng nhận…</div>';try{const d=await api(`/api/public/credentials/${encodeURIComponent(code)}`);out.innerHTML=credentialResult(d.item);history.replaceState(null,'',`/gcn/${encodeURIComponent(d.item.code)}`);event('verification_success',{category:'credential'})}catch(err){out.innerHTML=failCard(err.message);event('verification_not_found',{category:'credential'})}};
+  const contactForm=document.getElementById('credentialContactForm'), toggleBtn=document.getElementById('toggleContactLookup');
+  if(toggleBtn && contactForm){
+    toggleBtn.onclick=()=>{contactForm.style.display=contactForm.style.display==='none'?'block':'none';};
+  }
+  form.onsubmit=async e=>{
+    e.preventDefault();const code=input.value.trim();if(!code){toast?.('Vui lòng nhập mã chứng nhận.');return;}
+    out.innerHTML='<div class="loading">Đang đối chiếu mã chứng nhận…</div>';
+    try{const d=await api(`/api/public/credentials/${encodeURIComponent(code)}`);out.innerHTML=credentialResult(d.item);history.replaceState(null,'',`/gcn/${encodeURIComponent(d.item.code)}`);event('verification_success',{category:'credential'})}catch(err){out.innerHTML=failCard(err.message);event('verification_not_found',{category:'credential'})}
+  };
+  if(contactForm){
+    contactForm.onsubmit=async e=>{
+      e.preventDefault();
+      const email=document.getElementById('credEmailInput')?.value.trim()||'';
+      const phone=document.getElementById('credPhoneInput')?.value.trim()||'';
+      if(!email && !phone) return;
+      out.innerHTML='<div class="loading">Đang tra cứu chứng nhận…</div>';
+      try{
+        const d=await api('/api/lookup/certificate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,phone})});
+        const list=d.items||[d.item].filter(Boolean);
+        out.innerHTML=list.map(credentialResult).join('');
+        event('verification_success',{category:'credential_contact'});
+      }catch(err){
+        out.innerHTML=failCard(err.message);
+        event('verification_not_found',{category:'credential_contact'});
+      }
+    };
+  }
   document.getElementById('scanQr').onclick=()=>openQrScanner(input,form); if(init) form.requestSubmit();
 }
 
@@ -469,13 +562,13 @@ function openQrScanner(input,form){
 }
 function credentialScanMessage(message){const out=document.getElementById('credentialOut');if(out)out.innerHTML=`<div class="notice bad qr-scan-message" role="alert">${esc(message)}</div>`;}
 
-function caseResult(x){const steps=['TIẾP NHẬN','KIỂM TRA','XỬ LÝ','CẦN BỔ SUNG','HOÀN TẤT'];const timeline=x.timeline||[];const seen=new Set(timeline.map(t=>t.label));return `<article class="case-record"><div class="case-head"><div><span>HỒ SƠ ĐÃ XÁC MINH</span><h2>${esc(x.code)}</h2></div><strong>${esc(x.status)}</strong></div><div class="case-meta"><div><span>Người đăng ký</span><b>${esc(x.full_name||'—')}</b></div><div><span>Biểu mẫu</span><b>${esc(x.form_name||x.form_id)}</b></div><div><span>Ngày tiếp nhận</span><b>${fmt(x.submitted_at)}</b></div><div><span>Hướng dẫn tiếp theo</span><b>${esc(x.next_action||'Theo dõi cập nhật')}</b></div></div><div class="timeline">${steps.map((s,i)=>{const ev=timeline.find(t=>t.label===s);const active=seen.has(s);return `<div class="${active?'done':''}"><i>${active?'✓':i+1}</i><span><b>${s}</b><small>${ev?.note?esc(ev.note):active?fmt(ev?.created_at):'Chưa đến bước này'}</small></span></div>`}).join('')}</div>${x.result?`<div class="case-result"><span>KẾT QUẢ XỬ LÝ</span><p>${esc(x.result)}</p></div>`:''}</article>`}
+function caseResult(x){const steps=['TIẾP NHẬN','KIỂM TRA','XỬ LÝ','CẦN BỔ SUNG','HOÀN TẤT'];const timeline=x.timeline||[];const seen=new Set(timeline.map(t=>t.label));return `<article class="case-record"><div class="case-head"><div><span>HỒ SƠ ĐÃ XÁC MINH</span><h2>${esc(x.code)}</h2></div><strong>${esc(publicStatusLabel(x.status))}</strong></div><div class="case-meta"><div><span>Người đăng ký</span><b>${esc(x.full_name||'—')}</b></div><div><span>Biểu mẫu</span><b>${esc(x.form_name||x.form_id)}</b></div><div><span>Ngày tiếp nhận</span><b>${fmt(x.submitted_at)}</b></div><div><span>Hướng dẫn tiếp theo</span><b>${esc(x.next_action||'Theo dõi cập nhật')}</b></div></div><div class="timeline">${steps.map((s,i)=>{const ev=timeline.find(t=>t.label===s);const active=seen.has(s);return `<div class="${active?'done':''}"><i>${active?'✓':i+1}</i><span><b>${s}</b><small>${ev?.note?esc(ev.note):active?fmt(ev?.created_at):'Chưa đến bước này'}</small></span></div>`}).join('')}</div>${x.result?`<div class="case-result"><span>KẾT QUẢ XỬ LÝ</span><p>${esc(x.result)}</p></div>`:''}<p class="record-note" style="margin-top:14px;">${esc(t('lookup_policy_2'))}<br><small>${esc(t('lookup_policy_1'))}</small></p></article>`}
 
 async function caseCenter(app){
   updateActiveNav('hoso');
   setMeta('Tra cứu hồ sơ','Tra cứu trạng thái xử lý hồ sơ trực tuyến trên Hệ thống Thông tin Số Sky First.');
   const qs=new URLSearchParams(location.search), init=qs.get('code')||'';
-  app.innerHTML=`<section class="lookup-hero case-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>TRA CỨU <strong>HỒ SƠ</strong></h1><p>Theo dõi tiến trình xử lý hồ sơ đã gửi. Để bảo vệ thông tin cá nhân và chống truy cập trái phép (IDOR), hệ thống kiểm tra đồng thời Mã hồ sơ và Email đăng ký ở phía máy chủ.</p><div class="lookup-trust"><span>◇ Xác thực 2 thông tin phía máy chủ</span><span>✓ Không lộ câu trả lời chi tiết</span></div></div><div class="lookup-hero-art case-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="case-folder">▤<span>HỒ SƠ</span></div><div class="case-magnifier">⌕</div><div class="case-lock">◇</div></div></section><section class="lookup-search-panel case-search"><form id="caseForm" class="case-form"><div class="lookup-form-title"><span>▤</span><div><h2>Nhập thông tin xác minh hồ sơ</h2><p>Vui lòng cung cấp đúng mã hồ sơ trên biên nhận và địa chỉ email đã dùng khi đăng ký.</p></div></div><div class="field"><label for="caseCode">Mã hồ sơ *</label><input id="caseCode" value="${esc(init)}" placeholder="Ví dụ: SFN-TV-2026-0001" autocomplete="off" required></div><div class="field"><label for="caseEmail">Email đã đăng ký *</label><input id="caseEmail" type="email" placeholder="Nhập email đã dùng khi nộp hồ sơ" autocomplete="email" required></div><button class="portal-button" type="submit">⌕ &nbsp; TRA CỨU HỒ SƠ <span>→</span></button><p class="privacy-hint">Địa chỉ email chỉ dùng để xác minh quyền tra cứu ở máy chủ, không được trả lại trong dữ liệu hiển thị.</p></form><div id="caseOut" aria-live="polite"></div></section>`;
+  app.innerHTML=`<section class="lookup-hero case-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>TRA CỨU <strong>HỒ SƠ</strong></h1><p>Theo dõi tiến trình xử lý hồ sơ đã gửi. Để bảo vệ thông tin cá nhân và chống truy cập trái phép (IDOR), hệ thống kiểm tra đồng thời Mã hồ sơ và Email đăng ký ở phía máy chủ.</p><div class="lookup-trust"><span>◇ Xác thực 2 thông tin phía máy chủ</span><span>✓ Không lộ câu trả lời chi tiết</span></div></div><div class="lookup-hero-art case-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="case-folder">▤<span>HỒ SƠ</span></div><div class="case-magnifier">⌕</div><div class="case-lock">◇</div></div></section><section class="lookup-search-panel case-search"><form id="caseForm" class="case-form"><div class="lookup-form-title"><span>▤</span><div><h2>Nhập thông tin xác minh hồ sơ</h2><p>Vui lòng cung cấp đúng mã hồ sơ trên biên nhận và địa chỉ email đã dùng khi đăng ký.</p></div></div><div class="field"><label for="caseCode">Mã hồ sơ *</label><input id="caseCode" value="${esc(init)}" placeholder="Ví dụ: SFN-TV-2026-0001" autocomplete="off" required></div><div class="field"><label for="caseEmail">Email đã đăng ký *</label><input id="caseEmail" type="email" placeholder="Nhập email đã dùng khi nộp hồ sơ" autocomplete="email" required></div><button class="portal-button" type="submit">⌕ &nbsp; TRA CỨU HỒ SƠ <span>→</span></button><p class="privacy-hint">${esc(t('lookup_policy_1'))} ${esc(t('lookup_policy_2'))}</p></form><div id="caseOut" aria-live="polite"></div></section>`;
   const f=document.getElementById('caseForm'),out=document.getElementById('caseOut');
   f.onsubmit=async e=>{e.preventDefault();out.innerHTML='<div class="loading">Đang kiểm tra hồ sơ…</div>';const code=document.getElementById('caseCode').value.trim(),email=document.getElementById('caseEmail').value.trim();try{const d=await api('/api/lookup/submission',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code,email})});out.innerHTML=caseResult(d.item)}catch(err){out.innerHTML=failCard('Không thể tra cứu hồ sơ với thông tin đã cung cấp. Vui lòng kiểm tra lại mã hồ sơ và email đăng ký.')}};
 }

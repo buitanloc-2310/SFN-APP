@@ -384,26 +384,58 @@ export async function rateLimit(
   };
 }
 
-const TEMPLATE_ALIASES = {
-  FULL_NAME: ["full_name", "recipient_name"],
-  full_name: ["FULL_NAME", "recipient_name"],
-   recipient_name: ["full_name", "FULL_NAME"],
-  EMAIL: ["email"],
-  email: ["EMAIL"],
-  APPLICATION_ID: ["code", "application_code"],
-  application_code: ["code", "APPLICATION_ID"],
-  code: ["APPLICATION_ID", "application_code"],
-  APPLICATION_TYPE: ["form_name", "program_name"],
-  form_name: ["APPLICATION_TYPE", "program_name"],
-  program_name: ["form_name", "APPLICATION_TYPE"],
-  SUBMITTED_AT: ["submitted_at"],
-  submitted_at: ["SUBMITTED_AT"],
+export const TEMPLATE_ALIASES = {
+  RECIPIENT_NAME: ["recipient_name", "full_name", "FULL_NAME", "email"],
+  FULL_NAME: ["full_name", "recipient_name", "RECIPIENT_NAME"],
+  full_name: ["FULL_NAME", "recipient_name", "RECIPIENT_NAME"],
+  recipient_name: ["RECIPIENT_NAME", "full_name", "FULL_NAME"],
+  EMAIL: ["email", "to_email"],
+  email: ["EMAIL", "to_email"],
+  REQUEST_ID: ["request_id", "code", "application_code", "APPLICATION_ID", "certificate_code", "ticket_code", "campaign_code"],
+  request_id: ["REQUEST_ID", "code", "application_code", "APPLICATION_ID", "certificate_code", "ticket_code"],
+  APPLICATION_ID: ["code", "application_code", "REQUEST_ID", "certificate_code", "ticket_code"],
+  application_code: ["code", "APPLICATION_ID", "REQUEST_ID"],
+  code: ["REQUEST_ID", "APPLICATION_ID", "application_code", "certificate_code", "ticket_code"],
+  certificate_code: ["code", "REQUEST_ID", "APPLICATION_ID"],
+  ticket_code: ["code", "REQUEST_ID", "APPLICATION_ID"],
+  REGISTRATION_TYPE: ["registration_type", "form_name", "program_name", "APPLICATION_TYPE", "cert_type", "subject", "campaign_title"],
+  registration_type: ["REGISTRATION_TYPE", "form_name", "program_name", "APPLICATION_TYPE", "cert_type", "subject"],
+  APPLICATION_TYPE: ["form_name", "program_name", "REGISTRATION_TYPE", "cert_type", "subject"],
+  form_name: ["REGISTRATION_TYPE", "APPLICATION_TYPE", "program_name", "subject"],
+  program_name: ["form_name", "REGISTRATION_TYPE", "APPLICATION_TYPE"],
+  SUBMITTED_AT: ["submitted_at", "issued_at", "created_at"],
+  submitted_at: ["SUBMITTED_AT", "issued_at", "created_at"],
   STATUS: ["status", "application_status"],
   application_status: ["status", "STATUS"],
   status: ["STATUS", "application_status"],
-  certificate_code: ["code"],
-  support_email: ["MAIL_SUPPORT"]
+  ADDITIONAL_INFO: ["additional_info", "content", "result_summary", "requirement_note", "subject", "email"],
+  additional_info: ["ADDITIONAL_INFO", "content", "result_summary", "requirement_note"],
+  PREHEADER: ["preheader", "EMAIL_HEADING", "subject"],
+  EMAIL_CATEGORY: ["email_category", "category"],
+  EMAIL_HEADING: ["email_heading", "heading", "title"],
+  INTRO_TEXT: ["intro_text", "intro"],
+  BODY_HTML: ["body_html"],
+  NEXT_STEPS: ["next_steps", "next_action"],
+  ACTION_URL: ["action_url", "certificate_url", "activation_link", "link", "tracking_url"],
+  action_url: ["ACTION_URL", "certificate_url", "activation_link", "link", "tracking_url"],
+  ACTION_LABEL: ["action_label"],
+  certificate_url: ["ACTION_URL", "action_url", "link"],
+  activation_link: ["ACTION_URL", "action_url", "link"],
+  link: ["ACTION_URL", "action_url", "activation_link", "certificate_url"],
+  support_email: ["MAIL_SUPPORT"],
+  hotline: ["HOTLINE"]
 };
+
+export function extractTemplateVariables(template = "") {
+  const vars = new Set();
+  const str = String(template || "");
+  const re = /\{\{([a-zA-Z0-9_]+)\}\}/g;
+  let m;
+  while ((m = re.exec(str)) !== null) {
+    vars.add(m[1]);
+  }
+  return [...vars];
+}
 
 export function renderTemplate(
   template,
@@ -413,24 +445,36 @@ export function renderTemplate(
   const htmlEscape = !!options.htmlEscape;
   const rawKeys = options.rawKeys instanceof Set
     ? options.rawKeys
-    : new Set(options.rawKeys || ["PROFILE_IMAGE_BLOCK", "answers_table", "note_block"]);
+    : new Set(options.rawKeys || [
+        "BODY_HTML",
+        "body_html",
+        "PROFILE_IMAGE_BLOCK",
+        "answers_table",
+        "note_block",
+        "ATTACHMENT_LINKS_HTML",
+        "attachment_links_html"
+      ]);
 
-  return String(template || "").replace(
+  const rendered = String(template || "").replace(
     /\{\{([a-zA-Z0-9_]+)\}\}/g,
     (_, k) => {
       let val = vars[k];
-      if (val === undefined || val === null) {
+      if (val === undefined || val === null || val === "undefined" || val === "null") {
         const aliases = TEMPLATE_ALIASES[k] || [];
         for (const alt of aliases) {
-          if (vars[alt] !== undefined && vars[alt] !== null) {
+          if (vars[alt] !== undefined && vars[alt] !== null && vars[alt] !== "undefined" && vars[alt] !== "null") {
             val = vars[alt];
             break;
           }
         }
       }
-      if (val === undefined || val === null) {
-        if (k === "support_email") val = "support@skyfirst.io.vn";
-        else if (k === "PROFILE_IMAGE_BLOCK" || k === "note_block" || k === "answers_table") val = "";
+      if (val === undefined || val === null || val === "undefined" || val === "null") {
+        if (k === "support_email" || k === "MAIL_SUPPORT") val = "support@skyfirst.io.vn";
+        else if (k === "contact_email" || k === "MAIL_CONTACT") val = "lienhe@skyfirst.io.vn";
+        else if (k === "system_email" || k === "MAIL_FROM") val = "app@skyfirst.io.vn";
+        else if (k === "hotline" || k === "HOTLINE") val = "0924 910 210";
+        else if (k === "ACTION_URL" || k === "action_url") val = "https://app.skyfirst.io.vn";
+        else if (k === "ACTION_LABEL" || k === "action_label") val = "TRUY CẬP HỆ THỐNG";
         else val = "";
       }
       const str = String(val);
@@ -440,6 +484,9 @@ export function renderTemplate(
       return str;
     }
   );
+
+  // Bảo đảm tuyệt đối không còn sót chuỗi {{...}} bất kỳ trong nội dung xuất ra
+  return rendered.replace(/\{\{[^}]*\}\}/g, "");
 }
 
 export function csvEscape(v) {

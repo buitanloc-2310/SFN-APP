@@ -11,9 +11,11 @@ const dbPath = '/tmp/sfn_e2e_test.db';
 if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
 
 // 1. Initialize SQLite database with all migrations 0001..0008
-const migrations = fs.readdirSync(path.join(root, 'migrations'))
-  .filter(f => f.endsWith('.sql'))
-  .sort();
+const migSet = new Set(fs.readdirSync(path.join(root, 'migrations')).filter(f => f.endsWith('.sql')));
+if (fs.existsSync(path.join(root, 'migrations/0009_super_website_universal_email_and_cms.sql'))) {
+  migSet.add('0009_super_website_universal_email_and_cms.sql');
+}
+const migrations = [...migSet].sort();
 
 for (const m of migrations) {
   const sqlPath = path.join(root, 'migrations', m);
@@ -57,7 +59,7 @@ conn.commit()
 conn.close()
 print(json.dumps(out))
 `;
-  const r = spawnSync('python3', ['-c', py], {input, encoding: 'utf8'});
+  const r = spawnSync('python3', ['-c', py], {input, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024});
   if (r.status !== 0) {
     throw new Error(r.stderr || 'SQLite error');
   }
@@ -590,6 +592,138 @@ let submittedCode = '';
   // Public page endpoint now serves the visual blocks
   const postPub = await callWorker('/api/public/pages/gioi-thieu-he-thong-so?website_id=sfec');
   assert(postPub.status === 200 && postPub.data.item?.blocks?.length === 2, 'Published CMS page is publicly accessible with visual blocks');
+}
+
+// 13. Universal HTML Email Template (email_universal_auto.html) & Zero Leftover Tokens
+{
+  const tplList = await callWorker('/api/admin/email-templates', {cookie: superAdminCookie});
+  assert(tplList.status === 200 && tplList.data.items.length >= 15, 'All 15+ automated email templates registered in D1');
+
+  for (const key of ['submission_confirmation', 'certificate_issued', 'certificate_revoked', 'interview_scheduled', 'support_ticket_reply']) {
+    const prev = await callWorker(`/api/admin/email-templates/${key}/preview`, {
+      method: 'POST', cookie: superAdminCookie,
+      body: {vars: {full_name: 'Nguyễn Văn Kiểm Thử', reference_code: 'SFN-2026-9999', program_title: 'Học bổng Sky First'}}
+    });
+    const html = prev.data.preview?.html || '';
+    assert(
+      prev.status === 200 &&
+      html.includes('data:image/png;base64,') &&
+      html.includes('Nguyễn Văn Kiểm Thử') &&
+      html.includes('SFN-2026-9999') &&
+      !/\{\{[A-Z0-9_]+\}\}/i.test(html),
+      `Template "${key}" renders email_universal_auto.html with embedded base64 logo and zero unreplaced {{...}} placeholders`
+    );
+  }
+}
+
+// 14. Admin-Assisted Password Reset (/api/auth/forgot) & Auth Audit Logging
+{
+  const forgotRes = await callWorker('/api/auth/forgot', {
+    method: 'POST',
+    body: {email: 'skyfirst.ec@gmail.com', note: 'Nhờ quản trị viên cấp lại mật khẩu'}
+  });
+  assert(
+    forgotRes.status === 200 &&
+    forgotRes.data.ok === true &&
+    forgotRes.data.mode === 'admin_assisted' &&
+    forgotRes.data.support_email === 'support@skyfirst.io.vn' &&
+    forgotRes.data.hotline === '0924 910 210',
+    'Forgot-password workflow creates admin-assisted support ticket (SFN-PW-*) and returns official support contact info'
+  );
+
+  const pwTicket = await DB.prepare("SELECT code FROM tickets WHERE ticket_type='Đặt lại mật khẩu' ORDER BY created_at DESC LIMIT 1").first();
+  assert(Boolean(pwTicket?.code?.startsWith('SFN-PW-')), 'Admin-assisted password reset request creates SFN-PW-* ticket in D1');
+
+  const auditRes = await callWorker('/api/admin/dashboard', {cookie: superAdminCookie});
+  const recentAudit = auditRes.data.recent_audit || [];
+  assert(
+    recentAudit.some(a => a.action === 'Yêu cầu hỗ trợ đặt lại mật khẩu' || a.action === 'Đăng nhập thành công'),
+    'Auth events (login & password reset request) are recorded in audit_log without sensitive secrets'
+  );
+}
+
+// 15. Lookup Data Policy & Timestamp Notices + Certificate Lookup by Email/Phone
+{
+  const activeCert = await DB.prepare("SELECT id, code FROM certificates LIMIT 1").first();
+  await DB.prepare("UPDATE certificates SET status='issued', email='certowner@skyfirst.io.vn', metadata_json=? WHERE id=?").bind(
+    JSON.stringify({unit_name: 'Sky First', program: 'SFEC 2026', phone: '0912345678'}),
+    activeCert.id
+  ).run();
+
+  const certLookup = await callWorker(`/api/public/credentials/${encodeURIComponent(activeCert.code)}`);
+  assert(
+    certLookup.status === 200 &&
+    certLookup.data.data_policy_notice === 'Hệ thống chỉ cung cấp các thông tin được phép công khai theo chính sách dữ liệu của Sky First Network. Thông tin cá nhân và dữ liệu nội bộ không thuộc phạm vi công khai phải được bảo vệ, không trả về trong phản hồi tra cứu hoặc hiển thị trên giao diện người dùng.' &&
+    certLookup.data.query_timestamp_notice === 'Kết quả tra cứu phản ánh trạng thái của bản ghi trong cơ sở dữ liệu Hệ thống Thông tin Số Sky First tại thời điểm thực hiện truy vấn.' &&
+    Boolean(certLookup.data.queried_at),
+    'Public lookup returns exact required Sky First data privacy policy notice, timestamp notice, and queried_at'
+  );
+
+  const byContact = await callWorker('/api/lookup/certificate?email=certowner@skyfirst.io.vn');
+  assert(
+    byContact.status === 200 &&
+    byContact.data.verified === true &&
+    byContact.data.item?.code === activeCert.code &&
+    !JSON.stringify(byContact.data.item).includes('0912345678') &&
+    !JSON.stringify(byContact.data.item).includes('certowner@skyfirst.io.vn'),
+    'Certificate lookup by email/phone locates matching credential without exposing personal contact fields in public response'
+  );
+}
+
+// 16. Document Lifecycle Management (Unpublish, Revoke, Replace, Restore)
+{
+  const docsList = await callWorker('/api/admin/content/documents', {cookie: superAdminCookie});
+  const targetDoc = docsList.data.items.find(d => d.code === 'HD-2026-01');
+  assert(Boolean(targetDoc), 'Located test PDF document HD-2026-01 for lifecycle tests');
+
+  // Revoke document
+  const revDoc = await callWorker(`/api/admin/documents/${encodeURIComponent(targetDoc.id)}/lifecycle`, {
+    method: 'POST', cookie: superAdminCookie,
+    body: {action: 'revoke', reason: 'Thu hồi bản hướng dẫn cũ để cập nhật quy chế mới'}
+  });
+  assert(revDoc.status === 200 && revDoc.data.status === 'Đã thu hồi' && revDoc.data.visibility === 'internal', 'Document lifecycle revoke updates status to Đã thu hồi and restricts visibility to internal');
+
+  // Restore document
+  const restDoc = await callWorker(`/api/admin/documents/${encodeURIComponent(targetDoc.id)}/lifecycle`, {
+    method: 'POST', cookie: superAdminCookie,
+    body: {action: 'restore', reason: 'Khôi phục hiệu lực tài liệu sau rà soát'}
+  });
+  assert(restDoc.status === 200 && restDoc.data.status === 'Có hiệu lực' && restDoc.data.visibility === 'public', 'Document lifecycle restore reinstates public active status');
+}
+
+// 17. Super Admin Enriched Dashboard Metrics & Warnings
+{
+  const dash = await callWorker('/api/admin/dashboard', {cookie: superAdminCookie});
+  assert(
+    dash.status === 200 &&
+    typeof dash.data.counts?.certificates === 'number' &&
+    typeof dash.data.counts?.published_pages === 'number' &&
+    typeof dash.data.email_status?.pending === 'number' &&
+    Array.isArray(dash.data.recent_audit) &&
+    Array.isArray(dash.data.warnings),
+    'Super Admin dashboard returns real D1 counts, email delivery status breakdown, recent audit log, and system warnings'
+  );
+}
+
+// 18. Technical SEO (/robots.txt & /sitemap.xml)
+{
+  const robots = await callWorker('/robots.txt');
+  assert(
+    robots.status === 200 &&
+    String(robots.data).includes('Disallow: /admin') &&
+    String(robots.data).includes('Disallow: /api/') &&
+    String(robots.data).includes('Sitemap: https://app.skyfirst.io.vn/sitemap.xml'),
+    '/robots.txt blocks /admin and /api/ while referencing https://app.skyfirst.io.vn/sitemap.xml'
+  );
+
+  const sitemap = await callWorker('/sitemap.xml');
+  assert(
+    sitemap.status === 200 &&
+    String(sitemap.data).includes('<urlset') &&
+    String(sitemap.data).includes('https://app.skyfirst.io.vn/gcn') &&
+    !String(sitemap.data).includes('/admin'),
+    '/sitemap.xml dynamically outputs public canonical URLs and excludes private/admin routes'
+  );
 }
 
 console.log(`\n========================================`);
