@@ -16,7 +16,7 @@ function needsAppBundle({path,route}){
 async function loadAppBundle(){
   if(appBundleLoaded)return;
   appBundleLoaded=true;
-  await import('/app.js?v=20261023-v9');
+  await import('/app.js?v=20261022-v7');
 }
 
 async function renderPublic(){
@@ -31,32 +31,27 @@ async function renderPublic(){
   }
 }
 
-document.addEventListener('click',e=>{
-  const a=e.target?.closest?.('a[href]');
-  if(!a||a.target==='_blank'||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
-  const rawHref=a.getAttribute('href')||'';
-  if(rawHref==='https://app.skyfirst.io.vn/admin/login'||rawHref==='/admin/login'){
-    e.preventDefault();
-    history.pushState(null,'','/admin/login');
-    if(appBundleLoaded){window.dispatchEvent(new PopStateEvent('popstate'));}
-    else{renderPublic();}
-  }
-});
+function applyTheme(theme){
+  document.body.classList.toggle('dark',theme==='dark');
+  try{localStorage.setItem('sfn_theme',theme)}catch{}
+}
+applyTheme((()=>{try{return localStorage.getItem('sfn_theme')||'light'}catch{return 'light'}})());
+document.getElementById('themeBtn')?.addEventListener('click',()=>applyTheme(document.body.classList.contains('dark')?'light':'dark'));
 
 window.addEventListener('hashchange',()=>{if(!appBundleLoaded)renderPublic()});
 window.addEventListener('popstate',()=>{if(!appBundleLoaded)renderPublic()});
 renderPublic();
 
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/sw.js?v=20261023-v9',{updateViaCache:'none'}).then(reg=>{
+  navigator.serviceWorker.register('/sw.js?v=20261022-v7',{updateViaCache:'none'}).then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
   let hadController=!!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
     if(!hadController){hadController=true;return;}
     try{
-      if(sessionStorage.getItem('sfn_sw_reloaded_v9')==='1')return;
-      sessionStorage.setItem('sfn_sw_reloaded_v9','1');
+      if(sessionStorage.getItem('sfn_sw_reloaded_v7')==='1')return;
+      sessionStorage.setItem('sfn_sw_reloaded_v7','1');
     }catch{}
     location.reload();
   });

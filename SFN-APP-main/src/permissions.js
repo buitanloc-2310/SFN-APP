@@ -9,57 +9,53 @@ export const ROLE_PERMISSIONS = {
     "certificate.view","certificate.request","certificate.approve","certificate.issue",
     "approval.view","approval.manage","approval.decide","approval.request",
     "ticket.manage","file.manage","search.use","export.use","task.manage","privacy.manage",
-    "backup.create","audit.view","email.view","email.manage","email.send_test","email.send_manual",
+    "backup.create","audit.view","email.view","email.manage","email.send_test",
     "sponsorship.view","sponsorship.manage","sponsorship.approve",
     "safety.view","safety.manage",
     "cms.view","cms.edit","cms.submit_review","cms.approve","cms.publish","cms.template_manage",
-    "website.view","website.manage",
-    "navigation.view","navigation.manage","redirect.manage","folder.manage","lifecycle.manage"
+    "website.view","website.manage"
   ],
   network_secretary:[
     "dashboard.view","submission.view","people.view","certificate.view","certificate.approve",
     "approval.view","approval.decide","document.view","audit.view",
-    "sponsorship.view","sponsorship.approve","cms.view","cms.approve","cms.publish","website.view",
-    "navigation.view","lifecycle.manage","email.view","email.send_manual"
+    "sponsorship.view","sponsorship.approve","cms.view","cms.approve","cms.publish","website.view"
   ],
   content_admin:[
     "dashboard.view","news.manage","form.view","form.manage","settings.manage","module.manage",
     "document.view","document.manage","document.version_manage","file.manage","search.use",
     "cms.view","cms.edit","cms.submit_review","cms.approve","cms.publish","cms.template_manage",
-    "website.view","email.view","email.manage","email.send_test",
-    "navigation.view","navigation.manage","redirect.manage","folder.manage","lifecycle.manage"
+    "website.view","email.view"
   ],
   certificate_manager:[
     "dashboard.view","certificate.view","certificate.request","certificate.issue",
-    "approval.view","approval.request","file.manage","search.use","email.send_manual"
+    "approval.view","approval.request","file.manage","search.use"
   ],
   reviewer:[
     "dashboard.view","submission.view","certificate.view","approval.view","approval.decide",
-    "audit.view","cms.view","cms.approve","sponsorship.view","lifecycle.manage"
+    "audit.view","cms.view","cms.approve","sponsorship.view"
   ],
   case_manager:[
     "dashboard.view","submission.view","submission.manage","people.view","file.manage",
-    "search.use","export.use","safety.view","safety.manage","email.send_manual","lifecycle.manage"
+    "search.use","export.use","safety.view","safety.manage"
   ],
   editor:[
     "dashboard.view","news.manage","document.view","document.manage","file.manage",
-    "cms.view","cms.edit","cms.submit_review","folder.manage","navigation.view"
+    "cms.view","cms.edit","cms.submit_review"
   ],
   office:[
     "dashboard.view","submission.view","submission.manage","people.view","people.manage",
     "document.view","document.manage","document.version_manage","certificate.view","certificate.issue",
     "approval.view","ticket.manage","file.manage","task.manage","export.use",
-    "sponsorship.view","sponsorship.manage","safety.view","safety.manage","email.view","email.send_manual",
-    "folder.manage","lifecycle.manage"
+    "sponsorship.view","sponsorship.manage","safety.view","safety.manage","email.view"
   ],
   hr:[
     "dashboard.view","submission.view","submission.manage","people.view","people.manage",
     "interview.manage","evaluation.manage","certificate.view","certificate.request",
-    "approval.view","approval.request","file.manage","task.manage","export.use","email.send_manual"
+    "approval.view","approval.request","file.manage","task.manage","export.use"
   ],
   communications:[
     "dashboard.view","news.manage","file.manage","task.manage",
-    "cms.view","cms.edit","cms.submit_review","sponsorship.view","navigation.view","folder.manage"
+    "cms.view","cms.edit","cms.submit_review","sponsorship.view"
   ],
   external_events:[
     "dashboard.view","submission.view","event.manage","ticket.manage","unit.view","task.manage",

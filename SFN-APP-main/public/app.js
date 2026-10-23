@@ -586,131 +586,11 @@ function renderLookup(){
 }
 
 function renderLogin(){
-  document.body.classList.remove('public-digital');
-  document.body.classList.add('admin-mode');
-  const portalHeader = document.getElementById('portalHeader');
-  const portalFooter = document.getElementById('connect');
-  if(portalHeader) portalHeader.style.display = 'none';
-  if(portalFooter) portalFooter.style.display = 'none';
-
-  app.innerHTML=`
-  <div class="sfn-login-bg">
-    <div class="sfn-login-split-card">
-      <div class="sfn-login-left">
-        <div class="sfn-login-brand-wrap">
-          <img class="sfn-login-logo" src="/assets/sfn-logo-tight.png" alt="Logo Sky First" width="120" height="120">
-          <h2>SKY FIRST</h2>
-          <span>HỆ THỐNG THÔNG TIN SỐ</span>
-          <i class="sfn-login-divider"></i>
-          <p>Nền tảng số hỗ trợ quản trị, vận hành và phát triển các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ cộng đồng.</p>
-        </div>
-        <div class="sfn-login-globe" aria-hidden="true">
-          <svg viewBox="0 0 400 180" width="100%" height="160" fill="none">
-            <ellipse cx="200" cy="190" rx="190" ry="120" fill="#0284c7" fill-opacity="0.22" stroke="#38bdf8" stroke-opacity="0.6" stroke-width="1.5"/>
-            <ellipse cx="200" cy="190" rx="145" ry="92" stroke="#7dd3fc" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="4 4"/>
-            <ellipse cx="200" cy="190" rx="95" ry="62" stroke="#bae6fd" stroke-opacity="0.3" stroke-width="1"/>
-            <path d="M40 165 Q200 75 360 165" stroke="#38bdf8" stroke-opacity="0.45" stroke-width="1.2"/>
-            <path d="M75 180 Q200 110 325 180" stroke="#7dd3fc" stroke-opacity="0.4" stroke-width="1"/>
-            <circle cx="120" cy="128" r="3.5" fill="#7dd3fc"/>
-            <circle cx="200" cy="102" r="4" fill="#ffffff"/>
-            <circle cx="275" cy="126" r="3.5" fill="#38bdf8"/>
-            <circle cx="158" cy="152" r="3" fill="#bae6fd"/>
-            <circle cx="242" cy="150" r="3" fill="#bae6fd"/>
-            <line x1="120" y1="128" x2="200" y2="102" stroke="#7dd3fc" stroke-opacity="0.55"/>
-            <line x1="200" y1="102" x2="275" y2="126" stroke="#7dd3fc" stroke-opacity="0.55"/>
-            <line x1="120" y1="128" x2="158" y2="152" stroke="#7dd3fc" stroke-opacity="0.45"/>
-            <line x1="200" y1="102" x2="158" y2="152" stroke="#7dd3fc" stroke-opacity="0.45"/>
-            <line x1="200" y1="102" x2="242" y2="150" stroke="#7dd3fc" stroke-opacity="0.45"/>
-            <line x1="275" y1="126" x2="242" y2="150" stroke="#7dd3fc" stroke-opacity="0.45"/>
-          </svg>
-        </div>
-      </div>
-
-      <div class="sfn-login-right">
-        <div class="sfn-login-badge">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
-          <span>KHU VỰC QUẢN TRỊ</span>
-        </div>
-        <h1>Đăng nhập Hệ thống<br>Thông tin Số Sky First</h1>
-        <p class="sfn-login-sub">Khu vực dành cho quản trị viên và nhân sự được phân quyền của Hệ thống Thông tin Số Sky First (Sky First Digital Information System).</p>
-        <form id="loginForm" class="sfn-login-form">
-          <div class="field">
-            <label for="loginEmail">Email tài khoản</label>
-            <div class="sfn-login-input-wrap">
-              <span class="sfn-login-input-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"></rect><polyline points="3 7 12 13 21 7"></polyline></svg>
-              </span>
-              <input id="loginEmail" name="email" type="email" placeholder="Nhập email tài khoản" autocomplete="username" required>
-            </div>
-          </div>
-          <div class="field">
-            <label for="loginPass">Mật khẩu</label>
-            <div class="sfn-login-input-wrap">
-              <span class="sfn-login-input-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
-              </span>
-              <input id="loginPass" name="password" type="password" placeholder="Nhập mật khẩu" autocomplete="current-password" required>
-              <button type="button" class="sfn-pass-eye-btn" id="toggleLoginPass" aria-label="Hiện hoặc ẩn mật khẩu" title="Hiện / Ẩn mật khẩu">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-              </button>
-            </div>
-          </div>
-          <div id="loginErrorOut" role="alert" aria-live="polite"></div>
-          <button class="sfn-login-submit-btn" id="loginSubmitBtn" type="submit">
-            <span class="sfn-login-btn-left">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
-              <b>Đăng nhập hệ thống</b>
-            </span>
-            <span class="sfn-login-btn-circle" aria-hidden="true">→</span>
-          </button>
-        </form>
-        ${state.config.google_oauth?`<div class="actions" style="margin-top:12px;"><button class="secondary" type="button" onclick="googleLogin('admin')">Đăng nhập bằng Google</button></div>`:""}
-        <div class="sfn-login-footer-links">
-          <button class="sfn-forgot-link" type="button" onclick="showForgot()">Quên mật khẩu?</button>
-          <span class="sfn-login-sep" aria-hidden="true">|</span>
-          <a class="sfn-back-home-link" href="/">← Về Trang chủ Hệ thống</a>
-        </div>
-      </div>
-    </div>
-  </div>`;
-
-  const passInput = document.getElementById("loginPass");
-  const eyeBtn = document.getElementById("toggleLoginPass");
-  if(eyeBtn && passInput){
-    eyeBtn.onclick = () => {
-      const show = passInput.type === "password";
-      passInput.type = show ? "text" : "password";
-      eyeBtn.setAttribute("aria-pressed", String(show));
-    };
-  }
-
-  let isSubmitting = false;
+  document.body.classList.remove('public-digital');document.body.classList.add('admin-mode');
+  app.innerHTML=`<div class="form-wrap" style="padding:60px 18px"><div class="card"><span class="pill">KHU VỰC QUẢN TRỊ</span><h1>Đăng nhập Hệ thống Thông tin Số Sky First</h1><p class="muted">Khu vực dành cho quản trị viên và nhân sự được phân quyền của Hệ thống Thông tin Số Sky First (Sky First Digital Information System).</p><form id="loginForm"><div class="field"><label for="loginEmail">Email tài khoản</label><input id="loginEmail" name="email" type="email" autocomplete="username" required></div><div class="field"><label for="loginPass">Mật khẩu</label><input id="loginPass" name="password" type="password" autocomplete="current-password" required></div><button class="primary" type="submit">Đăng nhập hệ thống</button></form>${state.config.google_oauth?`<div class="actions"><button class="secondary" type="button" onclick="googleLogin('admin')">Đăng nhập bằng Google</button></div>`:""}<div class="actions"><button class="ghost" type="button" onclick="showForgot()">Quên mật khẩu?</button><a class="ghost" href="/">← Về Trang chủ Hệ thống</a></div></div></div>`;
   document.getElementById("loginForm").onsubmit=async e=>{
-    e.preventDefault();
-    if(isSubmitting) return;
-    isSubmitting = true;
-    const btn = document.getElementById("loginSubmitBtn");
-    const errOut = document.getElementById("loginErrorOut");
-    if(btn) btn.disabled = true;
-    if(errOut) errOut.innerHTML = "";
-    const f=new FormData(e.target);
-    try{
-      const d=await api("/api/auth/login",{method:"POST",body:{email:f.get("email"),password:f.get("password"),portal:"admin"}});
-      if(d.needs_2fa)return show2FA(d.challenge);
-      state.user=d.user;
-      if(accountBtn)accountBtn.textContent=state.user.full_name||state.user.email;
-      if(d.must_change_password)return forcePasswordChange(f.get("password"));
-      history.replaceState(null,"","/admin");
-      location.hash="admin/dashboard";
-      await renderAdmin();
-    }catch(err){
-      const msg = errorText(err);
-      if(errOut) errOut.innerHTML = `<div class="notice bad" style="margin-bottom:12px;">${E(msg)}</div>`;
-      toast(msg,"bad");
-    }finally{
-      isSubmitting = false;
-      if(btn) btn.disabled = false;
-    }
+    e.preventDefault();const f=new FormData(e.target);
+    try{const d=await api("/api/auth/login",{method:"POST",body:{email:f.get("email"),password:f.get("password"),portal:"admin"}});if(d.needs_2fa)return show2FA(d.challenge);state.user=d.user;if(accountBtn)accountBtn.textContent=state.user.full_name||state.user.email;if(d.must_change_password)return forcePasswordChange(f.get("password"));location.hash="admin/dashboard"}catch(err){toast(errorText(err),"bad")}
   };
 }
 
@@ -718,49 +598,20 @@ window.googleLogin=portal=>location.href=`/api/auth/google/start?portal=${encode
 
 window.showRegister=function(){toast("Cổng không mở đăng ký tài khoản công khai. Hãy sử dụng biểu mẫu hoặc liên hệ quản trị viên nếu cần quyền nội bộ.","warn");}
 
-/*
- * Mục 13: Điều chỉnh chức năng quên mật khẩu theo nghiệp vụ
- * Hướng dẫn người dùng liên hệ Quản trị viên / Hỗ trợ kỹ thuật (support@skyfirst.io.vn / 0924 910 210)
- */
 window.showForgot=function(){
-  const supportEmail = state.config?.password_reset_contact_email || state.config?.support_email || "support@skyfirst.io.vn";
-  const hotline = state.config?.hotline || "0924 910 210";
-  const allowSelf = state.config?.allow_self_service_password_reset === true;
+  modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Quên mật khẩu</h2><form id="forgotForm"><div class="field"><label>Email</label><input name="email" type="email" required></div><button class="primary">Gửi liên kết đặt lại</button></form>`);
 
-  if(!allowSelf){
-    modal(`
-      <div class="admin-modal-head">
-        <div>
-          <span class="eyebrow">HỖ TRỢ ĐẶT LẠI MẬT KHẨU QUẢN TRỊ</span>
-          <h2>Hướng dẫn khôi phục quyền truy cập</h2>
-        </div>
-        <button type="button" class="admin-modal-close" onclick="closeModal()" aria-label="Đóng">×</button>
-      </div>
-      <div class="notice" style="margin:14px 0;line-height:1.7;">
-        Để bảo đảm an toàn tuyệt đối cho tài khoản quản trị trên <b>Hệ thống Thông tin Số Sky First</b>, hệ thống không mặc định gửi liên kết đặt lại mật khẩu tự động qua biểu mẫu công khai.
-      </div>
-      <p style="line-height:1.75;color:#334155;">
-        Khi quên mật khẩu hoặc cần cấp lại quyền truy cập, vui lòng liên hệ trực tiếp <b>Quản trị viên hệ thống</b> hoặc bộ phận <b>Hỗ trợ kỹ thuật &amp; Bảo mật</b> để được xác minh danh tính và cấp lại mật khẩu an toàn:
-      </p>
-      <div class="card" style="margin:14px 0;background:#f8fbff;border:1px solid #dbeafe;">
-        <p style="margin:6px 0;"><b>• Email hỗ trợ kỹ thuật &amp; đặt lại mật khẩu:</b> <a href="mailto:${E(supportEmail)}?subject=Y%C3%AAu%20c%E1%BA%A7u%20h%E1%BB%97%20tr%E1%BB%A3%20%C4%91%E1%BA%B7t%20l%E1%BA%A1i%20m%E1%BA%ADt%20kh%E1%BA%A9u%20qu%E1%BA%A3n%20tr%E1%BB%8B">${E(supportEmail)}</a></p>
-        <p style="margin:6px 0;"><b>• Hotline hỗ trợ:</b> <a href="tel:${E(hotline.replace(/\s+/g,''))}">${E(hotline)}</a></p>
-      </div>
-      <div class="actions" style="justify-content:flex-end;margin-top:16px;">
-        <a class="secondary" href="mailto:${E(supportEmail)}?subject=Y%C3%AAu%20c%E1%BA%A7u%20h%E1%BB%97%20tr%E1%BB%A3%20%C4%91%E1%BA%B7t%20l%E1%BA%A1i%20m%E1%BA%ADt%20kh%E1%BA%A9u">Gửi email tới ${E(supportEmail)}</a>
-        <button type="button" class="primary" onclick="closeModal()">Đã hiểu</button>
-      </div>
-    `);
-    return;
-  }
-
-  modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Quên mật khẩu</h2><form id="forgotForm"><div class="field"><label>Email</label><input name="email" type="email" required></div><button class="primary">Gửi yêu cầu</button></form>`);
   document.getElementById("forgotForm").onsubmit=async e=>{
     e.preventDefault();
     const f=new FormData(e.target);
-    const res = await api("/api/auth/forgot",{method:"POST",body:{email:f.get("email")}}).catch(()=>null);
+
+    await api("/api/auth/forgot",{
+      method:"POST",
+      body:{email:f.get("email")}
+    }).catch(()=>{});
+
     closeModal();
-    toast(res?.message || "Vui lòng liên hệ quản trị viên tại " + supportEmail);
+    toast("Nếu email tồn tại, hệ thống đã gửi hướng dẫn.");
   };
 }
 
@@ -1051,7 +902,7 @@ const adminMenu=[
   ["dashboard","Tổng quan hệ thống","dashboard.view"],["home-stats","5 Chỉ số trang chủ","settings.manage"],["approvals","Trung tâm phê duyệt","approval.view"],["search","Tìm kiếm nội bộ","search.use"]
  ]},
  {group:"QUẢN TRỊ NỘI DUNG & ĐA WEBSITE",items:[
-  ["page-builder","Trình dựng trang & CMS","cms.view"],["navigation","Menu, Đường dẫn & Thư mục","navigation.view"],["lifecycle","Vòng đời Dữ liệu & Bản ghi","lifecycle.manage"],["websites","Quản trị đa Website","website.view"],["news","Tin tức & Thông báo","news.manage"],["site","Nhận diện & Trang chủ","settings.manage"],["header","Thanh điều hướng","settings.manage"],["footer","Chân trang & Liên kết","settings.manage"],["media","Thư viện hình ảnh","file.manage"]
+  ["page-builder","Trình dựng trang & CMS","cms.view"],["websites","Quản trị đa Website","website.view"],["news","Tin tức & Thông báo","news.manage"],["site","Nhận diện & Trang chủ","settings.manage"],["header","Thanh điều hướng","settings.manage"],["footer","Chân trang & Liên kết","settings.manage"],["media","Thư viện hình ảnh","file.manage"]
  ]},
  {group:"CHƯƠNG TRÌNH, SỰ KIỆN & TÀI TRỢ",items:[
   ["classes","Chương trình & Lớp học","class.manage"],["events","Sự kiện & Hoạt động","event.manage"],["sponsorship","Minh bạch Tài trợ","sponsorship.view"],["units","Đơn vị & Đối tác","unit.view"],["people","Hồ sơ nhân sự","people.view"],["tasks","Nhiệm vụ & Bàn giao","task.manage"]
@@ -1069,7 +920,7 @@ const adminMenu=[
 
 const adminRoutePermissions={
  dashboard:"dashboard.view","home-stats":"settings.manage",approvals:"approval.view",search:"search.use",
- "page-builder":"cms.view",navigation:"navigation.view",lifecycle:"lifecycle.manage",websites:"website.view",site:"settings.manage",header:"settings.manage",news:"news.manage",footer:"settings.manage",media:"file.manage",
+ "page-builder":"cms.view",websites:"website.view",site:"settings.manage",header:"settings.manage",news:"news.manage",footer:"settings.manage",media:"file.manage",
  classes:"class.manage",events:"event.manage",sponsorship:"sponsorship.view",units:"unit.view",people:"people.view",tasks:"task.manage",tickets:"ticket.manage",
  forms:"form.view",submissions:"submission.view",recruitment:"submission.view",teaching:"people.view",terms:"form.view",
  certificates:"certificate.view",documents:"document.view",files:"file.manage",users:"user.view",email:"email.view",safety:"safety.view",
@@ -1150,8 +1001,6 @@ async function renderAdmin(){
     if(section==="classes")return await adminGeneric(main,"classes","Chương trình & Lớp học",["unit_code","title","level","status","capacity"]);
     if(section==="events")return await adminGeneric(main,"events","Hoạt động & Sự kiện",["unit_code","title","start_at","end_at","status","capacity"]);
     if(section==="page-builder")return await adminPageBuilder(main);
-    if(section==="navigation")return await adminNavigationCenter(main);
-    if(section==="lifecycle")return await adminLifecycleCenter(main);
     if(section==="websites")return await adminWebsites(main);
     if(section==="sponsorship")return await adminSponsorship(main);
     if(section==="safety")return await adminSafety(main);
@@ -3044,339 +2893,3 @@ window.addEventListener("hashchange",router);
 
   await router();
 })();
-
-
-// ================= V8 ADMIN UI: NAVIGATION, REDIRECTS, FOLDERS & LIFECYCLE =================
-async function adminNavigationCenter(main){
-  const [navRes, redRes, lnkRes, fldRes] = await Promise.all([
-    api("/api/admin/navigation").catch(()=>({items:[]})),
-    api("/api/admin/redirects").catch(()=>({items:[]})),
-    api("/api/admin/system-links").catch(()=>({items:[]})),
-    api("/api/admin/folders").catch(()=>({items:[]}))
-  ]);
-  const navItems = navRes.items || [];
-  const redirects = redRes.items || [];
-  const sysLinks = lnkRes.items || [];
-  const folders = fldRes.items || [];
-
-  main.innerHTML = `
-    <div class="admin-page-head">
-      <div>
-        <span class="eyebrow">QUẢN TRỊ ĐIỀU HƯỚNG &amp; CẤU TRÚC LIÊN KẾT (MỤC V)</span>
-        <h1>Menu, Đường dẫn, Liên kết &amp; Thư mục</h1>
-        <p class="muted">Quản trị tập trung toàn bộ menu chính, menu con, viên thuốc truy cập nhanh, liên kết chân trang, chuyển hướng URL (chống Open Redirect) và thư mục nội dung mà không cần sửa mã nguồn.</p>
-      </div>
-      <div class="actions">
-        <button type="button" class="secondary" id="btnAuditLinks">Rà soát liên kết &amp; tên miền</button>
-        <button type="button" class="primary" id="btnAddNavItem">+ Thêm mục Menu / Liên kết</button>
-      </div>
-    </div>
-
-    <div id="linkAuditOut" style="margin-bottom:16px;"></div>
-
-    <section class="card" style="margin-bottom:20px;">
-      <div class="toolbar">
-        <h2 style="margin-right:auto">1. Menu &amp; Điều hướng (Header, Truy cập nhanh, Footer, CTA)</h2>
-        <span class="pill">${navItems.length} mục điều hướng</span>
-      </div>
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr><th>Vị trí</th><th>Nhãn Tiếng Việt</th><th>Nhãn Tiếng Anh</th><th>Đường dẫn (URL)</th><th>Thứ tự</th><th>Hiển thị</th><th>Thao tác</th></tr>
-          </thead>
-          <tbody>
-            ${navItems.map(it=>`
-              <tr>
-                <td><span class="pill">${E(it.location)}</span>${it.parent_id?`<br><small class="muted">Con của: ${E(it.parent_id)}</small>`:""}</td>
-                <td><b>${E(it.label_vi)}</b></td>
-                <td>${E(it.label_en||"—")}</td>
-                <td><code>${E(it.url)}</code> <small class="muted">(${E(it.target)})</small></td>
-                <td>${E(it.sort_order)}</td>
-                <td><span class="status ${it.visible?"":"status-warn"}">${it.visible?"Hiển thị":"Đang ẩn"}</span></td>
-                <td>
-                  <button type="button" class="secondary" onclick="toggleNavItemVis('${E(it.id)}',${it.visible?0:1})">${it.visible?"Ẩn":"Hiện"}</button>
-                  <button type="button" class="danger" onclick="deleteNavItem('${E(it.id)}')">Xóa</button>
-                </td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <div class="admin-grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
-      <section class="card">
-        <div class="toolbar">
-          <h2 style="margin-right:auto">2. Đường dẫn &amp; Chuyển hướng URL</h2>
-          <button type="button" class="secondary" id="btnAddRedirect">+ Thêm chuyển hướng</button>
-        </div>
-        <p class="small muted">Tự động chặn chuyển hướng mở (Open Redirect) và vòng lặp chuyển hướng.</p>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>Nguồn</th><th>Đích</th><th>Mã</th><th>Lượt</th><th></th></tr></thead>
-            <tbody>
-              ${redirects.map(r=>`
-                <tr>
-                  <td><code>${E(r.source_path)}</code></td>
-                  <td><code>${E(r.target_path)}</code></td>
-                  <td><span class="pill">${E(r.http_code)}</span></td>
-                  <td>${E(r.hit_count||0)}</td>
-                  <td><button type="button" class="danger" onclick="deleteRedirectItem('${E(r.id)}')">Xóa</button></td>
-                </tr>
-              `).join("")||"<tr><td colspan='5'>Chưa có chuyển hướng nào.</td></tr>"}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="toolbar">
-          <h2 style="margin-right:auto">3. Thư mục &amp; Danh mục nội dung</h2>
-          <button type="button" class="secondary" id="btnAddFolder">+ Tạo thư mục</button>
-        </div>
-        <p class="small muted">Kiểm tra tham chiếu tự động trước khi xóa để không làm hỏng liên kết tài liệu/trang.</p>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>Tên thư mục (VI / EN)</th><th>Slug</th><th>Phạm vi</th><th>Tham chiếu</th><th></th></tr></thead>
-            <tbody>
-              ${folders.map(f=>`
-                <tr>
-                  <td><b>${E(f.name_vi)}</b><br><small class="muted">${E(f.name_en||"")}</small></td>
-                  <td><code>${E(f.slug)}</code></td>
-                  <td><span class="pill">${E(f.module_scope)}</span></td>
-                  <td><b>${E(f.reference_count||0)}</b> mục</td>
-                  <td><button type="button" class="danger" onclick="deleteFolderItem('${E(f.id)}')">Xóa</button></td>
-                </tr>
-              `).join("")||"<tr><td colspan='5'>Chưa có thư mục nào.</td></tr>"}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-
-    <section class="card">
-      <div class="toolbar">
-        <h2 style="margin-right:auto">4. Liên kết Toàn hệ thống &amp; Phân định Tên miền (Mục 16)</h2>
-      </div>
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>Mã liên kết</th><th>Nhãn hiển thị</th><th>Vị trí sử dụng</th><th>URL đích</th><th>Vai trò tên miền</th></tr></thead>
-          <tbody>
-            ${sysLinks.map(l=>`
-              <tr>
-                <td><code>${E(l.link_key)}</code></td>
-                <td><b>${E(l.label_vi)}</b><br><small class="muted">${E(l.label_en)}</small></td>
-                <td>${E(l.usage_location)}</td>
-                <td><code>${E(l.target_url)}</code></td>
-                <td><span class="pill">${E(l.domain_role)}</span></td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  `;
-
-  document.getElementById("btnAuditLinks")?.addEventListener("click", async () => {
-    const out = document.getElementById("linkAuditOut");
-    out.innerHTML = '<div class="notice">Đang kiểm toán liên kết và tên miền toàn hệ thống…</div>';
-    try {
-      const res = await api("/api/admin/system-links/audit");
-      const s = res.summary || {};
-      out.innerHTML = `<div class="notice ${s.issues_count===0?'good':'warn'}">
-        <b>Kết quả kiểm toán liên kết:</b> Đã kiểm tra ${E(s.navigation_count)} mục điều hướng, ${E(s.system_links_count)} liên kết hệ thống, ${E(s.active_redirects_count)} chuyển hướng.
-        Phát hiện <b>${E(s.issues_count)}</b> lỗi/cảnh báo.
-        ${(res.issues||[]).map(x=>`<div>• [${E(x.type)}] ${E(x.message)}</div>`).join("")}
-      </div>`;
-    } catch (err) {
-      out.innerHTML = `<div class="notice bad">${E(errorText(err))}</div>`;
-    }
-  });
-
-  document.getElementById("btnAddNavItem")?.addEventListener("click", () => {
-    openFormModal("Thêm mục Menu / Điều hướng", [
-      {name:"location",label:"Vị trí hiển thị",type:"select",value:"header",options:[
-        {value:"header",label:"Thanh điều hướng chính (Header)"},
-        {value:"quick_access",label:"Viên thuốc truy cập nhanh (Trang chủ)"},
-        {value:"footer_digital",label:"Chân trang - Cột Chức năng số"},
-        {value:"footer_lookup",label:"Chân trang - Cột Tra cứu & Minh bạch"},
-        {value:"footer_contact",label:"Chân trang - Cột Liên hệ & Hỗ trợ"},
-        {value:"cta",label:"Nút hành động (CTA)"}
-      ]},
-      {name:"label_vi",label:"Nhãn Tiếng Việt *",required:true},
-      {name:"label_en",label:"Nhãn Tiếng Anh *",required:true},
-      {name:"url",label:"Đường dẫn đích (URL nội bộ hoặc thuộc *.skyfirst.io.vn) *",value:"/chuong-trinh",required:true},
-      {name:"target",label:"Cách mở trang",type:"select",value:"_self",options:[{value:"_self",label:"Cùng tab (_self)"},{value:"_blank",label:"Tab mới (_blank)"}]},
-      {name:"sort_order",label:"Thứ tự hiển thị",type:"number",value:"50"}
-    ], async body => {
-      await api("/api/admin/navigation", {method:"POST", body});
-      toast("Đã lưu mục điều hướng.");
-      await adminNavigationCenter(main);
-    });
-  });
-
-  document.getElementById("btnAddRedirect")?.addEventListener("click", () => {
-    openFormModal("Thêm chuyển hướng URL an toàn", [
-      {name:"source_path",label:"Đường dẫn nguồn (bắt đầu bằng /) *",value:"/duong-dan-cu",required:true},
-      {name:"target_path",label:"Đường dẫn đích *",value:"/chuong-trinh",required:true},
-      {name:"http_code",label:"Mã HTTP",type:"select",value:"301",options:[{value:"301",label:"301 (Chuyển hướng vĩnh viễn)"},{value:"302",label:"302 (Chuyển hướng tạm thời)"}]},
-      {name:"notes",label:"Ghi chú lý do chuyển hướng"}
-    ], async body => {
-      await api("/api/admin/redirects", {method:"POST", body});
-      toast("Đã tạo chuyển hướng URL.");
-      await adminNavigationCenter(main);
-    });
-  });
-
-  document.getElementById("btnAddFolder")?.addEventListener("click", () => {
-    openFormModal("Tạo thư mục nội dung mới", [
-      {name:"name_vi",label:"Tên thư mục (Tiếng Việt) *",required:true},
-      {name:"name_en",label:"Tên thư mục (Tiếng Anh) *",required:true},
-      {name:"slug",label:"Mã đường dẫn (slug) *",required:true},
-      {name:"module_scope",label:"Phân hệ áp dụng",type:"select",value:"documents",options:[{value:"documents",label:"Thư viện Tài liệu & PDF"},{value:"cms_pages",label:"Trang nội dung CMS"},{value:"news",label:"Tin tức & Thông báo"}]},
-      {name:"description",label:"Mô tả thư mục"}
-    ], async body => {
-      await api("/api/admin/folders", {method:"POST", body});
-      toast("Đã tạo thư mục nội dung.");
-      await adminNavigationCenter(main);
-    });
-  });
-}
-
-window.toggleNavItemVis = async (id, vis) => {
-  try {
-    await api("/api/admin/navigation/" + encodeURIComponent(id), {method:"PATCH", body:{visible:!!vis}});
-    toast("Đã cập nhật hiển thị menu.");
-    await adminNavigationCenter(document.getElementById("adminMain"));
-  } catch (err) { toast(errorText(err), "bad"); }
-};
-
-window.deleteNavItem = async (id) => {
-  try {
-    await api("/api/admin/navigation/" + encodeURIComponent(id), {method:"DELETE"});
-    toast("Đã xóa mục điều hướng.");
-    await adminNavigationCenter(document.getElementById("adminMain"));
-  } catch (err) { toast(errorText(err), "bad"); }
-};
-
-window.deleteRedirectItem = async (id) => {
-  try {
-    await api("/api/admin/redirects/" + encodeURIComponent(id), {method:"DELETE"});
-    toast("Đã xóa chuyển hướng.");
-    await adminNavigationCenter(document.getElementById("adminMain"));
-  } catch (err) { toast(errorText(err), "bad"); }
-};
-
-window.deleteFolderItem = async (id) => {
-  try {
-    await api("/api/admin/folders/" + encodeURIComponent(id), {method:"DELETE"});
-    toast("Đã xóa thư mục.");
-    await adminNavigationCenter(document.getElementById("adminMain"));
-  } catch (err) { toast(errorText(err), "bad"); }
-};
-
-/*
- * Mục 10: Giao diện Quản lý Vòng đời Dữ liệu & Bản ghi sau khi công bố trên toàn hệ thống
- */
-async function adminLifecycleCenter(main){
-  main.innerHTML = `
-    <div class="admin-page-head">
-      <div>
-        <span class="eyebrow">QUẢN LÝ VÒNG ĐỜI DỮ LIỆU TOÀN HỆ THỐNG (MỤC 10)</span>
-        <h1>Vòng đời Dữ liệu &amp; Bản ghi sau công bố</h1>
-        <p class="muted">Thực hiện chỉnh sửa, ẩn/ngừng công bố, thu hồi, thay thế bằng bản ghi mới, cấp lại hoặc khôi phục có kiểm soát quyền và lưu vết lịch sử trước/sau đối với mọi loại dữ liệu chính thức.</p>
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:20px;">
-      <form id="lifecycleForm">
-        <div class="row2">
-          <div class="field">
-            <label>Loại đối tượng dữ liệu *</label>
-            <select name="entity_type" id="lfEntityType" required>
-              <option value="certificates">Chứng nhận (GCN / GXN / BK)</option>
-              <option value="documents">Tài liệu &amp; Văn bản PDF</option>
-              <option value="submissions">Hồ sơ đăng ký</option>
-              <option value="classes">Chương trình &amp; Lớp học</option>
-              <option value="events">Sự kiện &amp; Hoạt động</option>
-              <option value="news">Tin tức &amp; Thông báo</option>
-              <option value="sponsorship_campaigns">Chiến dịch Tài trợ</option>
-              <option value="cms_pages">Trang nội dung CMS</option>
-              <option value="forms">Biểu mẫu điện tử</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Mã định danh bản ghi (ID / Code) *</label>
-            <input name="entity_id" id="lfEntityId" placeholder="Nhập ID hoặc Mã bản ghi" required>
-          </div>
-        </div>
-        <div class="row2">
-          <div class="field">
-            <label>Thao tác vòng đời *</label>
-            <select name="action" id="lfAction" required>
-              <option value="hide">Ẩn / Ngừng công bố</option>
-              <option value="revoke">Thu hồi / Vô hiệu hóa chính thức</option>
-              <option value="replace">Thay thế bằng bản ghi mới (Superseded)</option>
-              <option value="reissue">Cấp lại / Phát hành lại</option>
-              <option value="restore">Khôi phục trạng thái hoạt động</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Mã bản ghi thay thế (nếu chọn Thay thế)</label>
-            <input name="replacement_id" placeholder="Nhập ID bản ghi mới thay thế">
-          </div>
-        </div>
-        <div class="field">
-          <label>Lý do thực hiện (bắt buộc ghi nhận vào lịch sử kiểm toán) *</label>
-          <input name="reason" required minlength="3" placeholder="Ghi rõ căn cứ nghiệp vụ hoặc quyết định phê duyệt...">
-        </div>
-        <div class="actions">
-          <button type="submit" class="primary">Thực thi thao tác vòng đời</button>
-          <button type="button" class="secondary" id="btnLoadLfHistory">Xem lịch sử bản ghi</button>
-        </div>
-      </form>
-      <div id="lfResultOut" style="margin-top:14px;"></div>
-    </div>
-    <div id="lfHistoryOut"></div>
-  `;
-
-  const loadHist = async () => {
-    const et = document.getElementById("lfEntityType").value;
-    const eid = document.getElementById("lfEntityId").value.trim();
-    if(!eid) return toast("Vui lòng nhập ID/Mã bản ghi.", "warn");
-    const out = document.getElementById("lfHistoryOut");
-    try {
-      const d = await api(`/api/admin/lifecycle/${encodeURIComponent(et)}/${encodeURIComponent(eid)}/history`);
-      const items = d.items || [];
-      out.innerHTML = `<div class="card"><h3>Lịch sử vòng đời của bản ghi ${E(eid)}</h3>
-        ${items.length?`<div class="table-scroll"><table><thead><tr><th>Thời điểm</th><th>Thao tác</th><th>Trạng thái trước</th><th>Trạng thái mới</th><th>Thay thế bởi</th><th>Lý do</th><th>Người thực hiện</th></tr></thead><tbody>
-        ${items.map(h=>`<tr><td>${E(h.created_at)}</td><td><span class="pill">${E(h.action)}</span></td><td>${E(h.previous_status)}</td><td><b>${E(h.new_status)}</b></td><td>${E(h.replacement_id||"—")}</td><td>${E(h.reason)}</td><td>${E(h.actor_email||h.actor_user_id||"—")}</td></tr>`).join("")}
-        </tbody></table></div>`:"<p class='muted'>Chưa có lịch sử chuyển đổi trạng thái nào cho bản ghi này.</p>"}
-      </div>`;
-    } catch (err) {
-      out.innerHTML = `<div class="notice bad">${E(errorText(err))}</div>`;
-    }
-  };
-
-  document.getElementById("btnLoadLfHistory")?.addEventListener("click", loadHist);
-  document.getElementById("lifecycleForm").onsubmit = async e => {
-    e.preventDefault();
-    const f = new FormData(e.target);
-    const et = f.get("entity_type");
-    const eid = String(f.get("entity_id")||"").trim();
-    try {
-      const res = await api(`/api/admin/lifecycle/${encodeURIComponent(et)}/${encodeURIComponent(eid)}`, {
-        method:"POST",
-        body:{
-          action:f.get("action"),
-          replacement_id:f.get("replacement_id"),
-          reason:f.get("reason")
-        }
-      });
-      toast("Đã thực thi thao tác vòng đời bản ghi.");
-      document.getElementById("lfResultOut").innerHTML = `<div class="notice good">Đã chuyển trạng thái từ <b>${E(res.previous_status)}</b> sang <b>${E(res.new_status)}</b>.</div>`;
-      await loadHist();
-    } catch (err) {
-      document.getElementById("lfResultOut").innerHTML = `<div class="notice bad">${E(errorText(err))}</div>`;
-    }
-  };
-}

@@ -1,29 +1,29 @@
-DANH SÁCH TỆP ĐÃ THÊM, SỬA VÀ DỌN DẸP TRONG GÓI BÀN GIAO (SKY FIRST DIGITAL INFORMATION SYSTEM — V9)
+SKY FIRST DIGITAL INFORMATION SYSTEM (V7) — DANH SÁCH FILE THAY ĐỔI & BỔ SUNG
 
-1. Các tệp thêm mới:
-- migrations/0008_sky_first_digital_information_system.sql: Migration tương thích ngược bổ sung 6 vai trò thiếu vào bảng roles, chuẩn hóa settings, tạo 16 bảng mở rộng (sponsorship_campaigns, sponsorship_transactions, sponsorship_reports, safety_reports, websites, cms_pages, cms_page_revisions, cms_shared_blocks, cms_templates, document_versions, email_template_versions, navigation_items, url_redirects, system_links, content_folders, entity_lifecycle_history), mở rộng cột email_logs và đăng ký mẫu email_universal_auto cùng 16 sự kiện nghiệp vụ.
-- public/email-templates/email_universal_auto.html: Mẫu email HTML dùng chung theo đặc tả PHỤ LỤC EMAIL-01.
-- public/email-templates/*.html (9 tệp mẫu chuyên biệt): Bộ mẫu HTML email cho từng nhóm sự kiện.
-- scripts/test-all.mjs: Bộ 95 bài kiểm thử tích hợp đầu-cuối (E2E) và hồi quy trên SQLite thực tế (bao gồm 18 kịch bản kiểm thử email bắt buộc).
+1. Cấu hình & Migration:
+- package.json (Mới/Sửa): Chuẩn hóa tên gói sky-first-digital-information-system v3.0.0, thêm script npm test.
+- wrangler.jsonc (Sửa): Cập nhật APP_URL=https://app.skyfirst.io.vn, LEGACY_APP_URL=https://ctt.skyfirst.io.vn, MAIL_FROM, MAIL_CONTACT, MAIL_SUPPORT.
+- D1_CTT_SUPER_SYSTEM_POLISH.sql (Sửa): Chuẩn hóa cấu hình định danh và email hệ thống.
+- migrations/0008_sky_first_digital_information_system.sql (Bổ sung mới): Migration tương thích ngược bổ sung 6 vai trò còn thiếu trong bảng roles, chuẩn hóa settings, tạo bảng cho Tài trợ, An toàn, Đa Website, Trình dựng trang CMS, Phiên bản PDF và Lịch sử mẫu Email.
 
-2. Các tệp chỉnh sửa & nâng cấp:
-- src/utils.js: Bổ sung pbkdf2SyncSha256 (pure-JS fallback xử lý triệt để lỗi đăng nhập tài khoản 150.000 iterations trên Cloudflare Workers), sanitizeControlledHtml, isSafeSkyFirstUrl, cải tiến requestIp và sessionCookie.
-- src/auth.js: Khắc phục lỗi đăng nhập (PBKDF2 150k/100k, tự động nâng cấp hash 100k, xóa bộ đếm rate limit khi đăng nhập đúng, kích hoạt status='active' cho tài khoản invited), triển khai luồng Quên mật khẩu hướng dẫn liên hệ quản trị viên (support@skyfirst.io.vn / 0924 910 210).
-- src/permissions.js: Bổ sung quyền quản trị điều hướng (navigation.view, navigation.manage, redirect.manage, folder.manage), vòng đời dữ liệu (lifecycle.manage), gửi email quản trị (email.send_manual) và kiểm soát phạm vi canAccessScope.
-- src/email.js: Tích hợp hoàn chỉnh email_universal_auto.html, danh mục 16 sự kiện nghiệp vụ song ngữ VI/EN, tự động ẩn dòng trống, kiểm tra và chuẩn bị tài liệu đính kèm Hình thức A (MIME Base64) & Hình thức B (Liên kết bảo vệ bằng token), chặn gửi chéo tài liệu giữa các hồ sơ, chống gửi trùng và retry có giới hạn.
-- src/index.js: Thực thi chuyển hướng URL quản trị (301/302), phục vụ tệp đính kèm bảo vệ (/api/email-files/:id), bảo mật CSP và X-Frame-Options: SAMEORIGIN.
-- src/public.js: Hoàn thiện tra cứu chứng nhận (theo mã GCN/GXN/BK, email hoặc số điện thoại mà không lộ dữ liệu cá nhân; hiển thị đầy đủ trạng thái Có hiệu lực, Hết hiệu lực, Đã thu hồi, Đã được thay thế kèm thông điệp chính sách dữ liệu và thời điểm truy vấn), tự động hóa 5 chỉ số trang chủ, API Tài trợ, An toàn và CMS.
-- src/admin.js: Bổ sung API quản trị Menu/Điều hướng, Chuyển hướng URL, Liên kết hệ thống & Kiểm toán liên kết, Thư mục nội dung (có kiểm tra tham chiếu trước khi xóa), Quản lý vòng đời bản ghi toàn hệ thống (/api/admin/lifecycle/:entityType/:id) và Gửi email quản trị (/api/admin/email/send).
-- public/index.html, public/bootstrap.js, public/digital-portal.js, public/app.js, public/digital.css, public/sw.js, public/manifest.webmanifest: Đồng bộ toàn bộ giao diện công khai và trang đăng nhập quản trị (/admin/login) bám sát bộ 10 ảnh giao diện tham chiếu, chuẩn hóa hệ thống biểu tượng SVG đơn sắc, song ngữ VI/EN tập trung và bổ sung giao diện quản trị Điều hướng/URL/Thư mục & Vòng đời dữ liệu.
-- package.json, wrangler.jsonc, scripts/validate.mjs, README_FIRST.md, docs/EMAIL_SETUP.md: Chuẩn hóa cấu hình, tài liệu hướng dẫn và kịch bản kiểm tra.
+2. Backend (Cloudflare Workers):
+- src/utils.js (Sửa): Tương thích ngược PBKDF2 150k/100k, chống XSS trong renderTemplate, hỗ trợ song song biến chữ hoa/chữ thường, cho phép cả origin app.skyfirst.io.vn và ctt.skyfirst.io.vn.
+- src/permissions.js (Sửa): Bổ sung quyền chi tiết theo module (sponsorship, safety, cms, website, email, document.version_manage) và hàm kiểm tra phạm vi canAccessScope.
+- src/email.js (Sửa): Chuẩn hóa địa chỉ gửi app@skyfirst.io.vn, reply_to support@skyfirst.io.vn, chống gửi trùng trong 60 giây, bổ sung hàm renderEmailContent an toàn.
+- src/auth.js (Sửa): Sửa lỗi kích hoạt tài khoản invited trong /api/auth/reset, chuẩn hóa PASSWORD_ITERATIONS=100000 và hỗ trợ xác thực tài khoản cũ 150000.
+- src/index.js (Sửa): Mở rộng SPA routing (/chuong-trinh, /su-kien, /tai-lieu, /tai-tro, /an-toan, /trang/*), đổi X-Frame-Options sang SAMEORIGIN hỗ trợ xem trước PDF nội tuyến, cho phép xem tệp của tài liệu công khai.
+- src/public.js (Sửa): Tự động hóa 5 chỉ số trang chủ từ D1, bổ sung API /api/public/sponsorship, /api/public/safety-reports, /api/public/pages, nâng cấp /api/public/resources và /api/public/search.
+- src/admin.js (Sửa): Khắc phục phân quyền handler, kiểm soát tách biệt nhiệm vụ phê duyệt (chặn tự duyệt), tự động gửi email khi phát hành chứng nhận, bổ sung API quản trị Tài trợ, An toàn, Trung tâm Email (preview/test), Phiên bản PDF, Đa Website và Trình dựng trang CMS.
 
-3. Các tệp báo cáo nháp cũ đã dọn dẹp khỏi thư mục gốc để giữ gói ZIP gọn sạch (63 tệp, nằm trong khoảng khuyến nghị 50–70 tệp):
-- Các tệp ghi chú lịch sử V2–V6 trùng lặp ở thư mục gốc (CTT_V2_*, CTT_V3_*, CTT_V4_*, CTT_V5_*, CTT_V6_*, FINAL_AUDIT.md, RUNNABLE_FIX.md).
+3. Frontend & Thư viện Mẫu Email HTML:
+- public/index.html (Sửa): Chuẩn hóa định danh Hệ thống Thông tin Số Sky First, thanh điều hướng 9 mục, chuyển đổi VI/EN, phần Hero sạch theo ảnh tham chiếu, chân trang chuẩn.
+- public/bootstrap.js (Sửa): Đồng bộ điều hướng SPA và cache v7.
+- public/digital-portal.js (Sửa): Giao diện trang chủ chuẩn ảnh tham chiếu (6 thẻ chức năng + 5 chỉ số thực từ D1), song ngữ VI/EN, trang Tài trợ (/tai-tro), trang An toàn (/an-toan), Thư viện PDF (/tai-lieu) có xem trước trực tiếp, và bộ kết xuất trang CMS (/trang/:slug).
+- public/app.js (Sửa): Ẩn thuật ngữ hạ tầng nội bộ khỏi nhãn hiển thị, nâng cấp bảng 5 chỉ số trang chủ, bổ sung giao diện quản trị Tài trợ, An toàn, Thư viện PDF đa phiên bản, Trung tâm Email tự động, Quản trị đa Website và Trình dựng trang trực quan kéo thả.
+- public/digital.css (Sửa): Bổ sung hệ thống thiết kế cho thanh điều hướng pill, hero sạch, 6 thẻ chức năng, thanh 5 chỉ số và bố cục responsive.
+- public/sw.js, public/manifest.webmanifest, public/403.html, public/404.html, public/error.html, public/maintenance.html (Sửa): Đồng bộ nhận diện Hệ thống Thông tin Số Sky First và email support@skyfirst.io.vn.
+- public/email-templates/*.html (Bổ sung/Cập nhật 10 file): application-received.html, registration-confirmation.html, certificate-issued.html, application-status-updated.html, information-required.html, application-result.html, account-notification.html, support-ticket-received.html, fundraising-update.html, submission-confirmation.html.
 
-
-4. Thay đổi giao diện trang chủ V9 (23/10/2026):
-- Dựng thêm bố cục khu vực chương trình, danh sách sự kiện, thư viện tài liệu, thông báo vận hành và phần giới thiệu ngắn bằng HTML/CSS/JavaScript/SVG; không nhúng ảnh chụp giao diện.
-- Chuẩn hóa full-width cho thân trang công khai và các lưới nội dung; thêm bố cục responsive tablet/mobile.
-- Các trạng thái rỗng luôn hiển thị rõ ràng; giá trị thống kê thiếu từ API hiển thị “Chưa có dữ liệu”.
-- Tăng cache-busting assets/service worker từ V8 lên V9.
-- Bổ sung thư viện HTML `public/email-templates/email_universal_auto.html` để khớp danh mục template cần kiểm định.
+4. Kiểm thử:
+- scripts/validate.mjs (Sửa): Kiểm tra đầy đủ cấu trúc file, cú pháp JS, mẫu email HTML và kiểm soát chuỗi hiển thị công khai.
+- scripts/test-all.mjs (Bổ sung mới): Bộ 59 kiểm thử tích hợp đầu-cuối (E2E) và hồi quy chạy trên Worker thật và SQLite thực tế.

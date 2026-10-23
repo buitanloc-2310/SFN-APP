@@ -1,46 +1,40 @@
-const CACHE_NAME = "sfn-digital-v9-20261023";
-const STATIC_ASSETS = [
-  "/",
-  "/index.html",
-  "/styles.css?v=20261023-v9",
-  "/digital.css?v=20261023-v9",
-  "/digital-portal.js?v=20261023-v9",
-  "/bootstrap.js?v=20261023-v9",
-  "/assets/sfn-logo-tight.png"
+/* Hệ thống Thông tin Số Sky First — service worker v7 */
+const CACHE='sfn-digital-shell-2026-10-v7';
+const SHELL=[
+  '/','/index.html',
+  '/styles.css?v=20261022-v7','/digital.css?v=20261022-v7',
+  '/digital-portal.js?v=20261022-v7','/bootstrap.js?v=20261022-v7',
+  '/manifest.webmanifest','/assets/sfn-logo-tight.png','/assets/sfn-logo.png'
 ];
-
-self.addEventListener("install", (event) => {
-  self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)).catch(() => {})
-  );
+self.addEventListener('install',event=>{
+  event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).catch(()=>{}).then(()=>self.skipWaiting()));
 });
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
-  );
+self.addEventListener('activate',event=>{
+  event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('sfn-digital-shell-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
 });
-
-self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  if (req.method !== "GET") return;
-  const url = new URL(req.url);
-  // Không lưu cache dữ liệu nhạy cảm, API quản trị, tra cứu hoặc xác thực (Mục 9)
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/admin")) {
+self.addEventListener('message',event=>{
+  if(event.data==='SKY_FIRST_SKIP_WAITING') self.skipWaiting();
+});
+self.addEventListener('fetch',event=>{
+  const req=event.request,u=new URL(req.url);
+  if(req.method!=='GET'||u.origin!==location.origin||u.pathname.startsWith('/api/')) return;
+  if(req.mode==='navigate'){
+    event.respondWith(fetch(req,{cache:'no-cache'}).then(r=>{
+      if(r.ok){const copy=r.clone();caches.open(CACHE).then(c=>c.put('/index.html',copy)).catch(()=>{});}
+      return r;
+    }).catch(async()=>await caches.match(req)||await caches.match('/index.html')));
     return;
   }
-  event.respondWith(
-    fetch(req)
-      .then((res) => {
-        if (res && res.status === 200 && url.origin === self.location.origin) {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
-        }
-        return res;
-      })
-      .catch(() => caches.match(req))
-  );
+  const isVersionedAsset=/\.(?:css|js|webmanifest)$/.test(u.pathname);
+  if(isVersionedAsset){
+    event.respondWith(fetch(req,{cache:'no-cache'}).then(r=>{
+      if(r.ok){const copy=r.clone();caches.open(CACHE).then(c=>c.put(req,copy)).catch(()=>{});}
+      return r;
+    }).catch(async()=>await caches.match(req)||await fetch(req)));
+    return;
+  }
+  event.respondWith(caches.match(req).then(cached=>cached||fetch(req).then(r=>{
+    if(r.ok){const copy=r.clone();caches.open(CACHE).then(c=>c.put(req,copy)).catch(()=>{});}
+    return r;
+  })));
 });

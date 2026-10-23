@@ -6,7 +6,6 @@ const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),'..');
 const required=[
   'src/index.js','src/auth.js','src/public.js','src/admin.js','src/me.js','src/utils.js','src/email.js','src/permissions.js',
   'public/index.html','public/bootstrap.js','public/digital-portal.js','public/app.js','public/styles.css','public/digital.css','public/sw.js','public/manifest.webmanifest',
-  'public/email-templates/email_universal_auto.html',
   'public/email-templates/application-received.html',
   'public/email-templates/registration-confirmation.html',
   'public/email-templates/certificate-issued.html',
