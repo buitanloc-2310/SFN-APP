@@ -10,7 +10,8 @@
     "db:migrate": "wrangler d1 migrations apply DB --remote",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "validate": "node scripts/validate.mjs",
-    "test": "node scripts/test-all.mjs"
+    "test": "node scripts/test-all.mjs",
+    "validate:ui": "node scripts/validate-ui-reference.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.30.0"

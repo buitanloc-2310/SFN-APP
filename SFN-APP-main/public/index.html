@@ -17,8 +17,8 @@
   <link rel="icon" type="image/png" href="/assets/sfn-logo-tight.png">
   <link rel="apple-touch-icon" href="/assets/sfn-logo-tight.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css?v=20261022-v7">
-  <link rel="stylesheet" href="/digital.css?v=20261022-v7">
+  <link rel="stylesheet" href="/styles.css?v=20261023-v8">
+  <link rel="stylesheet" href="/digital.css?v=20261023-v8">
 </head>
 <body class="public-digital">
 <a class="skip-link" href="#app">Bỏ qua điều hướng</a>
@@ -26,19 +26,19 @@
   <div class="dip-header-inner">
     <a class="dip-brand" id="siteBrand" href="/" aria-label="Hệ thống Thông tin Số Sky First">
       <img class="brand-signature" src="/assets/sfn-logo-tight.png" alt="Logo Sky First" width="112" height="64">
-      <span class="brand-wordmark"><b>SKY FIRST</b><small data-i18n="brand_sub">HỆ THỐNG THÔNG TIN SỐ</small></span>
+      <span class="brand-wordmark"><b>Sky First</b><small data-i18n="brand_sub">HỆ THỐNG THÔNG TIN SỐ</small></span>
     </a>
     <button class="menu-toggle" id="menuToggle" type="button" aria-label="Mở menu điều hướng" aria-expanded="false"><span></span><span></span><span></span></button>
     <nav class="dip-nav sfn-pill-nav" id="mainNav" aria-label="Điều hướng chính">
       <a class="nav-pill is-active" href="/" data-nav-match="home"><i aria-hidden="true">⌂</i><span data-i18n="nav_home">Trang chủ</span></a>
       <a class="nav-pill" href="/chuong-trinh" data-nav-match="programs"><i aria-hidden="true">◫</i><span data-i18n="nav_programs">Chương trình</span></a>
-      <a class="nav-pill" href="/su-kien" data-nav-match="events"><i aria-hidden="true">📅</i><span data-i18n="nav_events">Sự kiện</span></a>
-      <a class="nav-pill" href="/tai-lieu" data-nav-match="resources"><i aria-hidden="true">📁</i><span data-i18n="nav_docs">Tài liệu</span></a>
+      <a class="nav-pill" href="/su-kien" data-nav-match="events"><i aria-hidden="true">▦</i><span data-i18n="nav_events">Sự kiện</span></a>
+      <a class="nav-pill" href="/tai-lieu" data-nav-match="resources"><i aria-hidden="true">▤</i><span data-i18n="nav_docs">Tài liệu</span></a>
       <a class="nav-pill" href="/bieu-mau" data-nav-match="forms"><i aria-hidden="true">▤</i><span data-i18n="nav_forms">Biểu mẫu</span></a>
       <a class="nav-pill" href="/gcn" data-nav-match="gcn"><i aria-hidden="true">✓</i><span data-i18n="nav_certs">Chứng nhận</span></a>
       <a class="nav-pill" href="/ho-so" data-nav-match="hoso"><i aria-hidden="true">⌁</i><span data-i18n="nav_cases">Hồ sơ</span></a>
       <a class="nav-pill" href="/tai-tro" data-nav-match="sponsorship"><i aria-hidden="true">♡</i><span data-i18n="nav_sponsorship">Tài trợ</span></a>
-      <a class="nav-pill" href="/an-toan" data-nav-match="safety"><i aria-hidden="true">🛡️</i><span data-i18n="nav_safety">An toàn</span></a>
+      <a class="nav-pill" href="/an-toan" data-nav-match="safety"><i aria-hidden="true">◇</i><span data-i18n="nav_safety">An toàn</span></a>
     </nav>
     <div class="dip-actions">
       <button class="search-open" id="searchOpen" type="button" aria-label="Mở tìm kiếm" title="Tìm kiếm (/)"><span aria-hidden="true">⌕</span></button>
@@ -47,7 +47,6 @@
         <button type="button" class="lang-btn" data-lang="en">EN</button>
       </div>
       <button class="iconbtn" id="themeBtn" type="button" aria-label="Đổi giao diện sáng/tối" title="Đổi giao diện sáng/tối">◐</button>
-      <a class="header-login-btn" id="accountBtn" href="/admin/login"><span aria-hidden="true">👤</span> <span data-i18n="nav_login">Đăng nhập</span></a>
     </div>
   </div>
 </header>
@@ -55,8 +54,8 @@
 <main id="app" class="dip-main">
   <section class="sfn-clean-hero" aria-labelledby="staticTitle">
     <div class="sfn-clean-hero-inner">
-      <div class="sfn-hero-badge"><span>✦</span> <b data-i18n="hero_badge">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</b></div>
-      <h1 id="staticTitle"><span data-i18n="hero_title_top">Hệ thống Thông tin Số</span><strong>SKY FIRST</strong></h1>
+      <div class="sfn-hero-badge"><span>✦</span> <b data-i18n="hero_badge">HỆ THỐNG THÔNG TIN SỐ · Sky First</b></div>
+      <h1 id="staticTitle"><span data-i18n="hero_title_top">Hệ thống Thông tin Số</span><strong>Sky First</strong></h1>
       <p class="sfn-hero-desc" data-i18n="hero_desc">Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First.</p>
       <form class="sfn-search-bar" action="/tim-kiem" onsubmit="return false">
         <label class="sr-only" for="staticSearch">Tìm kiếm trên Hệ thống Thông tin Số Sky First</label>
@@ -67,12 +66,13 @@
       <div class="sfn-quick-pills" aria-label="Truy cập nhanh">
         <span class="sfn-quick-label" data-i18n="quick_label">Truy cập nhanh:</span>
         <a href="/chuong-trinh"><span>◫</span> <b data-i18n="nav_programs">Chương trình</b></a>
-        <a href="/su-kien"><span>📅</span> <b data-i18n="nav_events">Sự kiện</b></a>
+        <a href="/su-kien"><span>▦</span> <b data-i18n="nav_events">Sự kiện</b></a>
         <a href="/bieu-mau"><span>▤</span> <b data-i18n="nav_forms">Biểu mẫu</b></a>
+        <a href="/tai-lieu"><span>▤</span> <b data-i18n="nav_docs">Tài liệu</b></a>
         <a href="/gcn"><span>✓</span> <b data-i18n="nav_certs">Chứng nhận</b></a>
         <a href="/ho-so"><span>⌁</span> <b data-i18n="nav_cases">Hồ sơ</b></a>
         <a href="/tai-tro"><span>♡</span> <b data-i18n="nav_sponsorship">Tài trợ</b></a>
-        <a href="/an-toan"><span>🛡️</span> <b data-i18n="nav_safety">An toàn</b></a>
+        <a href="/an-toan"><span>◇</span> <b data-i18n="nav_safety">An toàn</b></a>
       </div>
     </div>
   </section>
@@ -81,14 +81,14 @@
 <div id="modalRoot"></div>
 
 <div class="search-center" id="searchCenter" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
-  <div class="search-top"><a class="dip-brand compact" href="/"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><span><b>SKY FIRST</b><small data-i18n="search_header">TÌM KIẾM HỆ THỐNG</small></span></a><button id="searchClose" type="button" aria-label="Đóng tìm kiếm">✕</button></div>
-  <div class="search-body"><span class="hero-eyebrow" data-i18n="search_eyebrow">TÌM KIẾM TRÊN HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h2 id="searchTitle" data-i18n="search_title">Khám phá thông tin & dịch vụ số</h2><div class="search-box"><span>⌕</span><input id="globalSearch" type="search" placeholder="Nhập tên chương trình, sự kiện, tài liệu, biểu mẫu hoặc mã chứng nhận..." autocomplete="off" aria-describedby="searchHint"><kbd>ESC</kbd></div><p id="searchHint" data-i18n="search_hint">Chỉ tìm kiếm trên dữ liệu công khai. Dùng phím ↑ ↓ để chọn, Enter để mở.</p><div class="search-filters" id="searchFilters" aria-label="Lọc kết quả"></div><div class="recent-searches" id="recentSearches"></div><div class="global-results" id="globalResults" aria-live="polite"></div></div>
+  <div class="search-top"><a class="dip-brand compact" href="/"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><span><b>Sky First</b><small data-i18n="search_header">TÌM KIẾM HỆ THỐNG</small></span></a><button id="searchClose" type="button" aria-label="Đóng tìm kiếm">✕</button></div>
+  <div class="search-body"><span class="hero-eyebrow" data-i18n="search_eyebrow">TÌM KIẾM TRÊN HỆ THỐNG THÔNG TIN SỐ Sky First</span><h2 id="searchTitle" data-i18n="search_title">Khám phá thông tin & dịch vụ số</h2><div class="search-box"><span>⌕</span><input id="globalSearch" type="search" placeholder="Nhập tên chương trình, sự kiện, tài liệu, biểu mẫu hoặc mã chứng nhận..." autocomplete="off" aria-describedby="searchHint"><kbd>ESC</kbd></div><p id="searchHint" data-i18n="search_hint">Chỉ tìm kiếm trên dữ liệu công khai. Dùng phím ↑ ↓ để chọn, Enter để mở.</p><div class="search-filters" id="searchFilters" aria-label="Lọc kết quả"></div><div class="recent-searches" id="recentSearches"></div><div class="global-results" id="globalResults" aria-live="polite"></div></div>
 </div>
 
 <footer class="dip-footer" id="connect">
   <div class="dip-footer-grid">
     <div>
-      <a class="dip-brand footer-logo" href="/"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><span><b>HỆ THỐNG THÔNG TIN SỐ SKY FIRST</b><small>Sky First Digital Information System</small></span></a>
+      <a class="dip-brand footer-logo" href="/"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><span><b>Hệ thống Thông tin Số Sky First</b><small>Sky First Digital Information System</small></span></a>
       <p id="footerDescription" data-i18n="footer_desc">Hệ thống thông tin và dịch vụ số phục vụ tra cứu, đăng ký chương trình, biểu mẫu, chứng nhận và minh bạch hoạt động.</p>
     </div>
     <div>
@@ -114,14 +114,18 @@
     </div>
   </div>
   <div class="dip-footer-bottom">
-    <span id="footerCopyright">© 2026 Hệ thống Thông tin Số Sky First</span>
+    <span id="footerCopyright">© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền.</span>
     <span class="footer-mission" data-i18n="footer_tagline">Kết nối tri thức • Lan tỏa giá trị • Vì cộng đồng bền vững</span>
-    <a class="footer-domain" href="https://app.skyfirst.io.vn">HỆ THỐNG THÔNG TIN SỐ SKY FIRST · app.skyfirst.io.vn</a>
+    <a class="footer-domain" href="https://app.skyfirst.io.vn">Hệ thống Thông tin Số Sky First · app.skyfirst.io.vn</a>
     <button class="footer-top" type="button" aria-label="Lên đầu trang" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+  </div>
+  <div class="dip-footer-legal">
+    <p>Mọi thông tin, dữ liệu, tài liệu và nội dung được trích dẫn, sao chép hoặc sử dụng từ Hệ thống phải ghi rõ nguồn: <strong>Hệ thống Thông tin Số Sky First</strong>, kèm đường dẫn đến nội dung gốc hoặc thông tin nhận diện tài liệu tương ứng khi có thể. Việc trích dẫn không được làm sai lệch nội dung, ngữ cảnh hoặc ý nghĩa của thông tin gốc; đồng thời phải tuân thủ quy định về quyền tác giả, quyền sở hữu trí tuệ, bảo vệ dữ liệu cá nhân và các quy định pháp luật có liên quan.</p>
+    <a class="admin-entry-link" href="/admin/login" aria-label="Đăng nhập quản trị">Đăng Nhập Quản Trị</a>
   </div>
 </footer>
 
-<script type="module" src="/digital-portal.js?v=20261022-v7"></script>
-<script type="module" src="/bootstrap.js?v=20261022-v7"></script>
+<script type="module" src="/digital-portal.js?v=20261023-v8"></script>
+<script type="module" src="/bootstrap.js?v=20261023-v8"></script>
 </body>
 </html>

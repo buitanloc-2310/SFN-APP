@@ -289,7 +289,7 @@ async function lookupCredential(env,rawCode){
       issued_at:registry.created_at||"",
       status:active?"issued":"revoked",
       status_text:active?"CÓ HIỆU LỰC":"ĐÃ THU HỒI",
-      revoked_at:"",revocation_reason:"",unit_name:"Sky First Network",role:"",program:"",file_url:"",replacement_code:""
+      revoked_at:"",revocation_reason:"",unit_name:"Sky First",role:"",program:"",file_url:"",replacement_code:""
     };
   }
   if(!row) return null;
@@ -307,7 +307,7 @@ async function lookupCredential(env,rawCode){
     type:row.cert_type||registry?.document_type||"Giấy đã phát hành",
     full_name:row.full_name||"",content:row.content||"",issued_at:row.issued_at||row.created_at||"",
     status:normalized.status,status_text:normalized.text,revoked_at:row.revoked_at||"",revocation_reason:row.revocation_reason||"",
-    unit_name:metadata.unit_name||metadata.issuer||"Sky First Network",
+    unit_name:metadata.unit_name||metadata.issuer||"Sky First",
     role:metadata.role||metadata.position||"",program:metadata.program||metadata.activity||metadata.event||"",
     file_url:metadata.file_url||metadata.url||"",replacement_code:replacement?.public_id||replacement?.code||replacement?.legacy_code||""
   };

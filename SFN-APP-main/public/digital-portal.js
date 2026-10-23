@@ -10,11 +10,44 @@ const fmt=d=>{const ms=parseCttTime(d);return Number.isFinite(ms)?new Date(ms).t
 const fmtVnd=n=>{const num=Number(n);if(!Number.isFinite(num))return "Chưa có dữ liệu";return new Intl.NumberFormat("vi-VN").format(Math.round(num))+" đồng";};
 const api=async(path,options={})=>{const r=await fetch(path,{credentials:"same-origin",...options,headers:{...(options.headers||{})}});const ct=r.headers.get("content-type")||"";const d=ct.includes("application/json")?await r.json():await r.text();if(!r.ok){const e=new Error(d?.message||d?.error||`HTTP ${r.status}`);e.status=r.status;e.data=d;throw e}return d};
 const event=(name,meta={})=>fetch('/api/public/analytics',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({event:name,route:location.pathname,device_class:innerWidth<700?'mobile':innerWidth<1100?'tablet':'desktop',...meta})}).catch(()=>{});
-const icon=n=>({verify:'✓',case:'⌁',form:'▤',program:'◫',event:'📅',resource:'📁',news:'◧',unit:'◎',search:'⌕',support:'?',shield:'🛡️',sponsorship:'♡',cms_page:'▤'}[n]||'•');
+const icon=n=>({verify:'✓',case:'⌁',form:'▤',program:'◫',event:'▦',resource:'▤',news:'◧',unit:'◎',search:'⌕',support:'?',shield:'◇',sponsorship:'♡',cms_page:'▤'}[n]||'•');
 function statusClass(s=''){s=String(s).toLowerCase();return s.includes('thu hồi')||s.includes('revoked')?'bad':s.includes('thay thế')||s.includes('supersed')?'warn':s.includes('xác thực')||s.includes('issued')||s.includes('hoàn tất')||s.includes('có hiệu lực')?'good':''}
+function normalizeBrandString(value){
+  const protectedParts=[];
+  let text=String(value??'');
+  // Never rewrite email addresses or hostnames, even when their local/domain part
+  // contains the word skyfirst (for example the protected root account mailbox).
+  const protect=match=>{const token=`\uE000${protectedParts.length}\uE001`;protectedParts.push(match);return token;};
+  text=text.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,protect);
+  text=text.replace(/(?:[a-z0-9-]+\.)*skyfirst\.io\.vn/gi,protect);
+  text=text.replace(/\bsky\s*first(?:\s+network)?\b/gi,'Sky First');
+  text=text.replace(/\bskyfirst\b/gi,'Sky First');
+  return text.replace(/\uE000(\d+)\uE001/g,(_,i)=>protectedParts[Number(i)]??_);
+}
+function normalizeVisibleBrand(root=document.body){
+  if(!root||typeof document.createTreeWalker!=='function')return;
+  const skipTags=new Set(['SCRIPT','STYLE','CODE','PRE','TEXTAREA','NOSCRIPT']);
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode(node){
+    let p=node.parentElement;
+    while(p&&p!==root){if(skipTags.has(p.tagName)||p.isContentEditable)return NodeFilter.FILTER_REJECT;p=p.parentElement;}
+    const next=normalizeBrandString(node.nodeValue);
+    return next!==node.nodeValue?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT;
+  }});
+  const changed=[];while(walker.nextNode())changed.push(walker.currentNode);
+  for(const node of changed)node.nodeValue=normalizeBrandString(node.nodeValue);
+  if(root.querySelectorAll){
+    root.querySelectorAll('[aria-label],[title],[alt],[placeholder]').forEach(el=>{
+      for(const attr of ['aria-label','title','alt','placeholder']){
+        if(!el.hasAttribute(attr))continue;const old=el.getAttribute(attr),next=normalizeBrandString(old);if(next!==old)el.setAttribute(attr,next);
+      }
+    });
+  }
+}
 function setMeta(title,desc){
-  document.title=`${title} — Hệ thống Thông tin Số Sky First`;
-  document.querySelector('meta[name="description"]')?.setAttribute('content',desc||'Hệ thống Thông tin Số Sky First (Sky First Digital Information System).');
+  document.title=`${normalizeBrandString(title)} — Hệ thống Thông tin Số Sky First`;
+  document.querySelector('meta[name="description"]')?.setAttribute('content',normalizeBrandString(desc||'Hệ thống Thông tin Số Sky First (Sky First Digital Information System).'));
+  document.querySelector('meta[property="og:title"]')?.setAttribute('content',document.title);
+  document.querySelector('meta[property="og:description"]')?.setAttribute('content',normalizeBrandString(desc||'Hệ thống Thông tin Số Sky First.'));
 }
 function sectionHead(kicker,title,desc){return `<div class="dip-section-head"><div><span class="section-kicker">${esc(kicker)}</span><h2>${esc(title)}</h2>${desc?`<p>${esc(desc)}</p>`:''}</div></div>`}
 function empty(msg){return `<div class="dip-empty"><span>◇</span><p>${esc(msg)}</p></div>`}
@@ -38,7 +71,7 @@ const I18N = {
     nav_sponsorship: "Tài trợ",
     nav_safety: "An toàn",
     nav_login: "Đăng nhập",
-    hero_badge: "HỆ THỐNG THÔNG TIN SỐ SKY FIRST",
+    hero_badge: "HỆ THỐNG THÔNG TIN SỐ · Sky First",
     hero_title_top: "Hệ thống Thông tin Số",
     hero_desc: "Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First.",
     search_placeholder: "Tìm kiếm chương trình, sự kiện, tài liệu, biểu mẫu, chứng nhận...",
@@ -68,7 +101,7 @@ const I18N = {
     footer_col_contact: "Liên hệ & Hỗ trợ",
     footer_privacy: "Quyền riêng tư & Bảo vệ dữ liệu",
     search_header: "TÌM KIẾM HỆ THỐNG",
-    search_eyebrow: "TÌM KIẾM TRÊN HỆ THỐNG THÔNG TIN SỐ SKY FIRST",
+    search_eyebrow: "TÌM KIẾM TRÊN HỆ THỐNG THÔNG TIN SỐ · Sky First",
     search_title: "Khám phá thông tin & dịch vụ số",
     search_hint: "Chỉ tìm kiếm trên dữ liệu công khai. Dùng phím ↑ ↓ để chọn, Enter để mở."
   },
@@ -84,7 +117,7 @@ const I18N = {
     nav_sponsorship: "Sponsorship",
     nav_safety: "Safety",
     nav_login: "Sign In",
-    hero_badge: "SKY FIRST DIGITAL INFORMATION SYSTEM",
+    hero_badge: "Sky First Digital Information System",
     hero_title_top: "Digital Information System",
     hero_desc: "Explore, verify, register, and manage educational programs, events, documents, forms, certificates, and community support services of Sky First.",
     search_placeholder: "Search programs, events, documents, forms, certificates...",
@@ -114,7 +147,7 @@ const I18N = {
     footer_col_contact: "Contact & Support",
     footer_privacy: "Privacy & Data Protection",
     search_header: "SYSTEM SEARCH",
-    search_eyebrow: "SKY FIRST DIGITAL INFORMATION SYSTEM SEARCH",
+    search_eyebrow: "Search · Sky First Digital Information System",
     search_title: "Discover public information & services",
     search_hint: "Searches public records only. Use ↑ ↓ arrows to navigate, Enter to open."
   }
@@ -163,8 +196,8 @@ function comparePrograms(a,b){const rank=x=>{const t=String(x.title||'').toLower
 function programCard(item,index=0,mode='catalog'){
  const data=jsonObject(item.data_json),kind=programArtKind(item),desc=firstText(data,['summary','short_description','description','intro'])||item.level||'';
  const status=publicStatusLabel(item.status),level=item.level?`<span class="program-level">${esc(item.level)}</span>`:'';
- if(mode==='home')return `<article class="program-home-card ${index===0?'is-featured':''} art-${esc(kind)}"><div class="program-home-art">${sceneArt(kind)}</div><div class="program-home-copy"><span class="program-unit">${esc(item.unit_code||'SKY FIRST')}</span><h3>${esc(item.title)}</h3>${level}<p class="program-status-line">${esc(status)}</p><a href="${esc(programHref(item))}">Xem chi tiết chương trình <span>→</span></a></div></article>`;
- return `<article class="program-card"><div class="program-card-visual">${sceneArt(kind)}<span class="program-unit">${esc(item.unit_code||'SKY FIRST')}</span></div><div class="program-card-body"><h3>${esc(item.title)}</h3>${level}${desc?`<p>${esc(desc)}</p>`:`<p>Thông tin chi tiết của chương trình được đồng bộ từ hệ thống quản trị.</p>`}<div class="program-card-foot"><span class="program-status ${activeLike(item.status)?'is-active':''}"><i></i>${esc(status)}</span><a href="${esc(programHref(item))}">Xem chi tiết <b>→</b></a></div></div></article>`;
+ if(mode==='home')return `<article class="program-home-card ${index===0?'is-featured':''} art-${esc(kind)}"><div class="program-home-art">${sceneArt(kind)}</div><div class="program-home-copy"><span class="program-unit">${esc(item.unit_code||'Sky First')}</span><h3>${esc(normalizeBrandString(item.title))}</h3>${level}<p class="program-status-line">${esc(status)}</p><a href="${esc(programHref(item))}">Xem chi tiết chương trình <span>→</span></a></div></article>`;
+ return `<article class="program-card"><div class="program-card-visual">${sceneArt(kind)}<span class="program-unit">${esc(item.unit_code||'Sky First')}</span></div><div class="program-card-body"><h3>${esc(normalizeBrandString(item.title))}</h3>${level}${desc?`<p>${esc(desc)}</p>`:`<p>Thông tin chi tiết của chương trình được đồng bộ từ hệ thống quản trị.</p>`}<div class="program-card-foot"><span class="program-status ${activeLike(item.status)?'is-active':''}"><i></i>${esc(status)}</span><a href="${esc(programHref(item))}">Xem chi tiết <b>→</b></a></div></div></article>`;
 }
 
 function updateActiveNav(activeKey){
@@ -193,7 +226,7 @@ async function home(app){
   <section class="sfn-clean-hero" id="heroSection">
     <div class="sfn-clean-hero-inner">
       <div class="sfn-hero-badge"><span>✦</span> <b data-i18n="hero_badge">${esc(t('hero_badge'))}</b></div>
-      <h1><span data-i18n="hero_title_top">${esc(t('hero_title_top'))}</span><strong>SKY FIRST</strong></h1>
+      <h1><span data-i18n="hero_title_top">${esc(t('hero_title_top'))}</span><strong>Sky First</strong></h1>
       <p class="sfn-hero-desc" data-i18n="hero_desc">${esc(t('hero_desc'))}</p>
       <div class="sfn-search-bar" role="search">
         <label class="sr-only" for="homeSearch">Tìm kiếm trên Hệ thống Thông tin Số Sky First</label>
@@ -204,12 +237,13 @@ async function home(app){
       <div class="sfn-quick-pills" aria-label="Truy cập nhanh">
         <span class="sfn-quick-label" data-i18n="quick_label">${esc(t('quick_label'))}</span>
         <a href="/chuong-trinh"><span>◫</span> <b data-i18n="nav_programs">${esc(t('nav_programs'))}</b></a>
-        <a href="/su-kien"><span>📅</span> <b data-i18n="nav_events">${esc(t('nav_events'))}</b></a>
-        <a href="/bieu-mau"><span>▤</span> <b data-i18n="nav_forms">${esc(t('nav_forms'))}</b></a>
+        <a href="/su-kien"><span>▦</span> <b data-i18n="nav_events">${esc(t('nav_events'))}</b></a>
+        <a href="/tai-lieu"><span>▤</span> <b data-i18n="nav_docs">${esc(t('nav_docs'))}</b></a>
+        <a href="/bieu-mau"><span>▧</span> <b data-i18n="nav_forms">${esc(t('nav_forms'))}</b></a>
         <a href="/gcn"><span>✓</span> <b data-i18n="nav_certs">${esc(t('nav_certs'))}</b></a>
         <a href="/ho-so"><span>⌁</span> <b data-i18n="nav_cases">${esc(t('nav_cases'))}</b></a>
         <a href="/tai-tro"><span>♡</span> <b data-i18n="nav_sponsorship">${esc(t('nav_sponsorship'))}</b></a>
-        <a href="/an-toan"><span>🛡️</span> <b data-i18n="nav_safety">${esc(t('nav_safety'))}</b></a>
+        <a href="/an-toan"><span>◇</span> <b data-i18n="nav_safety">${esc(t('nav_safety'))}</b></a>
       </div>
 
       <div class="sfn-feature-cards-grid" aria-label="Các phân hệ chức năng chính">
@@ -222,7 +256,7 @@ async function home(app){
           <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
         </a>
         <a class="sfn-fcard fcard-purple" href="/su-kien">
-          <div class="sfn-fcard-icon" aria-hidden="true">📅</div>
+          <div class="sfn-fcard-icon" aria-hidden="true">▦</div>
           <div class="sfn-fcard-body">
             <h2 data-i18n="card_ev_title">${esc(t('card_ev_title'))}</h2>
             <p data-i18n="card_ev_desc">${esc(t('card_ev_desc'))}</p>
@@ -230,7 +264,7 @@ async function home(app){
           <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
         </a>
         <a class="sfn-fcard fcard-teal" href="/tai-lieu">
-          <div class="sfn-fcard-icon" aria-hidden="true">📁</div>
+          <div class="sfn-fcard-icon" aria-hidden="true">▱</div>
           <div class="sfn-fcard-body">
             <h2 data-i18n="card_doc_title">${esc(t('card_doc_title'))}</h2>
             <p data-i18n="card_doc_desc">${esc(t('card_doc_desc'))}</p>
@@ -246,7 +280,7 @@ async function home(app){
           <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
         </a>
         <a class="sfn-fcard fcard-navy" href="/an-toan">
-          <div class="sfn-fcard-icon" aria-hidden="true">🛡️</div>
+          <div class="sfn-fcard-icon" aria-hidden="true">◇</div>
           <div class="sfn-fcard-body">
             <h2 data-i18n="card_safe_title">${esc(t('card_safe_title'))}</h2>
             <p data-i18n="card_safe_desc">${esc(t('card_safe_desc'))}</p>
@@ -272,7 +306,7 @@ async function home(app){
           </div>
         </div>
         <div class="sfn-stat-item">
-          <i class="sfn-stat-icon" aria-hidden="true">👥</i>
+          <i class="sfn-stat-icon" aria-hidden="true">♧</i>
           <div>
             <strong data-stat="members">—</strong>
             <span data-stat-label="members" data-i18n="stat_members">${esc(t('stat_members'))}</span>
@@ -286,14 +320,14 @@ async function home(app){
           </div>
         </div>
         <div class="sfn-stat-item">
-          <i class="sfn-stat-icon" aria-hidden="true">🤝</i>
+          <i class="sfn-stat-icon" aria-hidden="true">↔</i>
           <div>
             <strong data-stat="partners">—</strong>
             <span data-stat-label="partners" data-i18n="stat_partners">${esc(t('stat_partners'))}</span>
           </div>
         </div>
         <div class="sfn-stat-item">
-          <i class="sfn-stat-icon" aria-hidden="true">🛡️</i>
+          <i class="sfn-stat-icon" aria-hidden="true">◇</i>
           <div>
             <strong data-stat="sponsorship">—</strong>
             <span data-stat-label="sponsorship" data-i18n="stat_sponsorship">${esc(t('stat_sponsorship'))}</span>
@@ -309,28 +343,39 @@ async function home(app){
     </div>
   </section>
 
-  <section class="dip-section live-v3" id="programs">
-    ${sectionHead('CHƯƠNG TRÌNH ĐÀO TẠO & CỘNG ĐỒNG','Chương trình đang triển khai','Dữ liệu chương trình và lớp học được đồng bộ trực tiếp từ hệ thống quản trị.')}
-    <div class="program-spotlight">${visiblePublicItems(c).sort(comparePrograms).slice(0,4).map((x,i)=>programCard(x,i,'home')).join('')||`<div class="beautiful-empty"><i>◫</i><div><h3>Chưa có chương trình công khai</h3><p>Chương trình sẽ xuất hiện tại đây khi được cập nhật và công bố từ hệ thống quản trị.</p><a href="mailto:lienhe@skyfirst.io.vn">Liên hệ tìm hiểu chương trình →</a></div></div>`}</div>
-    <a class="section-more-link" href="/chuong-trinh">Xem toàn bộ chương trình <span>→</span></a>
-  </section>
-
-  <section class="dip-section tone" id="activities">
-    ${sectionHead('SỰ KIỆN & HOẠT ĐỘNG','Lịch sự kiện và hoạt động thực tế','Theo dõi ngày giờ, trạng thái và thông tin tham gia các sự kiện đang mở.')}
-    <div class="event-timeline" id="events">${visiblePublicItems(ev).slice(0,6).map(x=>`<a href="${esc(eventHref(x))}"><time>${x.start_at?fmt(x.start_at):'Thời gian đang cập nhật'}</time><div><small>${esc(x.unit_code||'SKY FIRST')}</small><h3>${esc(x.title)}</h3><p>${esc(publicStatusLabel(x.status))}</p></div><span>→</span></a>`).join('')||empty('Chưa có sự kiện công khai. Lịch sự kiện mới sẽ hiển thị khi được công bố từ hệ thống quản trị.')}</div>
-    <a class="section-more-link" href="/su-kien">Xem toàn bộ sự kiện <span>→</span></a>
-  </section>
-
-  <section class="dip-section resources-v3" id="resources">
-    ${sectionHead('THƯ VIỆN TÀI LIỆU SỐ','Tài liệu, văn bản và hướng dẫn','Tài liệu công khai được phân loại theo danh mục, hỗ trợ xem trước PDF và tải xuống.')}
-    ${r.length?`<div class="resource-list">${r.slice(0,6).map(x=>`<article><i>${icon('resource')}</i><div><span>${esc(x.category||x.doc_type||'TÀI LIỆU')} · v${esc(x.current_version||1)}</span><h3>${esc(x.title)}</h3>${x.description?`<p class="muted small">${esc(x.description)}</p>`:''}</div><div class="actions">${x.preview_url?`<a class="secondary" href="/tai-lieu?preview=${encodeURIComponent(x.id)}">Xem trước</a>`:''}${x.download_url?`<a class="portal-button" href="${esc(x.download_url)}">Tải xuống →</a>`:''}</div></article>`).join('')}</div>`:empty('Hiện chưa có tài liệu công khai được xuất bản.')}
-    <a class="section-more-link" href="/tai-lieu">Mở Thư viện Tài liệu & PDF <span>→</span></a>
-  </section>
-
-  <section class="dip-section news-v3" id="news">
-    ${sectionHead('THÔNG BÁO & CẬP NHẬT','Thông tin vận hành và thông báo mới','Các thông báo chính thức được phát hành trên Hệ thống Thông tin Số Sky First.')}
-    ${newsHtml}
-  </section>`;
+  <div class="home-operational-grid">
+    <section class="dip-section live-v3 home-programs-panel" id="programs">
+      ${sectionHead('CHƯƠNG TRÌNH ĐÀO TẠO & CỘNG ĐỒNG','Chương trình đang triển khai','Danh sách chương trình được đồng bộ từ dữ liệu đã công bố.')}
+      <div class="program-spotlight">${visiblePublicItems(c).sort(comparePrograms).slice(0,3).map((x,i)=>programCard(x,i,'home')).join('')||`<div class="beautiful-empty"><i>◫</i><div><h3>Chưa có chương trình công khai</h3><p>Chương trình sẽ xuất hiện tại đây khi được cập nhật và công bố từ hệ thống quản trị.</p><a href="mailto:lienhe@skyfirst.io.vn">Liên hệ hỗ trợ →</a></div></div>`}</div>
+      <a class="section-more-link" href="/chuong-trinh">Xem toàn bộ chương trình <span>→</span></a>
+    </section>
+    <div class="home-right-stack">
+      <section class="dip-section tone home-events-panel" id="activities">
+        ${sectionHead('SỰ KIỆN & HOẠT ĐỘNG','Lịch sự kiện và hoạt động thực tế','Theo dõi thời gian và trạng thái các sự kiện công khai.')}
+        <div class="event-timeline" id="events">${visiblePublicItems(ev).slice(0,4).map(x=>`<a href="${esc(eventHref(x))}"><time>${x.start_at?fmt(x.start_at):'Thời gian đang cập nhật'}</time><div><small>${esc(x.unit_code||'Sky First')}</small><h3>${esc(x.title)}</h3><p>${esc(publicStatusLabel(x.status))}</p></div><span>→</span></a>`).join('')||`<div class="home-empty"><span aria-hidden="true">▦</span><b>Chưa có sự kiện công khai</b><p>Lịch sự kiện sẽ hiển thị khi được cập nhật và công bố.</p></div>`}</div>
+        <a class="section-more-link" href="/su-kien">Xem tất cả sự kiện <span>→</span></a>
+      </section>
+      <section class="dip-section resources-v3 home-resources-panel" id="resources">
+        ${sectionHead('THƯ VIỆN TÀI LIỆU SỐ','Tài liệu, văn bản và hướng dẫn','Tài liệu công khai có thể xem trước hoặc tải theo quyền truy cập.')}
+        ${r.length?`<div class="resource-list">${r.slice(0,4).map(x=>`<article><i>${icon('resource')}</i><div><span>${esc(x.category||x.doc_type||'TÀI LIỆU')} · v${esc(x.current_version||1)}</span><h3>${esc(x.title)}</h3>${x.description?`<p class="muted small">${esc(x.description)}</p>`:''}</div><div class="actions">${x.preview_url?`<a class="secondary" href="/tai-lieu?preview=${encodeURIComponent(x.id)}">Xem trước</a>`:''}${x.download_url?`<a class="portal-button" href="${esc(x.download_url)}">Tải xuống →</a>`:''}</div></article>`).join('')}</div>`:`<div class="home-empty"><span aria-hidden="true">▤</span><b>Chưa có tài liệu công khai</b><p>Tài liệu và văn bản sẽ hiển thị khi được phê duyệt, công bố.</p></div>`}
+        <a class="section-more-link" href="/tai-lieu">Mở Thư viện Tài liệu <span>→</span></a>
+      </section>
+    </div>
+  </div>
+  <div class="home-lower-grid">
+    <section class="dip-section news-v3 home-news-panel" id="news">
+      ${sectionHead('THÔNG BÁO & CẬP NHẬT','Thông tin vận hành và thông báo mới','Các thông báo đã được công bố trên hệ thống.')}
+      ${newsHtml}
+      <a class="section-more-link" href="#news">Xem thông báo mới <span>→</span></a>
+    </section>
+    <section class="home-about-panel" id="about">
+      <span class="section-kicker">HỆ THỐNG Sky First</span>
+      <h2>Thông tin số rõ ràng, thuận tiện và có kiểm soát</h2>
+      <p>Tra cứu chương trình, sự kiện, tài liệu, biểu mẫu, hồ sơ và chứng nhận tại một điểm truy cập thống nhất.</p>
+      <div class="home-about-pill-row"><span>Giáo dục</span><span>Môi trường</span><span>Cộng đồng</span></div>
+      <a class="section-more-link" href="/an-toan">Xem hướng dẫn sử dụng an toàn <span>→</span></a>
+    </section>
+  </div>`;
 
   bindBrokenCoverImages(app,'.news-feature-art','ẢNH ĐẠI DIỆN KHÔNG TẢI ĐƯỢC · MINH HỌA MẶC ĐỊNH');
   const statConfig=config.status==="fulfilled"?(config.value.home_stats||{}):{};
@@ -387,7 +432,7 @@ async function formCenter(app){
   updateActiveNav('forms');
   setMeta('Biểu mẫu điện tử','Hệ thống Biểu mẫu điện tử Sky First — tiếp nhận thông tin, chữ ký hình ảnh và tệp đính kèm an toàn.');
   const d=await api('/api/config'); const forms=d.forms||[];
-  app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>BIỂU MẪU ĐIỆN TỬ</h1><p>Gửi đăng ký chương trình, hồ sơ tham gia và yêu cầu trực tuyến. Sau khi gửi thành công, hệ thống cấp mã hồ sơ để bạn tra cứu tiến trình xử lý tại mục <b>Hồ sơ (/ho-so)</b>.</p></section>
+  app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>BIỂU MẪU ĐIỆN TỬ</h1><p>Gửi đăng ký chương trình, hồ sơ tham gia và yêu cầu trực tuyến. Sau khi gửi thành công, hệ thống cấp mã hồ sơ để bạn tra cứu tiến trình xử lý tại mục <b>Hồ sơ (/ho-so)</b>.</p></section>
   <section class="dip-section tight">
     <div class="capability-strip"><span>Biểu mẫu nhiều bước</span><span>Điều kiện hiển thị linh hoạt</span><span>Tải tệp kiểm tra chữ ký byte</span><span>Hỗ trợ vẽ/tải ảnh chữ ký</span><span>Bảo vệ người dưới 18 tuổi</span><span>Xem lại trước khi gửi</span></div>
     <div class="notice" style="margin-bottom:24px;"><b>Lưu ý pháp lý về chữ ký trong biểu mẫu:</b> Trường chữ ký trên biểu mẫu thu nhận <i>chữ ký hình ảnh</i> do người dùng trực tiếp vẽ trên màn hình hoặc tải ảnh lên nhằm xác nhận thao tác gửi biểu mẫu. Đây <b>không phải</b> chữ ký số được chứng thực bởi tổ chức cung cấp dịch vụ chứng thực chữ ký số.</div>
@@ -397,7 +442,7 @@ async function formCenter(app){
   event('route_view',{category:'forms'});
 }
 
-function lookupShell(title,desc){return `<section class="page-hero compact lookup-entry-hero"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>${esc(title)}</h1><p>${esc(desc)}</p></section>`}
+function lookupShell(title,desc){return `<section class="page-hero compact lookup-entry-hero"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>${esc(title)}</h1><p>${esc(desc)}</p></section>`}
 
 async function lookupCenter(app){
   updateActiveNav('gcn');
@@ -412,7 +457,7 @@ async function credentialCenter(app,path){
   updateActiveNav('gcn');
   setMeta('Tra cứu chứng nhận','Tra cứu Giấy chứng nhận, Giấy xác nhận và Bằng khen bằng mã chứng nhận trên Hệ thống Thông tin Số Sky First.');
   const pathCode=decodeURIComponent(path.split('/').filter(Boolean)[1]||''); const queryCode=new URLSearchParams(location.search).get('code')||''; const init=pathCode||queryCode;
-  app.innerHTML=`<section class="lookup-hero credential-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>TRA CỨU <strong>CHỨNG NHẬN</strong></h1><p>Xác thực trạng thái hiệu lực, thu hồi hoặc thay thế của Giấy chứng nhận, Giấy xác nhận và Bằng khen bằng mã chứng nhận.</p><div class="lookup-trust"><span>✓ Tra cứu duy nhất bằng mã chứng nhận</span><span>⌁ Đối chiếu trực tiếp cơ sở dữ liệu</span><span>▦ Hỗ trợ quét mã QR</span></div></div><div class="lookup-hero-art credential-art-new" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="credential-document"><span>SKY FIRST</span><i>CHỨNG NHẬN</i><b>★</b><small>▦ QR</small></div><div class="credential-shield">✓</div></div></section><section class="lookup-search-panel credential-search credential-search-v3"><h2>Nhập mã chứng nhận để xác thực</h2><form id="credentialForm"><label for="credentialCode">Mã chứng nhận (GCN / GXN / BK)</label><div class="lookup-big"><span>⌕</span><input id="credentialCode" value="${esc(init)}" placeholder="Ví dụ: SFN-GCN-12345678 hoặc 001-GCN-SFN/2026" autocomplete="off" required><button type="submit">⌕ &nbsp; XÁC THỰC</button></div><div class="lookup-secondary-actions"><button class="secondary" type="button" id="scanQr">▦ &nbsp; Quét mã QR</button><a href="#huong-dan">Quy tắc xác thực chứng nhận ↓</a></div></form><div id="credentialOut" aria-live="polite"></div></section><section class="dip-section tight public-benefits credential-benefits"><article><i>✓</i><h3>Trạng thái minh bạch</h3><p>Phân biệt rõ chứng nhận đang có hiệu lực, đã bị thu hồi hoặc đã được thay thế bằng mã mới.</p></article><article><i>🛡️</i><h3>Không lộ dữ liệu cá nhân</h3><p>Hệ thống chỉ tra cứu theo mã chứng nhận, không cho phép tìm kiếm bằng số điện thoại hay email cá nhân.</p></article><article><i>▦</i><h3>Tương thích mã cũ & mới</h3><p>Hỗ trợ đồng thời mã định danh ngẫu nhiên mới và các mã chứng nhận đã phát hành trước đây.</p></article></section><section class="dip-section tone faq-v3" id="huong-dan"><details><summary>Vì sao hệ thống không hỗ trợ tra cứu chứng nhận bằng email hay số điện thoại?</summary><p>Để bảo vệ quyền riêng tư và ngăn việc dò tìm danh sách chứng nhận của người khác, Hệ thống Thông tin Số Sky First chỉ cho phép tra cứu khi có mã chứng nhận cụ thể hoặc quét trực tiếp mã QR in trên chứng nhận.</p></details><details><summary>Chứng nhận bị thu hồi hoặc thay thế hiển thị như thế nào?</summary><p>Nếu chứng nhận bị thu hồi, hệ thống hiển thị cảnh báo ĐÃ THU HỒI kèm lý do. Nếu chứng nhận được cấp lại do điều chỉnh thông tin, hệ thống hiển thị ĐÃ ĐƯỢC THAY THẾ và dẫn tới mã chứng nhận mới.</p></details></section>`;
+  app.innerHTML=`<section class="lookup-hero credential-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>TRA CỨU <strong>CHỨNG NHẬN</strong></h1><p>Xác thực trạng thái hiệu lực, thu hồi hoặc thay thế của Giấy chứng nhận, Giấy xác nhận và Bằng khen bằng mã chứng nhận.</p><div class="lookup-trust"><span>✓ Tra cứu duy nhất bằng mã chứng nhận</span><span>⌁ Đối chiếu trực tiếp cơ sở dữ liệu</span><span>▦ Hỗ trợ quét mã QR</span></div></div><div class="lookup-hero-art credential-art-new" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="credential-document"><span>Sky First</span><i>CHỨNG NHẬN</i><b>★</b><small>▦ QR</small></div><div class="credential-shield">✓</div></div></section><section class="lookup-search-panel credential-search credential-search-v3"><h2>Nhập mã chứng nhận để xác thực</h2><form id="credentialForm"><label for="credentialCode">Mã chứng nhận (GCN / GXN / BK)</label><div class="lookup-big"><span>⌕</span><input id="credentialCode" value="${esc(init)}" placeholder="Ví dụ: SFN-GCN-12345678 hoặc 001-GCN-SFN/2026" autocomplete="off" required><button type="submit">⌕ &nbsp; XÁC THỰC</button></div><div class="lookup-secondary-actions"><button class="secondary" type="button" id="scanQr">▦ &nbsp; Quét mã QR</button><a href="#huong-dan">Quy tắc xác thực chứng nhận ↓</a></div></form><div id="credentialOut" aria-live="polite"></div></section><section class="dip-section tight public-benefits credential-benefits"><article><i>✓</i><h3>Trạng thái minh bạch</h3><p>Phân biệt rõ chứng nhận đang có hiệu lực, đã bị thu hồi hoặc đã được thay thế bằng mã mới.</p></article><article><i>◇</i><h3>Không lộ dữ liệu cá nhân</h3><p>Hệ thống chỉ tra cứu theo mã chứng nhận, không cho phép tìm kiếm bằng số điện thoại hay email cá nhân.</p></article><article><i>▦</i><h3>Tương thích mã cũ & mới</h3><p>Hỗ trợ đồng thời mã định danh ngẫu nhiên mới và các mã chứng nhận đã phát hành trước đây.</p></article></section><section class="dip-section tone faq-v3" id="huong-dan"><details><summary>Vì sao hệ thống không hỗ trợ tra cứu chứng nhận bằng email hay số điện thoại?</summary><p>Để bảo vệ quyền riêng tư và ngăn việc dò tìm danh sách chứng nhận của người khác, Hệ thống Thông tin Số Sky First chỉ cho phép tra cứu khi có mã chứng nhận cụ thể hoặc quét trực tiếp mã QR in trên chứng nhận.</p></details><details><summary>Chứng nhận bị thu hồi hoặc thay thế hiển thị như thế nào?</summary><p>Nếu chứng nhận bị thu hồi, hệ thống hiển thị cảnh báo ĐÃ THU HỒI kèm lý do. Nếu chứng nhận được cấp lại do điều chỉnh thông tin, hệ thống hiển thị ĐÃ ĐƯỢC THAY THẾ và dẫn tới mã chứng nhận mới.</p></details></section>`;
   const form=document.getElementById('credentialForm'), input=document.getElementById('credentialCode'), out=document.getElementById('credentialOut');
   form.onsubmit=async e=>{e.preventDefault();const code=input.value.trim();if(!code)return;out.innerHTML='<div class="loading">Đang đối chiếu mã chứng nhận…</div>';try{const d=await api(`/api/public/credentials/${encodeURIComponent(code)}`);out.innerHTML=credentialResult(d.item);history.replaceState(null,'',`/gcn/${encodeURIComponent(d.item.code)}`);event('verification_success',{category:'credential'})}catch(err){out.innerHTML=failCard(err.message);event('verification_not_found',{category:'credential'})}};
   document.getElementById('scanQr').onclick=()=>openQrScanner(input,form); if(init) form.requestSubmit();
@@ -430,7 +475,7 @@ async function caseCenter(app){
   updateActiveNav('hoso');
   setMeta('Tra cứu hồ sơ','Tra cứu trạng thái xử lý hồ sơ trực tuyến trên Hệ thống Thông tin Số Sky First.');
   const qs=new URLSearchParams(location.search), init=qs.get('code')||'';
-  app.innerHTML=`<section class="lookup-hero case-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>TRA CỨU <strong>HỒ SƠ</strong></h1><p>Theo dõi tiến trình xử lý hồ sơ đã gửi. Để bảo vệ thông tin cá nhân và chống truy cập trái phép (IDOR), hệ thống kiểm tra đồng thời Mã hồ sơ và Email đăng ký ở phía máy chủ.</p><div class="lookup-trust"><span>🛡️ Xác thực 2 thông tin phía máy chủ</span><span>✓ Không lộ câu trả lời chi tiết</span></div></div><div class="lookup-hero-art case-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="case-folder">▤<span>HỒ SƠ</span></div><div class="case-magnifier">⌕</div><div class="case-lock">🛡️</div></div></section><section class="lookup-search-panel case-search"><form id="caseForm" class="case-form"><div class="lookup-form-title"><span>▤</span><div><h2>Nhập thông tin xác minh hồ sơ</h2><p>Vui lòng cung cấp đúng mã hồ sơ trên biên nhận và địa chỉ email đã dùng khi đăng ký.</p></div></div><div class="field"><label for="caseCode">Mã hồ sơ *</label><input id="caseCode" value="${esc(init)}" placeholder="Ví dụ: SFN-TV-2026-0001" autocomplete="off" required></div><div class="field"><label for="caseEmail">Email đã đăng ký *</label><input id="caseEmail" type="email" placeholder="Nhập email đã dùng khi nộp hồ sơ" autocomplete="email" required></div><button class="portal-button" type="submit">⌕ &nbsp; TRA CỨU HỒ SƠ <span>→</span></button><p class="privacy-hint">Địa chỉ email chỉ dùng để xác minh quyền tra cứu ở máy chủ, không được trả lại trong dữ liệu hiển thị.</p></form><div id="caseOut" aria-live="polite"></div></section>`;
+  app.innerHTML=`<section class="lookup-hero case-hero"><div class="lookup-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>TRA CỨU <strong>HỒ SƠ</strong></h1><p>Theo dõi tiến trình xử lý hồ sơ đã gửi. Để bảo vệ thông tin cá nhân và chống truy cập trái phép (IDOR), hệ thống kiểm tra đồng thời Mã hồ sơ và Email đăng ký ở phía máy chủ.</p><div class="lookup-trust"><span>◇ Xác thực 2 thông tin phía máy chủ</span><span>✓ Không lộ câu trả lời chi tiết</span></div></div><div class="lookup-hero-art case-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="case-folder">▤<span>HỒ SƠ</span></div><div class="case-magnifier">⌕</div><div class="case-lock">◇</div></div></section><section class="lookup-search-panel case-search"><form id="caseForm" class="case-form"><div class="lookup-form-title"><span>▤</span><div><h2>Nhập thông tin xác minh hồ sơ</h2><p>Vui lòng cung cấp đúng mã hồ sơ trên biên nhận và địa chỉ email đã dùng khi đăng ký.</p></div></div><div class="field"><label for="caseCode">Mã hồ sơ *</label><input id="caseCode" value="${esc(init)}" placeholder="Ví dụ: SFN-TV-2026-0001" autocomplete="off" required></div><div class="field"><label for="caseEmail">Email đã đăng ký *</label><input id="caseEmail" type="email" placeholder="Nhập email đã dùng khi nộp hồ sơ" autocomplete="email" required></div><button class="portal-button" type="submit">⌕ &nbsp; TRA CỨU HỒ SƠ <span>→</span></button><p class="privacy-hint">Địa chỉ email chỉ dùng để xác minh quyền tra cứu ở máy chủ, không được trả lại trong dữ liệu hiển thị.</p></form><div id="caseOut" aria-live="polite"></div></section>`;
   const f=document.getElementById('caseForm'),out=document.getElementById('caseOut');
   f.onsubmit=async e=>{e.preventDefault();out.innerHTML='<div class="loading">Đang kiểm tra hồ sơ…</div>';const code=document.getElementById('caseCode').value.trim(),email=document.getElementById('caseEmail').value.trim();try{const d=await api('/api/lookup/submission',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code,email})});out.innerHTML=caseResult(d.item)}catch(err){out.innerHTML=failCard('Không thể tra cứu hồ sơ với thông tin đã cung cấp. Vui lòng kiểm tra lại mã hồ sơ và email đăng ký.')}};
 }
@@ -504,21 +549,21 @@ async function sponsorshipCenter(app,detailCode=''){
 async function safetyCenter(app){
   updateActiveNav('safety');
   setMeta('An toàn & Bảo mật số','Hướng dẫn bảo vệ tài khoản, cảnh báo mạo danh lừa đảo, chính sách quyền riêng tư và kênh báo cáo sự cố an toàn.');
-  app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>AN TOÀN <strong>& BẢO MẬT SỐ</strong></h1><p>Hướng dẫn sử dụng hệ thống an toàn, bảo vệ dữ liệu cá nhân, nhận diện các hình thức mạo danh và kênh tiếp nhận báo cáo sự cố bảo mật chính thức.</p></section>
+  app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>AN TOÀN <strong>& BẢO MẬT SỐ</strong></h1><p>Hướng dẫn sử dụng hệ thống an toàn, bảo vệ dữ liệu cá nhân, nhận diện các hình thức mạo danh và kênh tiếp nhận báo cáo sự cố bảo mật chính thức.</p></section>
   <section class="dip-section tight">
     <div class="public-benefits">
       <article>
-        <i>🛡️</i>
+        <i>◇</i>
         <h3>1. Bảo vệ tài khoản & thông tin xác thực</h3>
         <p>Sử dụng mật khẩu tối thiểu 10 ký tự và bật xác thực hai bước (2FA/TOTP) đối với tài khoản quản trị. Tuyệt đối không chia sẻ mã OTP, liên kết kích hoạt tài khoản hoặc liên kết đặt lại mật khẩu cho bất kỳ ai.</p>
       </article>
       <article>
-        <i>⚠️</i>
+        <i>!</i>
         <h3>2. Cảnh báo mạo danh & lừa đảo</h3>
         <p>Sky First không bao giờ yêu cầu người dùng chuyển tiền để mua vị trí, chức danh hay giấy chứng nhận, và không bao giờ yêu cầu cung cấp mật khẩu qua email hoặc tin nhắn. Chỉ tin cậy tên miền chính thức <b>app.skyfirst.io.vn</b> và <b>skyfirst.io.vn</b>.</p>
       </article>
       <article>
-        <i>🔒</i>
+        <i>▣</i>
         <h3>3. Quyền riêng tư & Dữ liệu cá nhân</h3>
         <p>Hệ thống chỉ thu thập dữ liệu cần thiết cho nghiệp vụ đăng ký, xử lý hồ sơ và xác thực chứng nhận. Mã hồ sơ chỉ hiển thị tiến trình khi xác minh đúng email đăng ký tại phía máy chủ.</p>
       </article>
@@ -689,20 +734,20 @@ async function cmsPageCenter(app,slug=''){
 async function programsPage(app,kind,detailId=''){
   if(kind==='units'){
     const d=await api('/api/public/units');const items=d.items||[];setMeta('Đơn vị & Đối tác','Các đơn vị trực thuộc và đồng hành trong Hệ thống Thông tin Số Sky First.');
-    app.innerHTML=`<section class="catalog-hero catalog-hero-ecosystem"><div class="catalog-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>ĐƠN VỊ <strong>& ĐỐI TÁC</strong></h1><p>Danh sách đơn vị trực thuộc và đối tác đồng hành được ghi nhận chính thức trên hệ thống.</p></div>${sceneArt('globe')}</section><section class="catalog-section"><div class="ecosystem-detail-grid">${items.map(x=>`<article class="ecosystem-detail-card"><span>${esc(x.code||'SKY FIRST')}</span><h3>${esc(x.name)}</h3><p>${esc(x.unit_type||'')}</p><small>${esc(x.status||'Đang hoạt động')}</small></article>`).join('')||empty('Chưa có đơn vị công khai.')}</div></section>`;return;
+    app.innerHTML=`<section class="catalog-hero catalog-hero-ecosystem"><div class="catalog-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>ĐƠN VỊ <strong>& ĐỐI TÁC</strong></h1><p>Danh sách đơn vị trực thuộc và đối tác đồng hành được ghi nhận chính thức trên hệ thống.</p></div>${sceneArt('globe')}</section><section class="catalog-section"><div class="ecosystem-detail-grid">${items.map(x=>`<article class="ecosystem-detail-card"><span>${esc(x.code||'Sky First')}</span><h3>${esc(x.name)}</h3><p>${esc(x.unit_type||'')}</p><small>${esc(x.status||'Đang hoạt động')}</small></article>`).join('')||empty('Chưa có đơn vị công khai.')}</div></section>`;return;
   }
   if(kind==='classes'){
     updateActiveNav('programs');
     const d=await api('/api/public/classes');const items=visiblePublicItems(d.items||[]).sort(comparePrograms);const selected=detailId?items.find(x=>String(x.id)===String(detailId)):null;
     if(detailId){
-      if(!selected){setMeta('Không tìm thấy chương trình','Chương trình không tồn tại hoặc chưa được công khai.');app.innerHTML=`<section class="detail-missing"><div>${sceneArt('program')}</div><span class="section-kicker">CHƯƠNG TRÌNH SKY FIRST</span><h1>Không tìm thấy chương trình</h1><p>Chương trình này có thể đã được gỡ khỏi danh sách công khai hoặc đường dẫn không còn hợp lệ.</p><a class="portal-button" href="/chuong-trinh">Quay lại danh sách chương trình →</a></section>`;return;}
+      if(!selected){setMeta('Không tìm thấy chương trình','Chương trình không tồn tại hoặc chưa được công khai.');app.innerHTML=`<section class="detail-missing"><div>${sceneArt('program')}</div><span class="section-kicker">CHƯƠNG TRÌNH Sky First</span><h1>Không tìm thấy chương trình</h1><p>Chương trình này có thể đã được gỡ khỏi danh sách công khai hoặc đường dẫn không còn hợp lệ.</p><a class="portal-button" href="/chuong-trinh">Quay lại danh sách chương trình →</a></section>`;return;}
       const data=jsonObject(selected.data_json),schedule=jsonObject(selected.schedule_json),summary=firstText(data,['description','summary','short_description','intro','content']);
       const detailRows=[selected.level?['Cấp độ',selected.level]:null,selected.status?['Trạng thái',publicStatusLabel(selected.status)]:null,firstText(schedule,['schedule','time','days','duration'])?['Lịch học',firstText(schedule,['schedule','time','days','duration'])]:null,firstText(schedule,['format','mode','modality'])?['Hình thức',firstText(schedule,['format','mode','modality'])]:null,firstText(data,['location','venue'])?['Địa điểm',firstText(data,['location','venue'])]:null,selected.capacity?['Sức chứa',String(selected.capacity)]:null].filter(Boolean);
       setMeta(selected.title,summary||'Thông tin chương trình được đồng bộ từ hệ thống quản trị Sky First.');
-      app.innerHTML=`<section class="program-detail-hero"><div class="program-detail-copy"><a class="back-link" href="/chuong-trinh">← Tất cả chương trình</a><span class="hero-eyebrow">${esc(selected.unit_code||'SKY FIRST')}</span><h1>${esc(selected.title)}</h1>${selected.level?`<span class="program-level">${esc(selected.level)}</span>`:''}<p>${esc(summary||'Thông tin chi tiết về chương trình được đồng bộ từ hệ thống quản trị.')}</p><div class="program-detail-status"><span class="program-status ${activeLike(selected.status)?'is-active':''}"><i></i>${esc(publicStatusLabel(selected.status))}</span></div><div class="actions"><a class="portal-button" href="#form/class">Đăng ký tham gia <span>→</span></a><a class="secondary" href="mailto:lienhe@skyfirst.io.vn?subject=${encodeURIComponent('Quan tâm chương trình: '+selected.title)}">Liên hệ tư vấn</a></div></div>${sceneArt(programArtKind(selected))}</section><section class="program-detail-content"><div class="program-detail-main"><span class="section-kicker">THÔNG TIN CHƯƠNG TRÌNH</span><h2>${esc(selected.title)}</h2><p>${esc(summary||'Hãy liên hệ Hệ thống Thông tin Số Sky First để được hướng dẫn thêm về chương trình này.')}</p>${firstText(data,['content','details','learning_outcomes'])?`<div class="program-long-copy">${esc(firstText(data,['content','details','learning_outcomes'])).replace(/\n/g,'<br>')}</div>`:''}</div><aside class="program-detail-facts"><h3>Thông tin tổng quan</h3>${detailRows.length?detailRows.map(([k,v])=>`<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join(''):`<p>Thông tin bổ sung đang được cập nhật từ hệ thống quản trị.</p>`}<a href="mailto:support@skyfirst.io.vn?subject=${encodeURIComponent('Hỏi về chương trình: '+selected.title)}">Cần hỗ trợ? <span>support@skyfirst.io.vn</span></a></aside></section>`;return;
+      app.innerHTML=`<section class="program-detail-hero"><div class="program-detail-copy"><a class="back-link" href="/chuong-trinh">← Tất cả chương trình</a><span class="hero-eyebrow">${esc(selected.unit_code||'Sky First')}</span><h1>${esc(selected.title)}</h1>${selected.level?`<span class="program-level">${esc(selected.level)}</span>`:''}<p>${esc(summary||'Thông tin chi tiết về chương trình được đồng bộ từ hệ thống quản trị.')}</p><div class="program-detail-status"><span class="program-status ${activeLike(selected.status)?'is-active':''}"><i></i>${esc(publicStatusLabel(selected.status))}</span></div><div class="actions"><a class="portal-button" href="#form/class">Đăng ký tham gia <span>→</span></a><a class="secondary" href="mailto:lienhe@skyfirst.io.vn?subject=${encodeURIComponent('Quan tâm chương trình: '+selected.title)}">Liên hệ tư vấn</a></div></div>${sceneArt(programArtKind(selected))}</section><section class="program-detail-content"><div class="program-detail-main"><span class="section-kicker">THÔNG TIN CHƯƠNG TRÌNH</span><h2>${esc(selected.title)}</h2><p>${esc(summary||'Hãy liên hệ Hệ thống Thông tin Số Sky First để được hướng dẫn thêm về chương trình này.')}</p>${firstText(data,['content','details','learning_outcomes'])?`<div class="program-long-copy">${esc(firstText(data,['content','details','learning_outcomes'])).replace(/\n/g,'<br>')}</div>`:''}</div><aside class="program-detail-facts"><h3>Thông tin tổng quan</h3>${detailRows.length?detailRows.map(([k,v])=>`<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join(''):`<p>Thông tin bổ sung đang được cập nhật từ hệ thống quản trị.</p>`}<a href="mailto:support@skyfirst.io.vn?subject=${encodeURIComponent('Hỏi về chương trình: '+selected.title)}">Cần hỗ trợ? <span>support@skyfirst.io.vn</span></a></aside></section>`;return;
     }
     setMeta('Chương trình','Khám phá các chương trình giáo dục và cộng đồng trên Hệ thống Thông tin Số Sky First.');
-    app.innerHTML=`<section class="catalog-hero catalog-hero-programs"><div class="catalog-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>CHƯƠNG TRÌNH</h1><p>Khám phá các chương trình đào tạo, lớp học kỹ năng và hoạt động phát triển cộng đồng theo dữ liệu thực tế.</p><div class="catalog-search"><span>⌕</span><input id="programSearch" type="search" placeholder="Tìm chương trình, cấp độ, đơn vị..." aria-label="Tìm chương trình"><button type="button" id="programSearchBtn">Tìm kiếm <span>→</span></button></div><div class="catalog-filter-row" role="group" aria-label="Lọc chương trình"><button class="is-active" type="button" data-program-filter="all">Tất cả</button><button type="button" data-program-filter="education">Đào tạo</button><button type="button" data-program-filter="community">Cộng đồng</button></div></div>${sceneArt('program')}</section><section class="catalog-section"><div class="catalog-section-head"><div><span class="section-kicker">DANH MỤC CHƯƠNG TRÌNH</span><h2>Chương trình đang triển khai</h2><p>Chọn từng chương trình để xem chi tiết lịch trình, trạng thái mở đăng ký và biểu mẫu liên quan.</p></div><span class="catalog-live-note"><i></i>Dữ liệu thực tế</span></div><div class="program-catalog-grid" id="programCatalogGrid">${items.map((x,i)=>programCard(x,i,'catalog')).join('')||`<div class="catalog-empty">${sceneArt('program')}<div><h3>Chưa có chương trình công khai</h3><p>Chương trình sẽ xuất hiện tại đây khi được cập nhật và công bố từ hệ thống quản trị.</p><a href="mailto:lienhe@skyfirst.io.vn">Liên hệ hỗ trợ →</a></div></div>`}</div><p class="catalog-no-results" id="programNoResults" hidden>Không tìm thấy chương trình phù hợp với từ khóa này.</p></section>`;
+    app.innerHTML=`<section class="catalog-hero catalog-hero-programs"><div class="catalog-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>CHƯƠNG TRÌNH</h1><p>Khám phá các chương trình đào tạo, lớp học kỹ năng và hoạt động phát triển cộng đồng theo dữ liệu thực tế.</p><div class="catalog-search"><span>⌕</span><input id="programSearch" type="search" placeholder="Tìm chương trình, cấp độ, đơn vị..." aria-label="Tìm chương trình"><button type="button" id="programSearchBtn">Tìm kiếm <span>→</span></button></div><div class="catalog-filter-row" role="group" aria-label="Lọc chương trình"><button class="is-active" type="button" data-program-filter="all">Tất cả</button><button type="button" data-program-filter="education">Đào tạo</button><button type="button" data-program-filter="community">Cộng đồng</button></div></div>${sceneArt('program')}</section><section class="catalog-section"><div class="catalog-section-head"><div><span class="section-kicker">DANH MỤC CHƯƠNG TRÌNH</span><h2>Chương trình đang triển khai</h2><p>Chọn từng chương trình để xem chi tiết lịch trình, trạng thái mở đăng ký và biểu mẫu liên quan.</p></div><span class="catalog-live-note"><i></i>Dữ liệu thực tế</span></div><div class="program-catalog-grid" id="programCatalogGrid">${items.map((x,i)=>programCard(x,i,'catalog')).join('')||`<div class="catalog-empty">${sceneArt('program')}<div><h3>Chưa có chương trình công khai</h3><p>Chương trình sẽ xuất hiện tại đây khi được cập nhật và công bố từ hệ thống quản trị.</p><a href="mailto:lienhe@skyfirst.io.vn">Liên hệ hỗ trợ →</a></div></div>`}</div><p class="catalog-no-results" id="programNoResults" hidden>Không tìm thấy chương trình phù hợp với từ khóa này.</p></section>`;
     const search=document.getElementById('programSearch'),grid=document.getElementById('programCatalogGrid'),noResults=document.getElementById('programNoResults');let activeFilter='all';
     const apply=()=>{const q=(search?.value||'').trim().toLocaleLowerCase('vi');let count=0;grid?.querySelectorAll('.program-card').forEach(card=>{const text=(card.dataset.search||card.textContent||'').toLocaleLowerCase('vi');const category=card.dataset.category||'education';const matchText=!q||text.includes(q);const matchCat=activeFilter==='all'||(activeFilter==='education'?category==='education':category==='community');card.hidden=!(matchText&&matchCat);if(!card.hidden)count++});if(noResults)noResults.hidden=count>0||!items.length};
     grid?.querySelectorAll('.program-card').forEach((card,i)=>{const x=items[i];if(!x)return;card.dataset.search=[x.title,x.level,x.unit_code,x.status,jsonObject(x.data_json).description].join(' ');card.dataset.category=/sfec|education|đào tạo|tiếng anh|reading|listening|speaking|lớp/i.test([x.unit_code,x.title].join(' '))?'education':'community'});
@@ -713,14 +758,14 @@ async function programsPage(app,kind,detailId=''){
     const d=await api('/api/public/events'),items=visiblePublicItems(d.items||[]);const selected=detailId?items.find(x=>String(x.id)===String(detailId)):null;
     if(detailId){if(!selected){setMeta('Không tìm thấy sự kiện','Sự kiện không tồn tại hoặc chưa được công khai.');app.innerHTML=`<section class="detail-missing"><div>${sceneArt('events')}</div><span class="section-kicker">HOẠT ĐỘNG & SỰ KIỆN</span><h1>Không tìm thấy sự kiện</h1><p>Sự kiện này có thể đã được gỡ khỏi danh sách công khai hoặc đường dẫn không còn hợp lệ.</p><a class="portal-button" href="/su-kien">Quay lại danh sách sự kiện →</a></section>`;return;}
       const data=jsonObject(selected.data_json),summary=firstText(data,['summary','description','short_description','intro','content']);setMeta(selected.title,summary||'Thông tin sự kiện Sky First.');
-      app.innerHTML=`<section class="event-detail-hero"><div class="event-detail-copy"><a class="back-link" href="/su-kien">← Tất cả sự kiện</a><span class="hero-eyebrow">${esc(selected.unit_code||'SKY FIRST')}</span><h1>${esc(selected.title)}</h1><p>${esc(summary||'Thông tin chi tiết sự kiện được đồng bộ từ hệ thống quản trị.')}</p><div class="event-detail-meta"><span>◷ ${esc(selected.start_at?fmt(selected.start_at):'Thời gian đang cập nhật')}</span><span class="program-status ${activeLike(selected.status)?'is-active':''}"><i></i>${esc(publicStatusLabel(selected.status))}</span></div><div class="actions"><a class="portal-button" href="#form/event">Đăng ký tham gia <span>→</span></a><a class="secondary" href="mailto:lienhe@skyfirst.io.vn?subject=${encodeURIComponent('Hỏi về sự kiện: '+selected.title)}">Liên hệ ban tổ chức</a></div></div>${sceneArt('events')}</section><section class="program-detail-content"><div class="program-detail-main"><span class="section-kicker">THÔNG TIN SỰ KIỆN</span><h2>${esc(selected.title)}</h2><p>${esc(summary||'Vui lòng liên hệ Hệ thống Thông tin Số Sky First để được hướng dẫn thêm.')}</p></div><aside class="program-detail-facts"><h3>Thông tin tổng quan</h3><div><span>Đơn vị</span><b>${esc(selected.unit_code||'SKY FIRST')}</b></div><div><span>Bắt đầu</span><b>${esc(selected.start_at?fmt(selected.start_at):'Chưa cập nhật')}</b></div><div><span>Kết thúc</span><b>${esc(selected.end_at?fmt(selected.end_at):'Chưa cập nhật')}</b></div><div><span>Trạng thái</span><b>${esc(publicStatusLabel(selected.status))}</b></div></aside></section>`;return;}
+      app.innerHTML=`<section class="event-detail-hero"><div class="event-detail-copy"><a class="back-link" href="/su-kien">← Tất cả sự kiện</a><span class="hero-eyebrow">${esc(selected.unit_code||'Sky First')}</span><h1>${esc(selected.title)}</h1><p>${esc(summary||'Thông tin chi tiết sự kiện được đồng bộ từ hệ thống quản trị.')}</p><div class="event-detail-meta"><span>◷ ${esc(selected.start_at?fmt(selected.start_at):'Thời gian đang cập nhật')}</span><span class="program-status ${activeLike(selected.status)?'is-active':''}"><i></i>${esc(publicStatusLabel(selected.status))}</span></div><div class="actions"><a class="portal-button" href="#form/event">Đăng ký tham gia <span>→</span></a><a class="secondary" href="mailto:lienhe@skyfirst.io.vn?subject=${encodeURIComponent('Hỏi về sự kiện: '+selected.title)}">Liên hệ ban tổ chức</a></div></div>${sceneArt('events')}</section><section class="program-detail-content"><div class="program-detail-main"><span class="section-kicker">THÔNG TIN SỰ KIỆN</span><h2>${esc(selected.title)}</h2><p>${esc(summary||'Vui lòng liên hệ Hệ thống Thông tin Số Sky First để được hướng dẫn thêm.')}</p></div><aside class="program-detail-facts"><h3>Thông tin tổng quan</h3><div><span>Đơn vị</span><b>${esc(selected.unit_code||'Sky First')}</b></div><div><span>Bắt đầu</span><b>${esc(selected.start_at?fmt(selected.start_at):'Chưa cập nhật')}</b></div><div><span>Kết thúc</span><b>${esc(selected.end_at?fmt(selected.end_at):'Chưa cập nhật')}</b></div><div><span>Trạng thái</span><b>${esc(publicStatusLabel(selected.status))}</b></div></aside></section>`;return;}
     setMeta('Sự kiện & Hoạt động','Lịch sự kiện và hoạt động thực tế trên Hệ thống Thông tin Số Sky First.');
-    app.innerHTML=`<section class="catalog-hero catalog-hero-events"><div class="catalog-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ SKY FIRST</span><h1>SỰ KIỆN <strong>& HOẠT ĐỘNG</strong></h1><p>Theo dõi lịch sự kiện, thời gian tổ chức và trạng thái đăng ký thực tế. Không tạo sự kiện mẫu giả lập.</p><div class="catalog-search"><span>⌕</span><input id="eventSearch" type="search" placeholder="Tìm sự kiện, hoạt động..." aria-label="Tìm sự kiện"><button type="button" id="eventSearchBtn">Tìm kiếm <span>→</span></button></div><div class="catalog-filter-row" role="group" aria-label="Lọc sự kiện"><button class="is-active" type="button" data-event-filter="all">▦ Tất cả</button><button type="button" data-event-filter="upcoming">▣ Sắp diễn ra</button><button type="button" data-event-filter="ongoing">◉ Đang diễn ra</button><button type="button" data-event-filter="past">◷ Đã kết thúc</button></div></div>${sceneArt('events')}</section><section class="event-catalog-section"><div class="catalog-section-head"><div><span class="section-kicker">LỊCH SỰ KIỆN</span><h2>Danh sách sự kiện công khai</h2><p>Trạng thái và thời gian sự kiện được hiển thị theo múi giờ Việt Nam (UTC+7).</p></div><span class="catalog-live-note"><i></i>Dữ liệu thực tế</span></div><div id="eventCatalogGrid" class="event-catalog-grid">${items.length?items.map(x=>{const data=jsonObject(x.data_json),status=publicStatusLabel(x.status);return `<a class="event-card" data-status="${esc(eventType(x))}" data-search="${esc([x.title,x.unit_code,status,firstText(data,['description','summary'])].join(' '))}" href="${esc(eventHref(x))}"><div class="event-card-visual">${sceneArt('events')}<span class="event-card-date">${esc(x.start_at?new Date(parseCttTime(x.start_at)).toLocaleDateString('vi-VN',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Ho_Chi_Minh'}):'Đang cập nhật')}</span></div><div class="event-card-body"><span class="program-unit">${esc(x.unit_code||'SKY FIRST')}</span><h3>${esc(x.title)}</h3><span class="program-status ${activeLike(x.status)?'is-active':''}"><i></i>${esc(status)}</span><span class="event-card-link">Xem chi tiết <b>→</b></span></div></a>`}).join(''):`<div class="event-empty">${sceneArt('events')}<div><h2>Chưa có sự kiện công khai</h2><p>Hiện tại chưa có sự kiện nào đang mở công khai trên hệ thống. Khi có sự kiện mới được công bố, thông tin sẽ hiển thị tại đây.</p><a class="portal-button" href="/chuong-trinh">Xem các chương trình đang mở <span>→</span></a></div></div>`}</div><p class="catalog-no-results" id="eventNoResults" hidden>Không có sự kiện phù hợp với bộ lọc hiện tại.</p></section>`;
+    app.innerHTML=`<section class="catalog-hero catalog-hero-events"><div class="catalog-hero-copy"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>SỰ KIỆN <strong>& HOẠT ĐỘNG</strong></h1><p>Theo dõi lịch sự kiện, thời gian tổ chức và trạng thái đăng ký thực tế. Không tạo sự kiện mẫu giả lập.</p><div class="catalog-search"><span>⌕</span><input id="eventSearch" type="search" placeholder="Tìm sự kiện, hoạt động..." aria-label="Tìm sự kiện"><button type="button" id="eventSearchBtn">Tìm kiếm <span>→</span></button></div><div class="catalog-filter-row" role="group" aria-label="Lọc sự kiện"><button class="is-active" type="button" data-event-filter="all">▦ Tất cả</button><button type="button" data-event-filter="upcoming">▣ Sắp diễn ra</button><button type="button" data-event-filter="ongoing">◉ Đang diễn ra</button><button type="button" data-event-filter="past">◷ Đã kết thúc</button></div></div>${sceneArt('events')}</section><section class="event-catalog-section"><div class="catalog-section-head"><div><span class="section-kicker">LỊCH SỰ KIỆN</span><h2>Danh sách sự kiện công khai</h2><p>Trạng thái và thời gian sự kiện được hiển thị theo múi giờ Việt Nam (UTC+7).</p></div><span class="catalog-live-note"><i></i>Dữ liệu thực tế</span></div><div id="eventCatalogGrid" class="event-catalog-grid">${items.length?items.map(x=>{const data=jsonObject(x.data_json),status=publicStatusLabel(x.status);return `<a class="event-card" data-status="${esc(eventType(x))}" data-search="${esc([x.title,x.unit_code,status,firstText(data,['description','summary'])].join(' '))}" href="${esc(eventHref(x))}"><div class="event-card-visual">${sceneArt('events')}<span class="event-card-date">${esc(x.start_at?new Date(parseCttTime(x.start_at)).toLocaleDateString('vi-VN',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Ho_Chi_Minh'}):'Đang cập nhật')}</span></div><div class="event-card-body"><span class="program-unit">${esc(x.unit_code||'Sky First')}</span><h3>${esc(x.title)}</h3><span class="program-status ${activeLike(x.status)?'is-active':''}"><i></i>${esc(status)}</span><span class="event-card-link">Xem chi tiết <b>→</b></span></div></a>`}).join(''):`<div class="event-empty">${sceneArt('events')}<div><h2>Chưa có sự kiện công khai</h2><p>Hiện tại chưa có sự kiện nào đang mở công khai trên hệ thống. Khi có sự kiện mới được công bố, thông tin sẽ hiển thị tại đây.</p><a class="portal-button" href="/chuong-trinh">Xem các chương trình đang mở <span>→</span></a></div></div>`}</div><p class="catalog-no-results" id="eventNoResults" hidden>Không có sự kiện phù hợp với bộ lọc hiện tại.</p></section>`;
     const search=document.getElementById('eventSearch'),grid=document.getElementById('eventCatalogGrid'),noResults=document.getElementById('eventNoResults');let filter='all';const apply=()=>{const q=(search?.value||'').trim().toLocaleLowerCase('vi');let count=0;grid?.querySelectorAll('.event-card').forEach(card=>{const yes=(!q||(card.dataset.search||'').toLocaleLowerCase('vi').includes(q))&&(filter==='all'||card.dataset.status===filter);card.hidden=!yes;if(yes)count++});if(noResults)noResults.hidden=count>0||!items.length};search?.addEventListener('input',apply);document.getElementById('eventSearchBtn')?.addEventListener('click',apply);document.querySelectorAll('[data-event-filter]').forEach(btn=>btn.addEventListener('click',()=>{filter=btn.dataset.eventFilter;document.querySelectorAll('[data-event-filter]').forEach(b=>b.classList.toggle('is-active',b===btn));apply()}));return;
   }
   if(kind==='news'){
     const d=await api('/api/public/news'),items=d.items||[];const selected=detailId?items.find(x=>String(x.slug||x.id)===String(detailId)||String(x.id)===String(detailId)):null;
-    if(detailId){if(!selected){setMeta('Không tìm thấy bài viết','Tin tức không tồn tại hoặc không còn công khai.');app.innerHTML=`<section class="detail-missing"><div>${sceneArt('news')}</div><span class="section-kicker">THÔNG BÁO SKY FIRST</span><h1>Không tìm thấy bài viết</h1><p>Bài viết này có thể đã được gỡ khỏi danh sách công khai hoặc đường dẫn không còn hợp lệ.</p><a class="portal-button" href="#news">Quay lại danh sách tin tức →</a></section>`;return;}
+    if(detailId){if(!selected){setMeta('Không tìm thấy bài viết','Tin tức không tồn tại hoặc không còn công khai.');app.innerHTML=`<section class="detail-missing"><div>${sceneArt('news')}</div><span class="section-kicker">THÔNG BÁO Sky First</span><h1>Không tìm thấy bài viết</h1><p>Bài viết này có thể đã được gỡ khỏi danh sách công khai hoặc đường dẫn không còn hợp lệ.</p><a class="portal-button" href="#news">Quay lại danh sách tin tức →</a></section>`;return;}
       setMeta(selected.title,String(selected.body||'').replace(/<[^>]*>/g,' ').slice(0,150));const tags=(()=>{try{return JSON.parse(selected.tags_json||'[]')}catch{return []}})();
       app.innerHTML=`<article class="news-detail-page"><div class="news-detail-head"><a class="back-link" href="#news">← Tất cả tin tức</a><span class="hero-eyebrow">TIN TỨC & THÔNG BÁO</span><h1>${esc(selected.title)}</h1><div class="news-detail-meta"><span>${esc(selected.published_at?fmt(selected.published_at):'Ngày đăng đang cập nhật')}</span>${tags.map(t=>`<span>${esc(t)}</span>`).join('')}</div></div><div class="news-detail-cover">${sceneArt('news')}${selected.cover_file_id?`<img src="/media/${encodeURIComponent(selected.cover_file_id)}" alt="Ảnh đại diện: ${esc(selected.title)}" loading="lazy">`:`<em class="cover-default-note">MINH HỌA MẶC ĐỊNH · CHƯA CÓ ẢNH ĐẠI DIỆN</em>`}</div><div class="news-detail-body">${esc(String(selected.body||'').replace(/<[^>]*>/g,' ').trim()||'Nội dung bài viết đang được cập nhật.').replace(/\n/g,'<br>')}</div><div class="news-detail-foot"><span>Nội dung được công bố trên Hệ thống Thông tin Số Sky First.</span><a href="mailto:lienhe@skyfirst.io.vn?subject=${encodeURIComponent('Trao đổi về tin: '+selected.title)}">Liên hệ <span>→</span></a></div></article>`;bindBrokenCoverImages(app,'.news-detail-cover','ẢNH ĐẠI DIỆN KHÔNG TẢI ĐƯỢC · MINH HỌA MẶC ĐỊNH');return;}
     setMeta('Tin tức & Thông báo','Tin tức và thông báo vận hành trên Hệ thống Thông tin Số Sky First.');
@@ -734,7 +779,7 @@ async function programsPage(app,kind,detailId=''){
     const categories=[...new Set(items.map(x=>x.category||x.doc_type||'Tài liệu'))];
     const previewDocId=new URLSearchParams(location.search).get('preview')||detailId||'';
     const previewDoc=previewDocId?items.find(x=>String(x.id)===String(previewDocId)||String(x.code)===String(previewDocId)):null;
-    app.innerHTML=`<section class="catalog-hero catalog-hero-utility"><div class="catalog-hero-copy"><span class="hero-eyebrow">THƯ VIỆN PDF & TÀI LIỆU SỐ</span><h1>TÀI LIỆU <strong>& HƯỚNG DẪN</strong></h1><p>Tra cứu, xem trước trực tiếp tệp PDF và tải xuống các tài liệu, quy chế, hướng dẫn được phép công bố trên Hệ thống Thông tin Số Sky First.</p><div class="catalog-search"><span>⌕</span><input id="docSearch" type="search" placeholder="Tìm theo tên tài liệu, mã văn bản, từ khóa..." aria-label="Tìm tài liệu"><button type="button" id="docSearchBtn">Tìm kiếm <span>→</span></button></div><div class="catalog-filter-row" id="docCategoryFilters"><button class="is-active" type="button" data-doc-cat="all">Tất cả danh mục</button>${categories.map(c=>`<button type="button" data-doc-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div></div>${sceneArt('utility')}</section>
+    app.innerHTML=`<section class="catalog-hero catalog-hero-utility"><div class="catalog-hero-copy"><span class="hero-eyebrow">THƯ VIỆN PDF & TÀI LIỆU SỐ · Sky First</span><h1>TÀI LIỆU <strong>& HƯỚNG DẪN</strong></h1><p>Tra cứu, xem trước trực tiếp tệp PDF và tải xuống các tài liệu, quy chế, hướng dẫn được phép công bố trên Hệ thống Thông tin Số Sky First.</p><div class="catalog-search"><span>⌕</span><input id="docSearch" type="search" placeholder="Tìm theo tên tài liệu, mã văn bản, từ khóa..." aria-label="Tìm tài liệu"><button type="button" id="docSearchBtn">Tìm kiếm <span>→</span></button></div><div class="catalog-filter-row" id="docCategoryFilters"><button class="is-active" type="button" data-doc-cat="all">Tất cả danh mục</button>${categories.map(c=>`<button type="button" data-doc-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div></div>${sceneArt('utility')}</section>
     <section class="catalog-section utility-catalog">
       ${previewDoc&&previewDoc.preview_url?`<div class="card pdf-preview-panel" style="margin-bottom:28px;"><div class="toolbar"><div style="margin-right:auto"><span class="pill">${esc(previewDoc.code)} · Phiên bản v${esc(previewDoc.current_version||1)}</span><h2 style="margin:6px 0 0">${esc(previewDoc.title)}</h2></div>${previewDoc.download_url?`<a class="portal-button" href="${esc(previewDoc.download_url)}">Tải xuống PDF →</a>`:''}<a class="secondary" href="/tai-lieu">Đóng xem trước</a></div><iframe src="${esc(previewDoc.preview_url)}" title="Xem trước PDF: ${esc(previewDoc.title)}" style="width:100%;height:620px;border:1px solid var(--dip-line);border-radius:14px;margin-top:14px;"></iframe></div>`:''}
       <div class="catalog-section-head"><div><span class="section-kicker">THƯ VIỆN TÀI LIỆU CÔNG KHAI</span><h2>Danh mục tài liệu & văn bản</h2><p>Chỉ hiển thị các tài liệu có trạng thái công khai và còn hiệu lực.</p></div></div>
@@ -771,6 +816,16 @@ function renderSearch(){const out=document.getElementById('globalResults'),filte
 async function doSearch(q){q=String(q||'').trim();searchState.query=q;if(q.length<2){searchState.items=[];renderSearch();return}const out=document.getElementById('globalResults');if(out)out.innerHTML='<div class="loading">Đang tìm kiếm trên Hệ thống Thông tin Số Sky First…</div>';try{const d=await api(`/api/public/search?q=${encodeURIComponent(q)}`);searchState.items=d.items||[];searchState.filter='all';searchState.index=-1;saveRecent(q);renderRecent();renderSearch();event(searchState.items.length?'search_success':'search_zero_result',{category:'search',count:searchState.items.length})}catch(e){if(out)out.innerHTML=failCard(e.message)}}
 
 function initShell(){
+  normalizeVisibleBrand(document.body);
+  if(typeof MutationObserver!=='undefined'){
+    const brandObserver=new MutationObserver(records=>{
+      for(const record of records){
+        if(record.type==='characterData') normalizeVisibleBrand(record.target.parentElement||document.body);
+        for(const node of record.addedNodes||[]) if(node.nodeType===Node.ELEMENT_NODE||node.nodeType===Node.DOCUMENT_FRAGMENT_NODE) normalizeVisibleBrand(node);
+      }
+    });
+    brandObserver.observe(document.body,{subtree:true,childList:true,characterData:true});
+  }
   const mt=document.getElementById('menuToggle'),nav=document.getElementById('mainNav');
   if(mt&&nav)mt.onclick=()=>{const open=nav.classList.toggle('mobile-open');mt.setAttribute('aria-expanded',String(open))};
   document.querySelectorAll('.lang-btn').forEach(btn=>btn.addEventListener('click',()=>{

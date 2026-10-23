@@ -76,7 +76,7 @@ function adminDialog({title="Thao tác quản trị",description="",fields=[],co
       if(f.type==="checkbox")return `<label class="check admin-dialog-check"><input id="${E(id)}" name="${E(f.name)}" type="checkbox" ${f.checked?"checked":""}><span>${E(f.label)}</span></label>${help}`;
       return `<div class="field"><label for="${E(id)}">${E(f.label)}</label><input id="${E(id)}" name="${E(f.name)}" type="${E(f.type||"text")}" value="${E(value)}" ${required} ${f.min!==undefined?`min="${E(f.min)}"`:""} ${f.max!==undefined?`max="${E(f.max)}"`:""} ${f.step!==undefined?`step="${E(f.step)}"`:""} maxlength="${E(f.maxlength||500)}" placeholder="${E(f.placeholder||"")}">${help}</div>`;
     };
-    modal(`<div class="admin-dialog-head"><span class="eyebrow">SKY FIRST · QUẢN TRỊ</span><button type="button" class="admin-modal-close" id="adminDialogClose" aria-label="Đóng">×</button><h2 id="adminDialogTitle">${E(title)}</h2>${description?`<p class="muted">${E(description)}</p>`:""}</div><form id="adminDialogForm" class="admin-dialog-form">${fields.map(inputHtml).join("")}<div class="admin-dialog-actions"><button type="button" class="secondary" id="adminDialogCancel">${E(cancelText)}</button><button type="submit" class="${danger?"danger":"primary"}">${E(confirmText)}</button></div></form>`);
+    modal(`<div class="admin-dialog-head"><span class="eyebrow">Sky First · QUẢN TRỊ</span><button type="button" class="admin-modal-close" id="adminDialogClose" aria-label="Đóng">×</button><h2 id="adminDialogTitle">${E(title)}</h2>${description?`<p class="muted">${E(description)}</p>`:""}</div><form id="adminDialogForm" class="admin-dialog-form">${fields.map(inputHtml).join("")}<div class="admin-dialog-actions"><button type="button" class="secondary" id="adminDialogCancel">${E(cancelText)}</button><button type="submit" class="${danger?"danger":"primary"}">${E(confirmText)}</button></div></form>`);
     activeAdminDialogCancel=()=>finishWithCleanup(null);
     const escapeDialog=e=>{if(e.key==="Escape"){e.preventDefault();window.removeEventListener("keydown",escapeDialog);finish(null);}};
     window.addEventListener("keydown",escapeDialog);
@@ -101,7 +101,7 @@ async function adminConfirm(message,{title="Xác nhận thao tác",confirmText="
 }
 
 async function loadConfig(){
-  try{state.config=await api("/api/config")}catch{state.config={app_name:"Sky First Network",hero_title:"Kết nối giáo dục. Phát triển cộng đồng.",hero_text:"Một không gian chung cho học tập, hoạt động và phát triển cộng đồng.",hero_cover_url:"/assets/sfn-cover.png",modules:[],forms:[]}}
+  try{state.config=await api("/api/config")}catch{state.config={app_name:"Hệ thống Thông tin Số Sky First",hero_title:"Hệ thống Thông tin Số Sky First",hero_text:"Tra cứu chương trình, sự kiện, tài liệu, biểu mẫu, hồ sơ và chứng nhận tại một điểm truy cập thống nhất.",hero_cover_url:"",modules:[],forms:[]}}
   applySiteConfig();
 }
 function applySiteConfig(){
@@ -138,8 +138,8 @@ if(accountBtn) accountBtn.onclick=()=>{if(state.user) location.hash=isAdmin(stat
 
 function hero(){
   return `<section class="hero ctt-hero">
-    <div class="hero-copy"><span class="pill white">SKY FIRST NETWORK • SFN</span>
-      <h1>${E(state.config?.hero_title||"Cổng thông tin Sky First Network")}</h1>
+    <div class="hero-copy"><span class="pill white">Sky First • SFN</span>
+      <h1>${E(state.config?.hero_title||"Hệ thống Thông tin Số Sky First")}</h1>
       <p class="hero-lead"><b>Khám phá và tham gia các hoạt động của Sky First.</b></p>
       <p>${E(state.config?.hero_text||"Theo dõi hoạt động, sự kiện, chương trình giáo dục và các cơ hội tham gia đang được mở trên toàn Mạng lưới.")}</p>
       <div class="actions"><a class="primary hero-white" href="#events">Khám phá hoạt động →</a><a class="secondary hero-outline" href="#lookup">Tra cứu đăng ký</a></div>
@@ -149,12 +149,12 @@ function hero(){
 async function renderHome(){
   app.innerHTML=hero()+`
   <section class="lookup-strip">
-    <div><span class="eyebrow">TRA CỨU NHANH</span><h2>Kiểm tra hồ sơ, GCN & GXN</h2><p>Nhập mã đã được cấp để theo dõi hồ sơ hoặc xác thực thông tin do Sky First Network phát hành.</p></div>
+    <div><span class="eyebrow">TRA CỨU NHANH</span><h2>Kiểm tra hồ sơ, GCN & GXN</h2><p>Nhập mã đã được cấp để theo dõi hồ sơ hoặc xác thực thông tin do Sky First phát hành.</p></div>
     <a class="primary lookup-cta" href="#lookup">Mở tra cứu →</a>
   </section>
 
   <section class="home-section">
-    <div class="section-heading"><div><span class="eyebrow">KHÁM PHÁ SKY FIRST</span><h2>Một hệ sinh thái học tập và phát triển cộng đồng</h2><p class="muted">Các chức năng được tổ chức theo từng nhu cầu để bạn tìm đúng nơi cần đến nhanh hơn.</p></div></div>
+    <div class="section-heading"><div><span class="eyebrow">KHÁM PHÁ Sky First</span><h2>Một hệ sinh thái học tập và phát triển cộng đồng</h2><p class="muted">Các chức năng được tổ chức theo từng nhu cầu để bạn tìm đúng nơi cần đến nhanh hơn.</p></div></div>
     <div class="grid4 home-feature-grid">
       ${quickCard("users","Thành viên & Core Team","Đăng ký tham gia, theo dõi hồ sơ và kết nối với các nhóm vận hành của Sky First.","#forms")}
       ${quickCard("heart","Tình nguyện viên","Khám phá cơ hội tình nguyện, giảng dạy và đóng góp chuyên môn cho các hoạt động cộng đồng.","#form/volunteer")}
@@ -165,9 +165,9 @@ async function renderHome(){
 
   <section class="home-story">
     <div class="home-story-copy">
-      <span class="eyebrow">VỀ SKY FIRST NETWORK</span>
+      <span class="eyebrow">VỀ Sky First</span>
       <h2>Không chỉ là một website, mà là không gian để học tập, thử sức và tạo giá trị</h2>
-      <p>Sky First Network được xây dựng theo định hướng giáo dục, phát triển con người và kết nối cộng đồng. Nền tảng này giúp tập trung những hoạt động vốn thường nằm rời rạc ở nhiều nơi: đăng ký tham gia, lớp học, tình nguyện, sự kiện, hồ sơ thành viên, chứng nhận, xác nhận và các kênh hỗ trợ. Người dùng có thể bắt đầu từ một nhu cầu rất đơn giản như tìm lớp học, gửi hồ sơ tình nguyện hoặc tra cứu giấy xác nhận, sau đó tiếp tục theo dõi hành trình của mình trên cùng một hệ thống.</p>
+      <p>Sky First được xây dựng theo định hướng giáo dục, phát triển con người và kết nối cộng đồng. Nền tảng này giúp tập trung những hoạt động vốn thường nằm rời rạc ở nhiều nơi: đăng ký tham gia, lớp học, tình nguyện, sự kiện, hồ sơ thành viên, chứng nhận, xác nhận và các kênh hỗ trợ. Người dùng có thể bắt đầu từ một nhu cầu rất đơn giản như tìm lớp học, gửi hồ sơ tình nguyện hoặc tra cứu giấy xác nhận, sau đó tiếp tục theo dõi hành trình của mình trên cùng một hệ thống.</p>
       <p>Điểm quan trọng của Sky First là tạo điều kiện để người trẻ được học bằng trải nghiệm thật. Một thành viên có thể bắt đầu với vai trò người học, sau đó thử sức ở một dự án, hỗ trợ một hoạt động cộng đồng hoặc tham gia Core Team. Mỗi vai trò đều hướng đến việc hình thành kỹ năng tổ chức, giao tiếp, làm việc nhóm, trách nhiệm và khả năng tự học. Các chương trình không chỉ tập trung vào kết quả cuối cùng mà còn chú trọng quá trình tham gia, sự chủ động và cách mỗi cá nhân đóng góp cho tập thể.</p>
       <p>Website này được thiết kế như một cổng chung để các thông tin quan trọng dễ tiếp cận hơn, giảm việc phải hỏi lại nhiều nơi và giúp quy trình đăng ký, tra cứu, tiếp nhận hay xác nhận minh bạch hơn. Từng chức năng được tách riêng để khi một khu vực gặp sự cố, các khu vực còn lại vẫn có thể tiếp tục hoạt động. Nội dung công khai cũng được ưu tiên có phương án dự phòng để người dùng vẫn xem được những thông tin thiết yếu ngay cả khi hệ thống dữ liệu tạm thời không khả dụng.</p>
     </div>
@@ -199,9 +199,9 @@ async function renderHome(){
   </section>
 
   <section class="system-hub compact-hub">
-    <div class="section-heading"><div><span class="eyebrow">HỆ SINH THÁI SKY FIRST</span><h2>Nền tảng kết nối</h2><p class="muted">Các cổng chuyên biệt còn lại của Sky First, được giữ gọn để tránh trùng lặp chức năng.</p></div></div>
+    <div class="section-heading"><div><span class="eyebrow">HỆ SINH THÁI Sky First</span><h2>Nền tảng kết nối</h2><p class="muted">Các cổng chuyên biệt còn lại của Sky First, được giữ gọn để tránh trùng lặp chức năng.</p></div></div>
     <div class="portal-grid portal-grid-3">
-      ${portalCard("Sky First Network","Website chính và điểm bắt đầu của hệ sinh thái.","https://skyfirst.io.vn","Sky First")}
+      ${portalCard("Sky First","Website chính và điểm bắt đầu của hệ sinh thái.","https://skyfirst.io.vn","Sky First")}
       ${portalCard("Tình nguyện viên","Đăng ký, hồ sơ và hoạt động tình nguyện.","https://tnv.skyfirst.io.vn","TNV")}
       ${portalCard("SFEC","Không gian dành cho hoạt động và chương trình tiếng Anh.","https://sfec.skyfirst.io.vn","SFEC")}
     </div>
@@ -314,7 +314,7 @@ async function renderForm(idForm){
     const d=await api(`/api/forms/${encodeURIComponent(idForm)}`);state.currentForm=d;
     const c=d.form.config||{},presentation=c.presentation||"classic",multi=["multi-step","guided"].includes(presentation);
     const sections=c.sections||[];
-    app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">SKY FIRST FORM CENTER</span><h1>${E(d.form.name)}</h1><p>${E(d.form.description||"Biểu mẫu số Sky First")}</p></section><div class="form-wrap digital-form-wrap"><a class="ghost" href="/bieu-mau">← Form Center</a><div class="card digital-form-card">
+    app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">Sky First · BIỂU MẪU SỐ</span><h1>${E(d.form.name)}</h1><p>${E(d.form.description||"Biểu mẫu số Sky First")}</p></section><div class="form-wrap digital-form-wrap"><a class="ghost" href="/bieu-mau">← Danh mục biểu mẫu</a><div class="card digital-form-card">
       <div class="form-meta"><span class="pill">${E(d.form.prefix)}</span><span>Phiên bản ${E(d.form.version)}</span><span>${presentation==="classic"?"Classic Form":presentation==="guided"?"Guided Form":"Multi-step Form"}</span>${c.minor_mode?'<span>Minor-aware</span>':''}</div>
       ${(d.terms||[]).map(t=>`<details class="term"><summary>${E(t.name)} · ${E(t.version)}</summary><pre>${E(t.body)}</pre></details>`).join("")}
       ${multi?`<div class="form-stepper" id="formStepper">${sections.map((x,i)=>`<span data-step-dot="${i}" class="${i===0?'active':''}"><b>${i+1}</b><small>${E(x.title)}</small></span>`).join('')}</div>`:''}
@@ -393,7 +393,7 @@ function renderLookup(){
 
   app.innerHTML=`
     <section class="verify-page">
-      <div class="verify-head"><div><span class="eyebrow">SKY FIRST NETWORK</span><h1>Tra cứu & Xác thực</h1><p>Tra cứu tình trạng hồ sơ hoặc xác thực GCN/GXN do Sky First phát hành.</p></div><div class="verify-seal" aria-hidden="true">✓</div></div>
+      <div class="verify-head"><div><span class="eyebrow">Sky First</span><h1>Tra cứu & Xác thực</h1><p>Tra cứu tình trạng hồ sơ hoặc xác thực GCN/GXN do Sky First phát hành.</p></div><div class="verify-seal" aria-hidden="true">✓</div></div>
       <div class="verify-grid">
         <div class="verify-card record-card"><div class="verify-card-head"><span class="verify-icon">⌕</span><div><h2>Tra cứu hồ sơ</h2><p>Kiểm tra tình trạng hồ sơ và thông tin đăng ký của bạn.</p></div><span class="trust-pill">Nhanh chóng · Chính xác</span></div>
           <form id="lookupRecord"><div class="field"><label>Mã hồ sơ</label><input name="code" required autocomplete="off" placeholder="Nhập mã hồ sơ (VD: SFN-TNV-2026-0001)"></div><div class="field"><label>Email đã đăng ký</label><input name="email" type="email" required autocomplete="email" placeholder="Nhập email bạn đã sử dụng khi đăng ký"></div><button class="primary verify-btn">⌕ &nbsp; Tra cứu hồ sơ →</button></form><div id="recordResult"></div>
@@ -587,34 +587,37 @@ function renderLookup(){
 
 function renderLogin(){
   document.body.classList.remove('public-digital');document.body.classList.add('admin-mode');
-  app.innerHTML=`<div class="form-wrap" style="padding:60px 18px"><div class="card"><span class="pill">KHU VỰC QUẢN TRỊ</span><h1>Đăng nhập Hệ thống Thông tin Số Sky First</h1><p class="muted">Khu vực dành cho quản trị viên và nhân sự được phân quyền của Hệ thống Thông tin Số Sky First (Sky First Digital Information System).</p><form id="loginForm"><div class="field"><label for="loginEmail">Email tài khoản</label><input id="loginEmail" name="email" type="email" autocomplete="username" required></div><div class="field"><label for="loginPass">Mật khẩu</label><input id="loginPass" name="password" type="password" autocomplete="current-password" required></div><button class="primary" type="submit">Đăng nhập hệ thống</button></form>${state.config.google_oauth?`<div class="actions"><button class="secondary" type="button" onclick="googleLogin('admin')">Đăng nhập bằng Google</button></div>`:""}<div class="actions"><button class="ghost" type="button" onclick="showForgot()">Quên mật khẩu?</button><a class="ghost" href="/">← Về Trang chủ Hệ thống</a></div></div></div>`;
+  app.innerHTML=`<section class="admin-login-page" aria-label="Đăng nhập quản trị">
+    <div class="admin-login-shell">
+      <aside class="admin-login-brand-panel">
+        <a class="admin-login-brand" href="/" aria-label="Quay về trang chủ Sky First"><img src="/assets/sfn-logo-tight.png" alt="Sky First"><span><b>Sky First</b><small>Hệ thống Thông tin Số</small></span></a>
+        <div class="admin-login-brand-copy"><span class="admin-login-eyebrow">KHÔNG GIAN QUẢN TRỊ</span><h2>Vận hành hệ thống<br>một cách có kiểm soát.</h2><p>Khu vực dành riêng cho quản trị viên và nhân sự được phân quyền.</p></div>
+        <div class="admin-login-line-art" aria-hidden="true"><svg viewBox="0 0 520 250" focusable="false"><defs><linearGradient id="loginLineBlue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6fdcff"/><stop offset="1" stop-color="#1477ed"/></linearGradient></defs><path d="M0 180 C70 132 112 225 182 166 S298 96 355 158 S450 202 520 132" fill="none" stroke="url(#loginLineBlue)" stroke-width="2" opacity=".9"/><path d="M0 210 C70 162 112 255 182 196 S298 126 355 188 S450 232 520 162" fill="none" stroke="#55c9ff" stroke-width="1" opacity=".45"/><g fill="#8be8ff"><circle cx="55" cy="158" r="3"/><circle cx="182" cy="166" r="4"/><circle cx="355" cy="158" r="3"/><circle cx="450" cy="182" r="4"/></g><g transform="translate(222 30)"><rect x="0" y="0" width="118" height="146" rx="14" fill="#ffffff" fill-opacity=".96"/><rect x="12" y="12" width="94" height="122" rx="8" fill="none" stroke="#c5e5ff"/><path d="M36 45h48M36 59h48M36 73h34" stroke="#2e87e5" stroke-width="5" stroke-linecap="round"/><path d="M59 90l23 0M48 106l34 0" stroke="#88bdf0" stroke-width="4" stroke-linecap="round"/><circle cx="59" cy="25" r="5" fill="#0b72da"/></g></svg></div>
+        <div class="admin-login-brand-foot"><span>Sky First Digital Information System</span><span>Truy cập có xác thực</span></div>
+      </aside>
+      <div class="admin-login-form-panel">
+        <span class="admin-login-pill"><span aria-hidden="true">▣</span> KHU VỰC QUẢN TRỊ</span>
+        <h1>Đăng nhập Hệ thống Thông tin Số Sky First</h1>
+        <p class="admin-login-intro">Đăng nhập bằng tài khoản được cấp quyền để tiếp tục đến khu vực quản trị.</p>
+        <form id="loginForm" class="admin-login-form">
+          <div class="field"><label for="loginEmail">Email tài khoản</label><div class="admin-login-input-wrap"><span aria-hidden="true">@</span><input id="loginEmail" name="email" type="email" placeholder="Nhập email tài khoản" autocomplete="username" required></div></div>
+          <div class="field"><label for="loginPass">Mật khẩu</label><div class="admin-login-input-wrap"><span aria-hidden="true">⌑</span><input id="loginPass" name="password" type="password" placeholder="Nhập mật khẩu" autocomplete="current-password" required><button class="admin-login-password-toggle" id="loginPassToggle" type="button" aria-label="Hiện mật khẩu" aria-pressed="false">Hiện</button></div></div>
+          <button class="admin-login-submit" type="submit"><span>Đăng nhập hệ thống</span><span aria-hidden="true">→</span></button>
+        </form>
+        ${state.config.google_oauth?`<div class="admin-login-divider"><span>hoặc</span></div><button class="admin-login-google" type="button" onclick="googleLogin('admin')">Đăng nhập bằng Google</button>`:""}
+        <div class="admin-login-links"><button class="ghost" type="button" onclick="showForgot()">Quên mật khẩu?</button><a href="/">← Về Trang chủ Hệ thống</a></div>
+        <p class="admin-login-security-note">Không chia sẻ mật khẩu hoặc mã xác thực với bất kỳ ai.</p>
+      </div>
+    </div>
+  </section>`;
+  const pass=document.getElementById('loginPass'),toggle=document.getElementById('loginPassToggle');
+  if(pass&&toggle)toggle.onclick=()=>{const showing=pass.type==='text';pass.type=showing?'password':'text';toggle.textContent=showing?'Hiện':'Ẩn';toggle.setAttribute('aria-pressed',String(!showing));toggle.setAttribute('aria-label',showing?'Hiện mật khẩu':'Ẩn mật khẩu');};
   document.getElementById("loginForm").onsubmit=async e=>{
-    e.preventDefault();const f=new FormData(e.target);
-    try{const d=await api("/api/auth/login",{method:"POST",body:{email:f.get("email"),password:f.get("password"),portal:"admin"}});if(d.needs_2fa)return show2FA(d.challenge);state.user=d.user;if(accountBtn)accountBtn.textContent=state.user.full_name||state.user.email;if(d.must_change_password)return forcePasswordChange(f.get("password"));location.hash="admin/dashboard"}catch(err){toast(errorText(err),"bad")}
+    e.preventDefault();const f=new FormData(e.target);const submit=e.currentTarget.querySelector('button[type="submit"]');
+    if(submit){submit.disabled=true;submit.setAttribute('aria-busy','true');submit.dataset.label=submit.innerHTML;submit.innerHTML='<span>Đang xác thực…</span><span aria-hidden="true">…</span>';}
+    try{const d=await api("/api/auth/login",{method:"POST",body:{email:f.get("email"),password:f.get("password"),portal:"admin"}});if(d.needs_2fa)return show2FA(d.challenge);state.user=d.user;if(accountBtn)accountBtn.textContent=state.user.full_name||state.user.email;if(d.must_change_password)return forcePasswordChange(f.get("password"));location.hash="admin/dashboard"}catch(err){toast(errorText(err),"bad")}finally{if(submit&&document.body.classList.contains('admin-mode')){submit.disabled=false;submit.removeAttribute('aria-busy');if(submit.dataset.label)submit.innerHTML=submit.dataset.label;}}
   };
 }
-
-window.googleLogin=portal=>location.href=`/api/auth/google/start?portal=${encodeURIComponent(portal)}`;
-
-window.showRegister=function(){toast("Cổng không mở đăng ký tài khoản công khai. Hãy sử dụng biểu mẫu hoặc liên hệ quản trị viên nếu cần quyền nội bộ.","warn");}
-
-window.showForgot=function(){
-  modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Quên mật khẩu</h2><form id="forgotForm"><div class="field"><label>Email</label><input name="email" type="email" required></div><button class="primary">Gửi liên kết đặt lại</button></form>`);
-
-  document.getElementById("forgotForm").onsubmit=async e=>{
-    e.preventDefault();
-    const f=new FormData(e.target);
-
-    await api("/api/auth/forgot",{
-      method:"POST",
-      body:{email:f.get("email")}
-    }).catch(()=>{});
-
-    closeModal();
-    toast("Nếu email tồn tại, hệ thống đã gửi hướng dẫn.");
-  };
-}
-
 function show2FA(challenge){
   modal(`<h2>Xác minh 2 bước</h2><form id="twofaForm"><div class="field"><label>Mã 6 số từ ứng dụng xác thực</label><input name="code" inputmode="numeric" maxlength="6" required></div><button class="primary">Xác minh</button></form>`);
 
@@ -669,7 +672,7 @@ function forcePasswordChange(currentPassword=""){
 async function logout(){
   await api("/api/auth/logout",{method:"POST"}).catch(()=>{});
   state.user=null;
-  accountBtn.textContent="Đăng nhập";
+  if(accountBtn)accountBtn.textContent="Đăng nhập";
   location.hash="home";
 }
 
@@ -947,13 +950,13 @@ async function renderAdmin(){
   const requiredPermission=adminRoutePermissions[section];
   app.innerHTML=`<div class="admin-layout" id="adminLayout">
     <aside class="admin-sidebar" id="adminSidebar" aria-label="Danh mục quản trị">
-      <div class="admin-brand"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><div><b>SKY FIRST</b><small>TRUNG TÂM QUẢN TRỊ</small></div></div>
+      <div class="admin-brand"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><div><b>Sky First</b><small>TRUNG TÂM QUẢN TRỊ</small></div></div>
       <label class="admin-menu-search"><span aria-hidden="true">⌕</span><input type="search" id="adminMenuSearch" placeholder="Tìm chức năng…" aria-label="Tìm chức năng quản trị"><kbd>/</kbd></label>
       <nav class="admin-nav" aria-label="Menu quản trị">${adminMenuMarkup(section)}</nav>
       <div class="admin-sidebar-foot"><span class="admin-online-dot"></span><span>Hệ thống quản trị</span><a href="/" target="_blank" rel="noopener">Xem website ↗</a></div>
     </aside>
     <section class="admin-workspace">
-      <header class="admin-topbar"><div class="admin-topbar-left"><button type="button" id="adminMenuToggle" class="admin-mobile-menu" aria-controls="adminSidebar" aria-expanded="false">☰ <span>Danh mục</span></button><div><span class="admin-topbar-kicker">SKY FIRST NETWORK</span><b id="adminCurrentLabel">${E(adminMenu.flatMap(g=>g.items).find(x=>x[0]===section)?.[1]||"Quản trị hệ thống")}</b></div></div><div class="admin-topbar-actions"><span class="admin-user-chip"><i>${E((state.user.full_name||state.user.email||"A").slice(0,1).toUpperCase())}</i><span><b>${E(state.user.full_name||"Quản trị viên")}</b><small>${E(state.user.email||"")}</small></span></span><a href="/" class="admin-view-site" target="_blank" rel="noopener">Xem website ↗</a><button type="button" id="adminLogout" class="admin-logout">Đăng xuất</button></div></header>
+      <header class="admin-topbar"><div class="admin-topbar-left"><button type="button" id="adminMenuToggle" class="admin-mobile-menu" aria-controls="adminSidebar" aria-expanded="false">☰ <span>Danh mục</span></button><div><span class="admin-topbar-kicker">Sky First</span><b id="adminCurrentLabel">${E(adminMenu.flatMap(g=>g.items).find(x=>x[0]===section)?.[1]||"Quản trị hệ thống")}</b></div></div><div class="admin-topbar-actions"><span class="admin-user-chip"><i>${E((state.user.full_name||state.user.email||"A").slice(0,1).toUpperCase())}</i><span><b>${E(state.user.full_name||"Quản trị viên")}</b><small>${E(state.user.email||"")}</small></span></span><a href="/" class="admin-view-site" target="_blank" rel="noopener">Xem website ↗</a><button type="button" id="adminLogout" class="admin-logout">Đăng xuất</button></div></header>
       <section id="adminMain" class="admin-main"><div class="loading">Đang tải dữ liệu quản trị…</div></section>
     </section>
   </div>`;
@@ -2661,7 +2664,7 @@ async function saveSettingItems(items,msg="Đã lưu thay đổi."){
 async function adminSite(main){
   const m=await loadSettingsMap();state.admin.settings=m;
   main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">HỆ THỐNG & GIAO DIỆN</span><h1>Cài đặt website</h1><p class="muted">Quản lý nhận diện và nội dung chính mà không cần sửa source.</p></div></div>
-  <div class="admin-grid2"><div class="card"><h2>Nhận diện</h2><div class="field"><label>Tên website</label><input id="siteName" value="${E(m.app_name||"Sky First Network")}"></div><div class="field"><label>Châm ngôn</label><input id="siteSlogan" value="${E(m.brand_slogan||"")}"></div><div class="field"><label>Website chính</label><input id="siteWebsite" value="${E(m.website||"https://skyfirst.io.vn")}"></div><div class="field"><label>Hotline/Zalo</label><input id="siteHotline" value="${E(m.hotline||"0924 910 210")}"></div></div>
+  <div class="admin-grid2"><div class="card"><h2>Nhận diện</h2><div class="field"><label>Tên website</label><input id="siteName" value="${E(m.app_name||"Sky First")}"></div><div class="field"><label>Châm ngôn</label><input id="siteSlogan" value="${E(m.brand_slogan||"")}"></div><div class="field"><label>Website chính</label><input id="siteWebsite" value="${E(m.website||"https://skyfirst.io.vn")}"></div><div class="field"><label>Hotline/Zalo</label><input id="siteHotline" value="${E(m.hotline||"0924 910 210")}"></div></div>
   <div class="card"><h2>Hero trang chủ</h2><div class="field"><label>Tiêu đề</label><input id="siteHeroTitle" value="${E(m.hero_title||"Kết nối giáo dục. Phát triển cộng đồng.")}"></div><div class="field"><label>Mô tả</label><textarea id="siteHeroText">${E(m.hero_text||"")}</textarea></div><div class="field"><label>Ảnh Hero</label><div class="input-action"><input id="siteHeroCover" value="${E(m.hero_cover_url||"/assets/sfn-cover.png")}"><button class="secondary" onclick="location.hash='admin/media'">Chọn/Tải ảnh</button></div></div><button class="primary" onclick="saveAdminSite()">Lưu cài đặt</button></div></div>`;
 }
 window.saveAdminSite=()=>saveSettingItems({app_name:document.getElementById("siteName").value,brand_slogan:document.getElementById("siteSlogan").value,website:document.getElementById("siteWebsite").value,hotline:document.getElementById("siteHotline").value,hero_title:document.getElementById("siteHeroTitle").value,hero_text:document.getElementById("siteHeroText").value,hero_cover_url:document.getElementById("siteHeroCover").value},"Đã cập nhật website.");
@@ -2674,7 +2677,7 @@ window.saveHeaderSettings=()=>saveSettingItems({header_show_brand:document.getEl
 
 async function adminFooter(main){
   const m=await loadSettingsMap();
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">GIAO DIỆN & LIÊN KẾT</span><h1>Cuối trang / Footer</h1><p class="muted">Chỉnh thông tin liên hệ và toàn bộ liên kết hệ sinh thái. Thay đổi được áp dụng công khai sau khi lưu.</p></div></div><div class="admin-grid2"><div class="card"><h2>Thông tin liên hệ</h2><div class="field"><label>Mô tả ngắn</label><textarea id="ftDesc">${E(m.footer_description||"")}</textarea></div><div class="field"><label>Email liên hệ</label><input id="ftEmail" value="${E(m.footer_email||"lienhe@skyfirst.io.vn")}"></div><div class="field"><label>Email hỗ trợ</label><input id="ftSupport" value="${E(m.footer_support_email||"support@skyfirst.io.vn")}"></div><div class="field"><label>Email Cổng Thông tin</label><input id="ftPortalEmail" value="${E(m.footer_portal_email||"app@skyfirst.io.vn")}"></div><div class="field"><label>Điện thoại / Zalo</label><input id="ftHotline" value="${E(m.hotline||"0924 910 210")}"></div><div class="field"><label>Dòng bản quyền</label><input id="ftCopyright" value="${E(m.footer_copyright||"© 2026 Sky First Network (SFN)")}"></div></div><div class="card"><h2>Tra cứu & Hệ thống</h2><div class="field"><label>Tên Trang thông tin điện tử</label><input id="ftMainLabel" value="${E(m.portal_main_label||"Trang thông tin điện tử Sky First Network")}"></div><div class="field"><label>Trang thông tin điện tử</label><input id="ftMain" value="${E(m.portal_main_url||"https://skyfirst.io.vn")}"></div><div class="field"><label>Cổng Tình nguyện viên</label><input id="ftTnv" value="${E(m.portal_tnv_url||"https://tnv.skyfirst.io.vn")}"></div><div class="field"><label>Cổng SFEC</label><input id="ftSfec" value="${E(m.portal_sfec_url||"https://sfec.skyfirst.io.vn")}"></div><div class="field"><label>Trung tâm Học tập số</label><input id="ftSlc" value="${E(m.portal_slc_url||"https://slc.skyfirst.io.vn")}"></div><div class="field"><label>Trang Thành viên</label><input id="ftMember" value="${E(m.portal_member_url||"https://member.skyfirst.io.vn")}"></div></div></div><button class="primary" onclick="saveFooterSettings()">Lưu toàn bộ Footer</button>`;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">GIAO DIỆN & LIÊN KẾT</span><h1>Cuối trang / Footer</h1><p class="muted">Chỉnh thông tin liên hệ và toàn bộ liên kết hệ sinh thái. Thay đổi được áp dụng công khai sau khi lưu.</p></div></div><div class="admin-grid2"><div class="card"><h2>Thông tin liên hệ</h2><div class="field"><label>Mô tả ngắn</label><textarea id="ftDesc">${E(m.footer_description||"")}</textarea></div><div class="field"><label>Email liên hệ</label><input id="ftEmail" value="${E(m.footer_email||"lienhe@skyfirst.io.vn")}"></div><div class="field"><label>Email hỗ trợ</label><input id="ftSupport" value="${E(m.footer_support_email||"support@skyfirst.io.vn")}"></div><div class="field"><label>Email Cổng Thông tin</label><input id="ftPortalEmail" value="${E(m.footer_portal_email||"app@skyfirst.io.vn")}"></div><div class="field"><label>Điện thoại / Zalo</label><input id="ftHotline" value="${E(m.hotline||"0924 910 210")}"></div><div class="field"><label>Dòng bản quyền</label><input id="ftCopyright" value="${E(m.footer_copyright||"© 2026 Sky First (SFN)")}"></div></div><div class="card"><h2>Tra cứu & Hệ thống</h2><div class="field"><label>Tên Trang thông tin điện tử</label><input id="ftMainLabel" value="${E(m.portal_main_label||"Trang thông tin điện tử Sky First")}"></div><div class="field"><label>Trang thông tin điện tử</label><input id="ftMain" value="${E(m.portal_main_url||"https://skyfirst.io.vn")}"></div><div class="field"><label>Cổng Tình nguyện viên</label><input id="ftTnv" value="${E(m.portal_tnv_url||"https://tnv.skyfirst.io.vn")}"></div><div class="field"><label>Cổng SFEC</label><input id="ftSfec" value="${E(m.portal_sfec_url||"https://sfec.skyfirst.io.vn")}"></div><div class="field"><label>Trung tâm Học tập số</label><input id="ftSlc" value="${E(m.portal_slc_url||"https://slc.skyfirst.io.vn")}"></div><div class="field"><label>Trang Thành viên</label><input id="ftMember" value="${E(m.portal_member_url||"https://member.skyfirst.io.vn")}"></div></div></div><button class="primary" onclick="saveFooterSettings()">Lưu toàn bộ Footer</button>`;
 }
 window.saveFooterSettings=()=>saveSettingItems({footer_description:document.getElementById("ftDesc").value,footer_email:document.getElementById("ftEmail").value,footer_support_email:document.getElementById("ftSupport").value,footer_portal_email:document.getElementById("ftPortalEmail").value,hotline:document.getElementById("ftHotline").value,footer_copyright:document.getElementById("ftCopyright").value,portal_main_label:document.getElementById("ftMainLabel").value,portal_main_url:document.getElementById("ftMain").value,portal_tnv_url:document.getElementById("ftTnv").value,portal_sfec_url:document.getElementById("ftSfec").value,portal_slc_url:document.getElementById("ftSlc").value,portal_member_url:document.getElementById("ftMember").value},"Đã cập nhật Footer và liên kết hệ sinh thái.");
 
@@ -2887,7 +2890,7 @@ window.addEventListener("hashchange",router);
 
   const adminEntry=location.pathname==="/admin"||location.pathname==="/admin/login"||location.hash.startsWith("#login")||location.hash.startsWith("#admin");
   if(state.config.maintenance_mode&&!state.user&&!adminEntry){
-    app.innerHTML=`<main class="system-state-shell"><section class="system-state"><img src="/assets/sfn-logo-tight.png" alt="Sky First"><span class="state-code">MAINTENANCE</span><h1>Cổng đang được cập nhật</h1><p>Một số dịch vụ đang tạm dừng để bảo trì. Dữ liệu đã gửi trước đó không cần gửi lại chỉ vì trạng thái này.</p><div class="actions"><a class="secondary" href="mailto:support@skyfirst.io.vn">Hỗ trợ</a></div></section></main>`;
+    app.innerHTML=`<main class="system-state-shell"><section class="system-state"><img src="/assets/sfn-logo-tight.png" alt="Sky First"><span class="state-code">MAINTENANCE</span><h1>Hệ thống đang được cập nhật</h1><p>Một số dịch vụ đang tạm dừng để bảo trì. Dữ liệu đã gửi trước đó không cần gửi lại chỉ vì trạng thái này.</p><div class="actions"><a class="secondary" href="mailto:support@skyfirst.io.vn">Hỗ trợ</a></div></section></main>`;
     return;
   }
 
