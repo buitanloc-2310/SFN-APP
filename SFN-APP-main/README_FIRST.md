@@ -1,4 +1,4 @@
-# HỆ THỐNG THÔNG TIN SỐ SKY FIRST (SKY FIRST DIGITAL INFORMATION SYSTEM — V8)
+# HỆ THỐNG THÔNG TIN SỐ SKY FIRST (SKY FIRST DIGITAL INFORMATION SYSTEM — V9)
 
 * **Tên hệ thống:** Hệ thống Thông tin Số Sky First (*Sky First Digital Information System*)
 * **Tên miền chính thức:** `https://app.skyfirst.io.vn` (tương thích liên thông với `https://ctt.skyfirst.io.vn`)
@@ -25,11 +25,11 @@
 ├── public/                         # Tài nguyên tĩnh & Frontend ES Modules
 │   ├── index.html                  # Khung giao diện chính chuẩn SEO/OpenGraph
 │   ├── bootstrap.js                # Khởi tạo cấu hình công khai & điều phối giao diện
-│   ├── digital-portal.js           # Giao diện công khai song ngữ VI/EN bám sát 9 ảnh tham chiếu
+│   ├── digital-portal.js           # Giao diện công khai song ngữ VI/EN bám sát bộ 10 ảnh giao diện tham chiếu
 │   ├── app.js                      # Hệ thống Quản trị (Dashboard, Hồ sơ, GCN, CMS, Menu/URL, Vòng đời, Email)
 │   ├── styles.css                  # CSS nền tảng
 │   ├── digital.css                 # Hệ thống thiết kế chuẩn ảnh tham chiếu (Desktop/Tablet/Mobile)
-│   ├── sw.js                       # Service Worker v8-sky-first-digital-system
+│   ├── sw.js                       # Service Worker cache V9 (20261023)
 │   ├── email-templates/            # Mẫu email_universal_auto.html và 9 mẫu chuyên biệt
 │   └── assets/                     # Logo chính thức Sky First (giữ nguyên byte-for-byte)
 ├── scripts/                        # Bộ công cụ kiểm tra tĩnh và kiểm thử tích hợp E2E (95 bài test)
@@ -83,3 +83,12 @@ npm test
    ```bash
    npm run deploy
    ```
+
+## 4. Ghi chú giao diện V9 (23/10/2026)
+
+- Trang chủ được dựng bằng HTML/CSS/JavaScript và SVG nội tuyến; không dùng ảnh chụp giao diện làm nền, thẻ hoặc ảnh minh họa giả.
+- Cấu trúc trang chủ gồm tiêu đề và tìm kiếm, truy cập nhanh, sáu phân hệ, năm chỉ số lấy từ cấu hình/API, khu vực chương trình, sự kiện, tài liệu, thông báo và phần giới thiệu ngắn về phạm vi hệ thống.
+- Bổ sung quy tắc bố cục full-width cho `#app` để tránh hiện tượng nội dung công khai co hẹp/lệch sang một bên; thêm breakpoint cho tablet và điện thoại.
+- Tăng version asset và Service Worker lên V9 để trình duyệt không tiếp tục dùng CSS/JS cache cũ.
+- Số liệu không có trong phản hồi API được hiển thị là “Chưa có dữ liệu” thay vì tự gán số 0; số 0 chỉ hiển thị khi nguồn trả về số 0 hợp lệ.
+- Không thay đổi schema, migration, D1/R2 bindings, đăng nhập hoặc RBAC trong đợt sửa giao diện này.

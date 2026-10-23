@@ -568,7 +568,7 @@ function applyLanguage(lang){
 }
 
 /*
- * Minh họa đồ họa banner 3D SVG bám sát 9 ảnh tham chiếu (Mục 7 & Mục 15)
+ * Minh họa SVG/CSS cho các trang theo bộ 10 ảnh tham chiếu (Mục 7 & Mục 15)
  */
 function bannerArt(kind='events'){
   if(kind==='events'){
@@ -739,45 +739,68 @@ function updateActiveNav(activeKey){
   });
 }
 
-/*
- * Mục 7: Giao diện Trang chủ (/) bám sát ảnh tham chiếu image_2e9469.jpg
- */
+function homeProgramCard(item,index=0){
+  const data=jsonObject(item.data_json),schedule=jsonObject(item.schedule_json);
+  const desc=firstText(data,['description','summary','short_description','intro','content']);
+  const timeText=firstText(schedule,['schedule','time','days','duration','format']);
+  const kind=programArtKind(item);
+  const kindIcon=kind==='reading'?'book':kind==='listening'?'headset':kind==='speaking'?'info':'program';
+  const kindLabel=kind==='reading'?'READING':kind==='listening'?'LISTENING':kind==='speaking'?'SPEAKING':'EDUCATION';
+  const status=publicStatusLabel(item.status);
+  return `<article class="sfn-home-program-card ${index===0?'is-featured':''}">
+    <div class="sfn-home-program-visual sfn-home-program-visual-${esc(kind)}" aria-hidden="true">
+      <span class="sfn-home-visual-kicker">${esc(item.unit_code||'SKY FIRST')}</span>
+      <div class="sfn-home-visual-symbol">${svgIcon(kindIcon,index===0?48:38)}</div>
+      <span class="sfn-home-visual-caption">${esc(kindLabel)}</span>
+    </div>
+    <div class="sfn-home-program-copy">
+      <div class="sfn-home-program-meta"><span>${esc(item.unit_code||'SKY FIRST')}</span>${item.level?`<span>${esc(item.level)}</span>`:''}</div>
+      <h3><a href="${esc(programHref(item))}">${esc(item.title)}</a></h3>
+      <p>${esc(desc|| (getLang()==='en'?'Program information is maintained by the system team.':'Thông tin chương trình được cập nhật từ hệ thống quản trị.'))}</p>
+      <div class="sfn-home-program-foot"><span class="program-status ${activeLike(item.status)?'is-active':''}"><i></i>${esc(status)}</span>${timeText?`<small>${esc(timeText)}</small>`:''}<a href="${esc(programHref(item))}">${esc(getLang()==='en'?'View details':'Xem chi tiết')} <b>→</b></a></div>
+    </div>
+  </article>`;
+}
+
+function homeEmptyState(iconName,title,description,linkHref='',linkText=''){
+  return `<div class="sfn-home-empty"><span class="sfn-home-empty-icon">${svgIcon(iconName,24)}</span><div><h3>${esc(title)}</h3><p>${esc(description)}</p>${linkHref&&linkText?`<a href="${esc(linkHref)}">${esc(linkText)} →</a>`:''}</div></div>`;
+}
+
+/* Homepage built with real HTML/CSS/SVG components — never a screenshot background. */
 async function home(app){
   updateActiveNav('home');
   setMeta(t('hero_title_top')+' SKY FIRST',t('hero_desc'));
-  const [classes,events,resources,config]=await Promise.allSettled([
+  const [classesResult,eventsResult,resourcesResult,newsResult,configResult]=await Promise.allSettled([
     api('/api/public/classes'),
     api('/api/public/events'),
     api('/api/public/resources'),
+    api('/api/public/news'),
     api('/api/config')
   ]);
-  if(config.status==='fulfilled' && config.value){
-    syncDynamicNavigation(config.value);
-    updateActiveNav('home');
-  }
-  const c=classes.value?.items||[], ev=events.value?.items||[], r=resources.value?.items||[];
-  const cfgVal=config.status==='fulfilled'?config.value:{};
-  const navList=Array.isArray(cfgVal?.navigation)?cfgVal.navigation:[];
-  const quickItems=navList.filter(x=>x.location==='quick_access');
+  const cfgVal=configResult.status==='fulfilled'&&configResult.value?configResult.value:{};
+  if(Object.keys(cfgVal).length){syncDynamicNavigation(cfgVal);updateActiveNav('home');}
   const lang=getLang();
-
-  const quickPillsHtml = quickItems.length
-    ? quickItems.map(item=>`<a href="${esc(item.url)}"><b>${esc(lang==='en'?(item.label_en||item.label_vi):item.label_vi)}</b></a>`).join('')
-    : `
-      <a href="/chuong-trinh"><b data-i18n="nav_programs">${esc(t('nav_programs'))}</b></a>
+  const classes=visiblePublicItems(classesResult.status==='fulfilled'?(classesResult.value?.items||[]):[]).sort(comparePrograms);
+  const events=visiblePublicItems(eventsResult.status==='fulfilled'?(eventsResult.value?.items||[]):[]);
+  const resources=resourcesResult.status==='fulfilled'?(resourcesResult.value?.items||[]):[];
+  const news=newsResult.status==='fulfilled'?(newsResult.value?.items||[]):[];
+  const navList=Array.isArray(cfgVal.navigation)?cfgVal.navigation:[];
+  const quickItems=navList.filter(x=>x.location==='quick_access');
+  const quickPillsHtml=quickItems.length
+    ?quickItems.map(item=>`<a href="${esc(item.url)}"><b>${esc(lang==='en'?(item.label_en||item.label_vi):item.label_vi)}</b></a>`).join('')
+    :`<a href="/chuong-trinh"><b data-i18n="nav_programs">${esc(t('nav_programs'))}</b></a>
       <a href="/su-kien"><b data-i18n="nav_events">${esc(t('nav_events'))}</b></a>
       <a href="/bieu-mau"><b data-i18n="nav_forms">${esc(t('nav_forms'))}</b></a>
       <a href="/gcn"><b data-i18n="nav_certs">${esc(t('nav_certs'))}</b></a>
       <a href="/ho-so"><b data-i18n="nav_cases">${esc(t('nav_cases'))}</b></a>
       <a href="/tai-tro"><b data-i18n="nav_sponsorship">${esc(t('nav_sponsorship'))}</b></a>
-      <a href="/an-toan"><b data-i18n="nav_safety">${esc(t('nav_safety'))}</b></a>
-    `;
+      <a href="/an-toan"><b data-i18n="nav_safety">${esc(t('nav_safety'))}</b></a>`;
 
   app.innerHTML=`
-  <section class="sfn-clean-hero" id="heroSection">
+  <section class="sfn-clean-hero" id="heroSection" aria-labelledby="homeTitle">
     <div class="sfn-clean-hero-inner">
       <div class="sfn-hero-badge"><span aria-hidden="true">+</span> <b data-i18n="hero_badge">${esc(t('hero_badge'))}</b></div>
-      <h1><span data-i18n="hero_title_top">${esc(t('hero_title_top'))}</span><strong>SKY FIRST</strong></h1>
+      <h1 id="homeTitle"><span data-i18n="hero_title_top">${esc(t('hero_title_top'))}</span><strong>SKY FIRST</strong></h1>
       <p class="sfn-hero-desc" data-i18n="hero_desc">${esc(t('hero_desc'))}</p>
       <div class="sfn-search-bar" role="search">
         <label class="sr-only" for="homeSearch">${esc(t('search_btn'))}</label>
@@ -785,131 +808,74 @@ async function home(app){
         <input id="homeSearch" type="search" placeholder="${esc(t('search_placeholder'))}" autocomplete="off">
         <button id="homeSearchBtn" type="button"><span data-i18n="search_btn">${esc(t('search_btn'))}</span> <span aria-hidden="true">→</span></button>
       </div>
-      <div class="sfn-quick-pills" aria-label="Truy cập nhanh">
-        <span class="sfn-quick-label" data-i18n="quick_label">${esc(t('quick_label'))}</span>
-        ${quickPillsHtml}
-      </div>
-
+      <div class="sfn-quick-pills" aria-label="Truy cập nhanh"><span class="sfn-quick-label" data-i18n="quick_label">${esc(t('quick_label'))}</span>${quickPillsHtml}</div>
       <div class="sfn-feature-cards-grid" aria-label="Các phân hệ chức năng chính">
-        <a class="sfn-fcard fcard-blue" href="/chuong-trinh">
-          <div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('document',22)}</div>
-          <div class="sfn-fcard-body">
-            <h2 data-i18n="card_prog_title">${esc(t('card_prog_title'))}</h2>
-            <p data-i18n="card_prog_desc">${esc(t('card_prog_desc'))}</p>
-          </div>
-          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
-        </a>
-        <a class="sfn-fcard fcard-purple" href="/su-kien">
-          <div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('calendar',22)}</div>
-          <div class="sfn-fcard-body">
-            <h2 data-i18n="card_ev_title">${esc(t('card_ev_title'))}</h2>
-            <p data-i18n="card_ev_desc">${esc(t('card_ev_desc'))}</p>
-          </div>
-          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
-        </a>
-        <a class="sfn-fcard fcard-teal" href="/tai-lieu">
-          <div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('folder',22)}</div>
-          <div class="sfn-fcard-body">
-            <h2 data-i18n="card_doc_title">${esc(t('card_doc_title'))}</h2>
-            <p data-i18n="card_doc_desc">${esc(t('card_doc_desc'))}</p>
-          </div>
-          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
-        </a>
-        <a class="sfn-fcard fcard-amber" href="/gcn">
-          <div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('shield-check',22)}</div>
-          <div class="sfn-fcard-body">
-            <h2 data-i18n="card_cert_title">${esc(t('card_cert_title'))}</h2>
-            <p data-i18n="card_cert_desc">${esc(t('card_cert_desc'))}</p>
-          </div>
-          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
-        </a>
-        <a class="sfn-fcard fcard-navy" href="/an-toan">
-          <div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('shield',22)}</div>
-          <div class="sfn-fcard-body">
-            <h2 data-i18n="card_safe_title">${esc(t('card_safe_title'))}</h2>
-            <p data-i18n="card_safe_desc">${esc(t('card_safe_desc'))}</p>
-          </div>
-          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
-        </a>
-        <a class="sfn-fcard fcard-green" href="/tai-tro">
-          <div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('handshake',22)}</div>
-          <div class="sfn-fcard-body">
-            <h2 data-i18n="card_sp_title">${esc(t('card_sp_title'))}</h2>
-            <p data-i18n="card_sp_desc">${esc(t('card_sp_desc'))}</p>
-          </div>
-          <span class="sfn-fcard-arrow" aria-hidden="true">→</span>
-        </a>
+        <a class="sfn-fcard fcard-blue" href="/chuong-trinh"><div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('document',22)}</div><div class="sfn-fcard-body"><h2 data-i18n="card_prog_title">${esc(t('card_prog_title'))}</h2><p data-i18n="card_prog_desc">${esc(t('card_prog_desc'))}</p></div><span class="sfn-fcard-arrow" aria-hidden="true">→</span></a>
+        <a class="sfn-fcard fcard-purple" href="/su-kien"><div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('calendar',22)}</div><div class="sfn-fcard-body"><h2 data-i18n="card_ev_title">${esc(t('card_ev_title'))}</h2><p data-i18n="card_ev_desc">${esc(t('card_ev_desc'))}</p></div><span class="sfn-fcard-arrow" aria-hidden="true">→</span></a>
+        <a class="sfn-fcard fcard-teal" href="/tai-lieu"><div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('folder',22)}</div><div class="sfn-fcard-body"><h2 data-i18n="card_doc_title">${esc(t('card_doc_title'))}</h2><p data-i18n="card_doc_desc">${esc(t('card_doc_desc'))}</p></div><span class="sfn-fcard-arrow" aria-hidden="true">→</span></a>
+        <a class="sfn-fcard fcard-amber" href="/gcn"><div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('shield-check',22)}</div><div class="sfn-fcard-body"><h2 data-i18n="card_cert_title">${esc(t('card_cert_title'))}</h2><p data-i18n="card_cert_desc">${esc(t('card_cert_desc'))}</p></div><span class="sfn-fcard-arrow" aria-hidden="true">→</span></a>
+        <a class="sfn-fcard fcard-navy" href="/an-toan"><div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('shield',22)}</div><div class="sfn-fcard-body"><h2 data-i18n="card_safe_title">${esc(t('card_safe_title'))}</h2><p data-i18n="card_safe_desc">${esc(t('card_safe_desc'))}</p></div><span class="sfn-fcard-arrow" aria-hidden="true">→</span></a>
+        <a class="sfn-fcard fcard-green" href="/tai-tro"><div class="sfn-fcard-icon" aria-hidden="true">${svgIcon('handshake',22)}</div><div class="sfn-fcard-body"><h2 data-i18n="card_sp_title">${esc(t('card_sp_title'))}</h2><p data-i18n="card_sp_desc">${esc(t('card_sp_desc'))}</p></div><span class="sfn-fcard-arrow" aria-hidden="true">→</span></a>
       </div>
-
       <div class="sfn-stats-bar home-stats-5" id="homeStats" aria-label="Chỉ số vận hành hệ thống">
-        <div class="sfn-stat-item">
-          <div>
-            <strong data-stat="programs">0</strong>
-            <span data-stat-label="programs" data-i18n="stat_programs">${esc(t('stat_programs'))}</span>
-          </div>
-        </div>
-        <div class="sfn-stat-item">
-          <div>
-            <strong data-stat="members">0</strong>
-            <span data-stat-label="members" data-i18n="stat_members">${esc(t('stat_members'))}</span>
-          </div>
-        </div>
-        <div class="sfn-stat-item">
-          <div>
-            <strong data-stat="certificates">0</strong>
-            <span data-stat-label="certificates" data-i18n="stat_certificates">${esc(t('stat_certificates'))}</span>
-          </div>
-        </div>
-        <div class="sfn-stat-item">
-          <div>
-            <strong data-stat="partners">0</strong>
-            <span data-stat-label="partners" data-i18n="stat_partners">${esc(t('stat_partners'))}</span>
-          </div>
-        </div>
-        <div class="sfn-stat-item">
-          <div>
-            <strong data-stat="sponsorship">0 ₫</strong>
-            <span data-stat-label="sponsorship" data-i18n="stat_sponsorship">${esc(t('stat_sponsorship'))}</span>
-          </div>
-        </div>
+        <div class="sfn-stat-item"><div><strong data-stat="programs">—</strong><span data-stat-label="programs" data-i18n="stat_programs">${esc(t('stat_programs'))}</span></div></div>
+        <div class="sfn-stat-item"><div><strong data-stat="members">—</strong><span data-stat-label="members" data-i18n="stat_members">${esc(t('stat_members'))}</span></div></div>
+        <div class="sfn-stat-item"><div><strong data-stat="certificates">—</strong><span data-stat-label="certificates" data-i18n="stat_certificates">${esc(t('stat_certificates'))}</span></div></div>
+        <div class="sfn-stat-item"><div><strong data-stat="partners">—</strong><span data-stat-label="partners" data-i18n="stat_partners">${esc(t('stat_partners'))}</span></div></div>
+        <div class="sfn-stat-item"><div><strong data-stat="sponsorship">—</strong><span data-stat-label="sponsorship" data-i18n="stat_sponsorship">${esc(t('stat_sponsorship'))}</span></div></div>
       </div>
     </div>
   </section>
 
-  ${visiblePublicItems(c).length?`
-  <section class="dip-section live-v3" id="programs">
-    ${sectionHead(lang==='en'?'EDUCATIONAL & COMMUNITY PROGRAMS':'CHƯƠNG TRÌNH ĐÀO TẠO & CỘNG ĐỒNG',lang==='en'?'Active Programs':'Chương trình đang triển khai',lang==='en'?'Program data is synchronized directly from the administration system.':'Dữ liệu chương trình và lớp học được đồng bộ trực tiếp từ hệ thống quản trị.')}
-    <div class="program-spotlight">${visiblePublicItems(c).sort(comparePrograms).slice(0,4).map((x,i)=>programCard(x,i,'home')).join('')}</div>
-    <a class="section-more-link" href="/chuong-trinh">${esc(lang==='en'?'View all programs':'Xem toàn bộ chương trình')} <span>→</span></a>
-  </section>`:''}
+  <section class="sfn-home-content" aria-label="Thông tin và nội dung cập nhật">
+    <div class="sfn-home-content-inner">
+      <div class="sfn-home-main-grid">
+        <section class="sfn-home-panel sfn-home-program-panel" id="programs">
+          <div class="sfn-home-section-head"><div><span class="section-kicker">${esc(lang==='en'?'EDUCATION & COMMUNITY':'CHƯƠNG TRÌNH ĐÀO TẠO & CỘNG ĐỒNG')}</span><h2>${esc(lang==='en'?'Programs currently available':'Chương trình đang triển khai')}</h2><p>${esc(lang==='en'?'Published program details synchronized from the system.':'Các chương trình công khai được đồng bộ từ hệ thống quản trị.')}</p></div><a href="/chuong-trinh" class="sfn-home-more">${esc(lang==='en'?'All programs':'Xem tất cả')} →</a></div>
+          ${classes.length?`<div class="sfn-home-program-grid">${classes.slice(0,4).map(homeProgramCard).join('')}</div>`:homeEmptyState('book',lang==='en'?'No public programs yet':'Chưa có chương trình công khai',lang==='en'?'Published programs will appear here when they are available.':'Chương trình sẽ hiển thị tại đây sau khi được công bố.')}
+        </section>
+        <div class="sfn-home-side-stack">
+          <section class="sfn-home-panel" id="activities">
+            <div class="sfn-home-section-head"><div><span class="section-kicker">${esc(lang==='en'?'EVENTS & ACTIVITIES':'SỰ KIỆN & HOẠT ĐỘNG')}</span><h2>${esc(lang==='en'?'Events and activities':'Lịch sự kiện và hoạt động thực tế')}</h2><p>${esc(lang==='en'?'Public dates and statuses from the system.':'Theo dõi lịch và trạng thái sự kiện được công bố.')}</p></div><a href="/su-kien" class="sfn-home-more">${esc(lang==='en'?'View all':'Xem tất cả')} →</a></div>
+            ${events.length?`<div class="sfn-home-compact-list">${events.slice(0,3).map(x=>`<a class="sfn-home-list-row" href="${esc(eventHref(x))}"><time>${esc(x.start_at?fmt(x.start_at):'—')}</time><span><b>${esc(x.title)}</b><small>${esc(publicStatusLabel(x.status))}</small></span><strong aria-hidden="true">→</strong></a>`).join('')}</div>`:homeEmptyState('calendar',lang==='en'?'No public events':'Chưa có sự kiện công khai',lang==='en'?'New events will be listed after publication.':'Sự kiện mới sẽ hiển thị tại đây khi được công bố.')}
+          </section>
+          <section class="sfn-home-panel" id="resources">
+            <div class="sfn-home-section-head"><div><span class="section-kicker">${esc(lang==='en'?'DIGITAL DOCUMENT LIBRARY':'THƯ VIỆN TÀI LIỆU SỐ')}</span><h2>${esc(lang==='en'?'Documents and guides':'Tài liệu, văn bản và hướng dẫn')}</h2><p>${esc(lang==='en'?'Only approved and published documents are shown.':'Chỉ hiển thị tài liệu đã được phê duyệt và công bố.')}</p></div><a href="/tai-lieu" class="sfn-home-more">${esc(lang==='en'?'View all':'Xem tất cả')} →</a></div>
+            ${resources.length?`<div class="sfn-home-compact-list">${resources.slice(0,3).map(x=>`<article class="sfn-home-list-row"><span class="sfn-home-list-icon">${svgIcon('document',18)}</span><span><b>${esc(x.title)}</b><small>${esc(x.category||x.doc_type||'Tài liệu')} · ${esc(x.current_version?`v${x.current_version}`:'PDF')}</small></span><a href="${esc(x.preview_url||x.download_url||'/tai-lieu')}" aria-label="${esc(lang==='en'?'Open document':'Mở tài liệu')}">→</a></article>`).join('')}</div>`:homeEmptyState('document',lang==='en'?'No public documents':'Chưa có tài liệu công khai',lang==='en'?'Approved documents will appear here after publication.':'Tài liệu sẽ hiển thị tại đây sau khi được phê duyệt và công bố.')}
+          </section>
+        </div>
+      </div>
 
-  ${visiblePublicItems(ev).length?`
-  <section class="dip-section tone" id="activities">
-    ${sectionHead(lang==='en'?'EVENTS & ACTIVITIES':'SỰ KIỆN & HOẠT ĐỘNG',lang==='en'?'Public Event Schedule':'Lịch sự kiện và hoạt động thực tế','')}
-    <div class="event-timeline" id="events">${visiblePublicItems(ev).slice(0,6).map(x=>`<a href="${esc(eventHref(x))}"><time>${x.start_at?fmt(x.start_at):'—'}</time><div><small>${esc(x.unit_code||'SKY FIRST')}</small><h3>${esc(x.title)}</h3><p>${esc(publicStatusLabel(x.status))}</p></div><span>→</span></a>`).join('')}</div>
-  </section>`:''}
-
-  ${r.length?`
-  <section class="dip-section resources-v3" id="resources">
-    ${sectionHead(lang==='en'?'DIGITAL DOCUMENT LIBRARY':'THƯ VIỆN TÀI LIỆU SỐ',lang==='en'?'Documents & Guidelines':'Tài liệu, văn bản và hướng dẫn','')}
-    <div class="resource-list">${r.slice(0,6).map(x=>`<article><i>${svgIcon('folder',20)}</i><div><span>${esc(x.category||x.doc_type||'TÀI LIỆU')} · v${esc(x.current_version||1)}</span><h3>${esc(x.title)}</h3></div><div class="actions">${x.preview_url?`<a class="secondary" href="/tai-lieu?preview=${encodeURIComponent(x.id)}">${esc(lang==='en'?'Preview':'Xem trước')}</a>`:''}${x.download_url?`<a class="portal-button" href="${esc(x.download_url)}">${esc(lang==='en'?'Download →':'Tải xuống →')}</a>`:''}</div></article>`).join('')}</div>
-  </section>`:''}`;
+      <div class="sfn-home-bottom-grid">
+        <section class="sfn-home-panel sfn-home-news-panel" id="news">
+          <div class="sfn-home-section-head"><div><span class="section-kicker">${esc(lang==='en'?'SYSTEM UPDATES':'THÔNG BÁO & CẬP NHẬT')}</span><h2>${esc(lang==='en'?'Updates and recent notices':'Thông tin vận hành và thông báo mới')}</h2><p>${esc(lang==='en'?'Published notices from the system.':'Thông tin công khai đã được đăng trên hệ thống.')}</p></div><a href="#news" class="sfn-home-more">${esc(lang==='en'?'All updates':'Xem tất cả')} →</a></div>
+          ${news.length?`<div class="sfn-home-news-list">${news.slice(0,4).map((x,i)=>`<a class="sfn-home-news-row" href="${esc(storyHref(x))}"><span class="sfn-home-news-type">${esc(i===0?(lang==='en'?'Notice':'Thông báo'):(lang==='en'?'Update':'Cập nhật'))}</span><b>${esc(x.title)}</b><time>${esc(x.published_at?fmt(x.published_at):'—')}</time><span class="sfn-home-news-arrow" aria-hidden="true">→</span></a>`).join('')}</div>`:homeEmptyState('document',lang==='en'?'No published updates':'Chưa có thông báo công khai',lang==='en'?'System updates will appear after publication.':'Thông báo sẽ hiển thị tại đây sau khi được công bố.')}
+        </section>
+        <section class="sfn-home-about-panel">
+          <span class="section-kicker">${esc(lang==='en'?'ABOUT THE SYSTEM':'VỀ HỆ THỐNG')}</span>
+          <h2>${esc(lang==='en'?'One place for Sky First digital services':'Một điểm truy cập cho các dịch vụ số Sky First')}</h2>
+          <p>${esc(lang==='en'?'Find published programs, submit forms, track your records, access documents, and verify certificates through a consistent interface.':'Tra cứu chương trình, gửi biểu mẫu, theo dõi hồ sơ, xem tài liệu và xác minh chứng nhận trong một giao diện thống nhất.')}</p>
+          <div class="sfn-home-about-topics"><span>${svgIcon('book',17)} ${esc(lang==='en'?'Education':'Giáo dục')}</span><span>${svgIcon('check',17)} ${esc(lang==='en'?'Environment':'Môi trường')}</span><span>${svgIcon('grid',17)} ${esc(lang==='en'?'Community development':'Phát triển cộng đồng')}</span></div>
+        </section>
+      </div>
+    </div>
+  </section>`;
 
   const statConfig=cfgVal?.home_stats||{};
-  const d1Vals=statConfig.d1_values||{};
-  const fmtStat=(n,key)=>{
-    const num=Number(n)||0;
-    if(key==="sponsorship"){
-      if(num===0) return "0 ₫";
-      return new Intl.NumberFormat(lang==='en'?'en-US':'vi-VN',{maximumFractionDigits:0}).format(num)+" ₫";
+  const d1Vals=statConfig.source==='manual'?(statConfig.values||{}):(statConfig.d1_values||{});
+  const fmtStat=(num,key)=>key==='sponsorship'
+    ?new Intl.NumberFormat(lang==='en'?'en-US':'vi-VN',{maximumFractionDigits:0}).format(num)+' ₫'
+    :new Intl.NumberFormat(lang==='en'?'en-US':'vi-VN',{maximumFractionDigits:0}).format(num);
+  document.querySelectorAll('[data-stat]').forEach(el=>{
+    const key=el.dataset.stat,raw=d1Vals[key];
+    const num=Number(raw);
+    if(raw===null||raw===undefined||raw===''||!Number.isFinite(num)||num<0){
+      el.textContent=lang==='en'?'No public data':'Chưa có dữ liệu';
+      el.dataset.statState='unavailable';
+    }else{
+      el.textContent=fmtStat(num,key);
+      delete el.dataset.statState;
     }
-    return new Intl.NumberFormat(lang==='en'?'en-US':'vi-VN',{maximumFractionDigits:0}).format(num);
-  };
-  document.querySelectorAll("[data-stat]").forEach(el=>{
-    const key=el.dataset.stat;
-    const rawValue=statConfig.source==="manual"?statConfig.values?.[key]:d1Vals[key];
-    const num=Number(rawValue);
-    el.textContent=Number.isFinite(num)&&num>=0 ? fmtStat(num,key) : (key==="sponsorship"?"0 ₫":"0");
   });
   document.getElementById('homeSearchBtn')?.addEventListener('click',()=>openSearch(document.getElementById('homeSearch')?.value||''));
   document.getElementById('homeSearch')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();openSearch(e.currentTarget.value)}});

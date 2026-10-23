@@ -1,4 +1,4 @@
-DANH SÁCH TỆP ĐÃ THÊM, SỬA VÀ DỌN DẸP TRONG GÓI BÀN GIAO (SKY FIRST DIGITAL INFORMATION SYSTEM — V8)
+DANH SÁCH TỆP ĐÃ THÊM, SỬA VÀ DỌN DẸP TRONG GÓI BÀN GIAO (SKY FIRST DIGITAL INFORMATION SYSTEM — V9)
 
 1. Các tệp thêm mới:
 - migrations/0008_sky_first_digital_information_system.sql: Migration tương thích ngược bổ sung 6 vai trò thiếu vào bảng roles, chuẩn hóa settings, tạo 16 bảng mở rộng (sponsorship_campaigns, sponsorship_transactions, sponsorship_reports, safety_reports, websites, cms_pages, cms_page_revisions, cms_shared_blocks, cms_templates, document_versions, email_template_versions, navigation_items, url_redirects, system_links, content_folders, entity_lifecycle_history), mở rộng cột email_logs và đăng ký mẫu email_universal_auto cùng 16 sự kiện nghiệp vụ.
@@ -14,8 +14,16 @@ DANH SÁCH TỆP ĐÃ THÊM, SỬA VÀ DỌN DẸP TRONG GÓI BÀN GIAO (SKY FIR
 - src/index.js: Thực thi chuyển hướng URL quản trị (301/302), phục vụ tệp đính kèm bảo vệ (/api/email-files/:id), bảo mật CSP và X-Frame-Options: SAMEORIGIN.
 - src/public.js: Hoàn thiện tra cứu chứng nhận (theo mã GCN/GXN/BK, email hoặc số điện thoại mà không lộ dữ liệu cá nhân; hiển thị đầy đủ trạng thái Có hiệu lực, Hết hiệu lực, Đã thu hồi, Đã được thay thế kèm thông điệp chính sách dữ liệu và thời điểm truy vấn), tự động hóa 5 chỉ số trang chủ, API Tài trợ, An toàn và CMS.
 - src/admin.js: Bổ sung API quản trị Menu/Điều hướng, Chuyển hướng URL, Liên kết hệ thống & Kiểm toán liên kết, Thư mục nội dung (có kiểm tra tham chiếu trước khi xóa), Quản lý vòng đời bản ghi toàn hệ thống (/api/admin/lifecycle/:entityType/:id) và Gửi email quản trị (/api/admin/email/send).
-- public/index.html, public/bootstrap.js, public/digital-portal.js, public/app.js, public/digital.css, public/sw.js, public/manifest.webmanifest: Đồng bộ toàn bộ giao diện công khai và trang đăng nhập quản trị (/admin/login) bám sát 9 ảnh tham chiếu, chuẩn hóa hệ thống biểu tượng SVG đơn sắc, song ngữ VI/EN tập trung và bổ sung giao diện quản trị Điều hướng/URL/Thư mục & Vòng đời dữ liệu.
+- public/index.html, public/bootstrap.js, public/digital-portal.js, public/app.js, public/digital.css, public/sw.js, public/manifest.webmanifest: Đồng bộ toàn bộ giao diện công khai và trang đăng nhập quản trị (/admin/login) bám sát bộ 10 ảnh giao diện tham chiếu, chuẩn hóa hệ thống biểu tượng SVG đơn sắc, song ngữ VI/EN tập trung và bổ sung giao diện quản trị Điều hướng/URL/Thư mục & Vòng đời dữ liệu.
 - package.json, wrangler.jsonc, scripts/validate.mjs, README_FIRST.md, docs/EMAIL_SETUP.md: Chuẩn hóa cấu hình, tài liệu hướng dẫn và kịch bản kiểm tra.
 
 3. Các tệp báo cáo nháp cũ đã dọn dẹp khỏi thư mục gốc để giữ gói ZIP gọn sạch (63 tệp, nằm trong khoảng khuyến nghị 50–70 tệp):
 - Các tệp ghi chú lịch sử V2–V6 trùng lặp ở thư mục gốc (CTT_V2_*, CTT_V3_*, CTT_V4_*, CTT_V5_*, CTT_V6_*, FINAL_AUDIT.md, RUNNABLE_FIX.md).
+
+
+4. Thay đổi giao diện trang chủ V9 (23/10/2026):
+- Dựng thêm bố cục khu vực chương trình, danh sách sự kiện, thư viện tài liệu, thông báo vận hành và phần giới thiệu ngắn bằng HTML/CSS/JavaScript/SVG; không nhúng ảnh chụp giao diện.
+- Chuẩn hóa full-width cho thân trang công khai và các lưới nội dung; thêm bố cục responsive tablet/mobile.
+- Các trạng thái rỗng luôn hiển thị rõ ràng; giá trị thống kê thiếu từ API hiển thị “Chưa có dữ liệu”.
+- Tăng cache-busting assets/service worker từ V8 lên V9.
+- Bổ sung thư viện HTML `public/email-templates/email_universal_auto.html` để khớp danh mục template cần kiểm định.

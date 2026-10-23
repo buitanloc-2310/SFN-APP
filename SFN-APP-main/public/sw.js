@@ -1,11 +1,11 @@
-const CACHE_NAME = "sfn-digital-v8-20261022";
+const CACHE_NAME = "sfn-digital-v9-20261023";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
-  "/styles.css?v=20261022-v8",
-  "/digital.css?v=20261022-v8",
-  "/digital-portal.js?v=20261022-v8",
-  "/bootstrap.js?v=20261022-v8",
+  "/styles.css?v=20261023-v9",
+  "/digital.css?v=20261023-v9",
+  "/digital-portal.js?v=20261023-v9",
+  "/bootstrap.js?v=20261023-v9",
   "/assets/sfn-logo-tight.png"
 ];
 

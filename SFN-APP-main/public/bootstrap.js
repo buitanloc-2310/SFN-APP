@@ -16,7 +16,7 @@ function needsAppBundle({path,route}){
 async function loadAppBundle(){
   if(appBundleLoaded)return;
   appBundleLoaded=true;
-  await import('/app.js?v=20261022-v8');
+  await import('/app.js?v=20261023-v9');
 }
 
 async function renderPublic(){
@@ -48,15 +48,15 @@ window.addEventListener('popstate',()=>{if(!appBundleLoaded)renderPublic()});
 renderPublic();
 
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/sw.js?v=20261022-v8',{updateViaCache:'none'}).then(reg=>{
+  navigator.serviceWorker.register('/sw.js?v=20261023-v9',{updateViaCache:'none'}).then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
   let hadController=!!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
     if(!hadController){hadController=true;return;}
     try{
-      if(sessionStorage.getItem('sfn_sw_reloaded_v8')==='1')return;
-      sessionStorage.setItem('sfn_sw_reloaded_v8','1');
+      if(sessionStorage.getItem('sfn_sw_reloaded_v9')==='1')return;
+      sessionStorage.setItem('sfn_sw_reloaded_v9','1');
     }catch{}
     location.reload();
   });
