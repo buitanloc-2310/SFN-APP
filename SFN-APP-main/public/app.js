@@ -118,7 +118,7 @@ function applySiteConfig(){
   const fcit=document.getElementById("footerCitationNotice");if(fcit&&c.footer_citation_notice)fcit.textContent=c.footer_citation_notice;
   const setLink=(id,textId,url,labelId,label)=>{const a=document.getElementById(id),t=document.getElementById(textId),l=labelId&&document.getElementById(labelId);if(a&&url)a.href=url;if(t&&url)t.textContent=url.replace(/^https?:\/\//,"").replace(/\/$/,"");if(l&&label)l.textContent=label};
   setLink("portalMainLink","portalMainText",c.portal_main_url,"portalMainLabel",c.portal_main_label);
-  setLink("portalTnvLink","portalTnvText",c.portal_tnv_url);setLink("portalSfecLink","portalSfecText",c.portal_sfec_url);setLink("portalSlcLink","portalSlcText",c.portal_slc_url);setLink("portalMemberLink","portalMemberText",c.portal_member_url);
+  setLink("portalCttLink","portalCttText",c.portal_ctt_url);setLink("portalMailLink","portalMailText",c.portal_mail_url);setLink("portalMemberLink","portalMemberText",c.portal_member_url);setLink("portalSfecLink","portalSfecText",c.portal_sfec_url);setLink("portalExamLink","portalExamText",c.portal_exam_url);
   const pe=document.getElementById("footerPortalEmailText"),pel=document.getElementById("footerPortalEmailLink");if(pe&&c.footer_portal_email)pe.textContent=c.footer_portal_email;if(pel&&c.footer_portal_email)pel.href="mailto:"+c.footer_portal_email;
   const ph=document.getElementById("footerHotlineText"),phl=document.getElementById("footerHotlineLink");if(ph&&c.hotline)ph.textContent=c.hotline;if(phl&&c.hotline)phl.href="tel:"+c.hotline.replace(/[^+\d]/g,"");
 }
@@ -611,8 +611,8 @@ function renderLogin(){
       </aside>
       <div class="admin-login-form-panel">
         <span class="admin-login-pill"><span aria-hidden="true">▣</span> KHU VỰC QUẢN TRỊ</span>
-        <h1>Đăng nhập Hệ thống Thông tin Số Sky First</h1>
-        <p class="admin-login-intro">Đăng nhập bằng tài khoản được cấp quyền để tiếp tục đến khu vực quản trị.</p>
+        <h1>${E((state.config?.cms_system_pages?.["/admin/login"]?.title)||"Đăng nhập Hệ thống Thông tin Số Sky First")}</h1>
+        <p class="admin-login-intro">${E((state.config?.cms_system_pages?.["/admin/login"]?.summary)||"Đăng nhập bằng tài khoản được cấp quyền để tiếp tục đến khu vực quản trị.")}</p>
         <form id="loginForm" class="admin-login-form">
           <div class="field"><label for="loginEmail">Email tài khoản</label><div class="admin-login-input-wrap"><span aria-hidden="true">@</span><input id="loginEmail" name="email" type="email" placeholder="Nhập email tài khoản" autocomplete="username" required></div></div>
           <div class="field"><label for="loginPass">Mật khẩu</label><div class="admin-login-input-wrap"><span aria-hidden="true">⌑</span><input id="loginPass" name="password" type="password" placeholder="Nhập mật khẩu" autocomplete="current-password" required><button class="admin-login-password-toggle" id="loginPassToggle" type="button" aria-label="Hiện mật khẩu" aria-pressed="false">Hiện</button></div></div>
@@ -956,10 +956,10 @@ const adminMenu=[
   ["dashboard","Tổng quan hệ thống","dashboard.view"],["home-stats","5 Chỉ số trang chủ","settings.manage"],["approvals","Trung tâm phê duyệt","approval.view"],["search","Tìm kiếm nội bộ","search.use"]
  ]},
  {group:"QUẢN TRỊ NỘI DUNG & ĐA WEBSITE",items:[
-  ["page-builder","Trình dựng trang & CMS","cms.view"],["websites","Quản trị đa Website","website.view"],["news","Tin tức & Thông báo","news.manage"],["site","Nhận diện & Trang chủ","settings.manage"],["header","Thanh điều hướng","settings.manage"],["footer","Chân trang & Liên kết","settings.manage"],["media","Thư viện hình ảnh","file.manage"]
+  ["page-builder","Trình dựng trang & CMS","cms.view"],["websites","Quản trị đa Website (7 cổng)","website.view"],["news","Tin tức & Thông báo","news.manage"],["site","Nhận diện & Design System","settings.manage"],["header","Thanh điều hướng & Menu","settings.manage"],["footer","Chân trang & Hệ sinh thái","settings.manage"],["media","Thư viện tài nguyên & Kiểm toán","file.manage"]
  ]},
  {group:"CHƯƠNG TRÌNH, SỰ KIỆN & TÀI TRỢ",items:[
-  ["classes","Chương trình & Lớp học","class.manage"],["events","Sự kiện & Hoạt động","event.manage"],["sponsorship","Minh bạch Tài trợ","sponsorship.view"],["units","Đơn vị & Đối tác","unit.view"],["people","Hồ sơ nhân sự","people.view"],["tasks","Nhiệm vụ & Bàn giao","task.manage"]
+  ["classes","Chương trình & Lớp học","class.manage"],["events","Sự kiện & Hoạt động","event.manage"],["sponsorship","Minh bạch Tài trợ & VietQR","sponsorship.view"],["units","Đơn vị & Đối tác","unit.view"],["people","Hồ sơ nhân sự","people.view"],["tasks","Nhiệm vụ & Bàn giao","task.manage"]
  ]},
  {group:"BIỂU MẪU & HỒ SƠ",items:[
   ["forms","Trình dựng Biểu mẫu","form.view"],["submissions","Tiếp nhận & Xử lý hồ sơ","submission.view"],["recruitment","Tuyển dụng & Đánh giá","submission.view"],["teaching","Phạm vi TNV Dạy học","people.view"],["terms","Điều khoản & Cam kết","form.view"]
@@ -968,7 +968,7 @@ const adminMenu=[
   ["certificates","Chứng nhận (GCN/GXN/BK)","certificate.view"],["documents","Thư viện PDF & Tài liệu","document.view"],["files","Kho tệp & Minh chứng","file.manage"]
  ]},
  {group:"AN TOÀN, EMAIL & HỆ THỐNG",items:[
-  ["email","Trung tâm Email tự động","email.view"],["safety","Báo cáo An toàn số","safety.view"],["tickets","Hỗ trợ & Ticket","ticket.manage"],["users","Tài khoản & Phân quyền","user.view"],["privacy","Yêu cầu Quyền riêng tư","privacy.manage"],["audit","Nhật ký kiểm toán","audit.view"],["backup","Sao lưu & Phục hồi","backup.create"],["maintenance","Bảo trì & Trang lỗi","settings.manage"],["modules","Quản lý Phân hệ","module.manage"],["settings","Cài đặt hệ thống","settings.manage"]
+  ["email","Trung tâm Email tự động","email.view"],["safety","Báo cáo An toàn số","safety.view"],["tickets","Hỗ trợ & Ticket","ticket.manage"],["users","Tài khoản & Phân quyền","user.view"],["privacy","Yêu cầu Quyền riêng tư","privacy.manage"],["audit","Nhật ký kiểm toán","audit.view"],["backup","Sao lưu & Phục hồi","backup.create"],["maintenance","Chế độ vận hành, Sự cố & QA","settings.manage"],["modules","Quản lý Phân hệ","module.manage"],["settings","Cài đặt hệ thống","settings.manage"]
  ]}
 ];
 
@@ -986,11 +986,19 @@ function adminCan(permission){
   if(!Array.isArray(permissions))return false;
   return permissions.includes("*")||permissions.includes(permission);
 }
+function getCollapsedAdminGroups(){
+  try{return JSON.parse(sessionStorage.getItem("sfn_admin_collapsed_groups")||"[]");}catch{return [];}
+}
+function setCollapsedAdminGroups(list){
+  try{sessionStorage.setItem("sfn_admin_collapsed_groups",JSON.stringify(list));}catch{}
+}
 function adminMenuMarkup(section){
+  const collapsedSet=new Set(getCollapsedAdminGroups());
   return adminMenu.map((group,index)=>{
     const items=group.items.filter(item=>adminCan(item[2]));
     if(!items.length)return "";
-    return `<section class="admin-nav-group" data-admin-group="${index}"><button type="button" class="admin-nav-group-title" data-admin-group-toggle="${index}" aria-expanded="true"><span>${E(group.group)}</span><b aria-hidden="true">⌄</b></button><div class="admin-nav-items">${items.map(item=>`<button type="button" class="admin-nav-item ${section===item[0]?"active":""}" data-admin-route="${E(item[0])}" data-admin-label="${E(item[1].toLocaleLowerCase("vi"))}" ${section===item[0]?'aria-current="page"':""}><span class="admin-nav-dot" aria-hidden="true"></span><span>${E(item[1])}</span>${section===item[0]?'<i aria-hidden="true">●</i>':""}</button>`).join("")}</div></section>`;
+    const isCollapsed=collapsedSet.has(index);
+    return `<section class="admin-nav-group ${isCollapsed?"is-collapsed":""}" data-admin-group="${index}"><button type="button" class="admin-nav-group-title" data-admin-group-toggle="${index}" aria-expanded="${!isCollapsed}"><span>${E(group.group)}</span><b aria-hidden="true">⌄</b></button><div class="admin-nav-items">${items.map(item=>`<button type="button" class="admin-nav-item ${section===item[0]?"active":""}" data-admin-route="${E(item[0])}" data-admin-label="${E(item[1].toLocaleLowerCase("vi"))}" ${section===item[0]?'aria-current="page"':""}><span class="admin-nav-dot" aria-hidden="true"></span><span>${E(item[1])}</span>${section===item[0]?'<i aria-hidden="true">●</i>':""}</button>`).join("")}</div></section>`;
   }).join("");
 }
 
@@ -999,44 +1007,97 @@ async function renderAdmin(){
   if(!state.user||!isAdmin(state.user)){location.hash="login";return;}
   const section=location.hash.split("/")[1]||"dashboard";
   const requiredPermission=adminRoutePermissions[section];
-  app.innerHTML=`<div class="admin-layout" id="adminLayout">
-    <aside class="admin-sidebar" id="adminSidebar" aria-label="Danh mục quản trị">
-      <div class="admin-brand"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><div><b>Sky First</b><small>TRUNG TÂM QUẢN TRỊ</small></div></div>
-      <label class="admin-menu-search"><span aria-hidden="true">⌕</span><input type="search" id="adminMenuSearch" placeholder="Tìm chức năng…" aria-label="Tìm chức năng quản trị"><kbd>/</kbd></label>
-      <nav class="admin-nav" aria-label="Menu quản trị">${adminMenuMarkup(section)}</nav>
-      <div class="admin-sidebar-foot"><span class="admin-online-dot"></span><span>Hệ thống quản trị</span><a href="/" target="_blank" rel="noopener">Xem website ↗</a></div>
-    </aside>
-    <section class="admin-workspace">
-      <header class="admin-topbar"><div class="admin-topbar-left"><button type="button" id="adminMenuToggle" class="admin-mobile-menu" aria-controls="adminSidebar" aria-expanded="false">☰ <span>Danh mục</span></button><div><span class="admin-topbar-kicker">Sky First</span><b id="adminCurrentLabel">${E(adminMenu.flatMap(g=>g.items).find(x=>x[0]===section)?.[1]||"Quản trị hệ thống")}</b></div></div><div class="admin-topbar-actions"><span class="admin-user-chip"><i>${E((state.user.full_name||state.user.email||"A").slice(0,1).toUpperCase())}</i><span><b>${E(state.user.full_name||"Quản trị viên")}</b><small>${E(state.user.email||"")}</small></span></span><a href="/" class="admin-view-site" target="_blank" rel="noopener">Xem website ↗</a><button type="button" id="adminLogout" class="admin-logout">Đăng xuất</button></div></header>
-      <section id="adminMain" class="admin-main"><div class="loading">Đang tải dữ liệu quản trị…</div></section>
-    </section>
-  </div>`;
+  const currentTitle=adminMenu.flatMap(g=>g.items).find(x=>x[0]===section)?.[1]||"Quản trị hệ thống";
 
-  const layout=document.getElementById("adminLayout");
-  document.querySelectorAll("[data-admin-route]").forEach(btn=>btn.addEventListener("click",()=>{
-    if(btn.dataset.adminRoute===section){layout?.classList.remove("nav-open");return;}
-    try{sessionStorage.setItem("ctt_admin_scroll_y",String(window.scrollY||0));}catch{}
-    layout?.classList.remove("nav-open");location.hash=`admin/${btn.dataset.adminRoute}`;
-  }));
-  document.querySelectorAll("[data-admin-group-toggle]").forEach(btn=>btn.addEventListener("click",()=>{
-    const group=btn.closest(".admin-nav-group"),collapsed=group?.classList.toggle("is-collapsed");btn.setAttribute("aria-expanded",String(!collapsed));
-  }));
-  document.getElementById("adminMenuSearch")?.addEventListener("keydown",e=>{
-    if(e.key==="Escape"){e.currentTarget.value="";e.currentTarget.dispatchEvent(new Event("input",{bubbles:true}));e.currentTarget.blur();}
-  });
-  document.getElementById("adminMenuSearch")?.addEventListener("input",e=>{
-    const q=e.currentTarget.value.trim().toLocaleLowerCase("vi");
-    document.querySelectorAll(".admin-nav-group").forEach(group=>{
-      let visible=0;
-      group.querySelectorAll("[data-admin-route]").forEach(item=>{const yes=!q||(item.textContent||"").toLocaleLowerCase("vi").includes(q)||(group.querySelector(".admin-nav-group-title")?.textContent||"").toLocaleLowerCase("vi").includes(q);item.hidden=!yes;if(yes)visible++;});
-      group.hidden=visible===0;
-      if(q&&visible){group.classList.remove("is-collapsed");group.querySelector(".admin-nav-group-title")?.setAttribute("aria-expanded","true");}
+  let layout=document.getElementById("adminLayout");
+  const existingNav=layout?.querySelector(".admin-nav");
+  if(existingNav){
+    try{sessionStorage.setItem("sfn_admin_nav_scroll_top",String(existingNav.scrollTop||0));}catch{}
+  }
+
+  if(!layout){
+    const curLang=localStorage.getItem("sfn_lang")||"vi";
+    app.innerHTML=`<div class="admin-layout" id="adminLayout">
+      <aside class="admin-sidebar" id="adminSidebar" aria-label="Danh mục quản trị">
+        <div class="admin-brand"><img src="/assets/sfn-logo-tight.png" alt="Logo Sky First"><div><b>Sky First</b><small>TRUNG TÂM QUẢN TRỊ</small></div></div>
+        <label class="admin-menu-search"><span aria-hidden="true">⌕</span><input type="search" id="adminMenuSearch" placeholder="Tìm chức năng…" aria-label="Tìm chức năng quản trị"><kbd>/</kbd></label>
+        <nav class="admin-nav" id="adminSidebarNav" aria-label="Menu quản trị">${adminMenuMarkup(section)}</nav>
+        <div class="admin-sidebar-foot"><span class="admin-online-dot"></span><span>Hệ thống quản trị</span><a href="/" target="_blank" rel="noopener">Xem website ↗</a></div>
+      </aside>
+      <section class="admin-workspace">
+        <header class="admin-topbar"><div class="admin-topbar-left"><button type="button" id="adminMenuToggle" class="admin-mobile-menu" aria-controls="adminSidebar" aria-expanded="false">☰ <span>Danh mục</span></button><div><span class="admin-topbar-kicker">Sky First · V10 Admin-Driven</span><b id="adminCurrentLabel">${E(currentTitle)}</b></div></div><div class="admin-topbar-actions"><button type="button" class="secondary" id="adminLangSwitch" title="Chuyển ngôn ngữ hiển thị cổng công khai">🌐 ${curLang.toUpperCase()}</button><span class="admin-user-chip"><i>${E((state.user.full_name||state.user.email||"A").slice(0,1).toUpperCase())}</i><span><b>${E(state.user.full_name||"Quản trị viên")}</b><small>${E(state.user.email||"")}</small></span></span><a href="/" class="admin-view-site" target="_blank" rel="noopener">Xem website ↗</a><button type="button" id="adminLogout" class="admin-logout">Đăng xuất</button></div></header>
+        <section id="adminMain" class="admin-main"><div class="loading">Đang tải dữ liệu quản trị…</div></section>
+      </section>
+    </div>`;
+    layout=document.getElementById("adminLayout");
+    const navEl=document.getElementById("adminSidebarNav");
+    navEl?.addEventListener("scroll",()=>{
+      try{sessionStorage.setItem("sfn_admin_nav_scroll_top",String(navEl.scrollTop||0));}catch{}
+    },{passive:true});
+    document.querySelectorAll("[data-admin-route]").forEach(btn=>btn.addEventListener("click",()=>{
+      const targetRoute=btn.dataset.adminRoute;
+      if(navEl){try{sessionStorage.setItem("sfn_admin_nav_scroll_top",String(navEl.scrollTop||0));}catch{}}
+      layout?.classList.remove("nav-open");
+      if(location.hash===`#admin/${targetRoute}`)return;
+      location.hash=`admin/${targetRoute}`;
+    }));
+    document.querySelectorAll("[data-admin-group-toggle]").forEach(btn=>btn.addEventListener("click",()=>{
+      const group=btn.closest(".admin-nav-group"),collapsed=group?.classList.toggle("is-collapsed");
+      btn.setAttribute("aria-expanded",String(!collapsed));
+      const idx=Number(btn.dataset.adminGroupToggle);
+      const current=new Set(getCollapsedAdminGroups());
+      if(collapsed)current.add(idx);else current.delete(idx);
+      setCollapsedAdminGroups([...current]);
+    }));
+    const searchInput=document.getElementById("adminMenuSearch");
+    searchInput?.addEventListener("keydown",e=>{
+      if(e.key==="Escape"){e.currentTarget.value="";e.currentTarget.dispatchEvent(new Event("input",{bubbles:true}));e.currentTarget.blur();}
     });
-  });
-  document.getElementById("adminMenuToggle")?.addEventListener("click",e=>{
-    const open=layout?.classList.toggle("nav-open");e.currentTarget.setAttribute("aria-expanded",String(!!open));
-  });
-  document.getElementById("adminLogout")?.addEventListener("click",logout);
+    searchInput?.addEventListener("input",e=>{
+      const q=e.currentTarget.value.trim().toLocaleLowerCase("vi");
+      try{sessionStorage.setItem("sfn_admin_menu_search",q);}catch{}
+      document.querySelectorAll(".admin-nav-group").forEach(group=>{
+        let visible=0;
+        group.querySelectorAll("[data-admin-route]").forEach(item=>{const yes=!q||(item.textContent||"").toLocaleLowerCase("vi").includes(q)||(group.querySelector(".admin-nav-group-title")?.textContent||"").toLocaleLowerCase("vi").includes(q);item.hidden=!yes;if(yes)visible++;});
+        group.hidden=visible===0;
+        if(q&&visible){group.classList.remove("is-collapsed");group.querySelector(".admin-nav-group-title")?.setAttribute("aria-expanded","true");}
+      });
+    });
+    try{
+      const savedQ=sessionStorage.getItem("sfn_admin_menu_search")||"";
+      if(savedQ&&searchInput){searchInput.value=savedQ;searchInput.dispatchEvent(new Event("input"));}
+      const savedNavTop=Number(sessionStorage.getItem("sfn_admin_nav_scroll_top")||0);
+      if(navEl&&savedNavTop>0)navEl.scrollTop=savedNavTop;
+    }catch{}
+    document.getElementById("adminMenuToggle")?.addEventListener("click",e=>{
+      const open=layout?.classList.toggle("nav-open");e.currentTarget.setAttribute("aria-expanded",String(!!open));
+    });
+    document.getElementById("adminLangSwitch")?.addEventListener("click",e=>{
+      const next=(localStorage.getItem("sfn_lang")||"vi")==="vi"?"en":"vi";
+      localStorage.setItem("sfn_lang",next);
+      window.SkyFirstDigital?.setLang?.(next);
+      e.currentTarget.textContent=`🌐 ${next.toUpperCase()}`;
+      toast(`Đã chuyển ngôn ngữ hiển thị cổng công khai sang ${next.toUpperCase()}.`);
+    });
+    document.getElementById("adminLogout")?.addEventListener("click",logout);
+  }else{
+    const labelEl=document.getElementById("adminCurrentLabel");
+    if(labelEl)labelEl.textContent=currentTitle;
+    layout.querySelectorAll("[data-admin-route]").forEach(btn=>{
+      const active=btn.dataset.adminRoute===section;
+      btn.classList.toggle("active",active);
+      if(active)btn.setAttribute("aria-current","page");else btn.removeAttribute("aria-current");
+      const dot=btn.querySelector("i");
+      if(active&&!dot)btn.insertAdjacentHTML("beforeend",'<i aria-hidden="true">●</i>');
+      else if(!active&&dot)dot.remove();
+    });
+    const navEl=document.getElementById("adminSidebarNav");
+    try{
+      const savedNavTop=Number(sessionStorage.getItem("sfn_admin_nav_scroll_top")||0);
+      if(navEl&&savedNavTop>=0)navEl.scrollTop=savedNavTop;
+    }catch{}
+  }
+
   const main=document.getElementById("adminMain");
   if(requiredPermission&&!adminCan(requiredPermission)){
     main.innerHTML=`<section class="admin-access-denied"><span>403 · KHÔNG ĐỦ QUYỀN</span><h1>Chức năng giới hạn quyền truy cập</h1><p>Tài khoản của bà chưa được cấp quyền cần thiết cho khu vực này. Dữ liệu vẫn được bảo vệ bởi kiểm tra quyền ở máy chủ.</p><a class="primary" href="#admin/dashboard">Quay về Tổng quan</a></section>`;return;
@@ -1082,8 +1143,6 @@ async function renderAdmin(){
     console.error("ADMIN_ROUTE_ERROR",section,err);
     main.innerHTML=`<div class="notice bad admin-error"><b>Không thể tải mục quản trị.</b><p>${E(errorText(err))}</p><button type="button" class="secondary" id="adminRetry">Thử tải lại</button><a href="#admin/dashboard" class="admin-error-link">Về Tổng quan</a></div>`;
     document.getElementById("adminRetry")?.addEventListener("click",()=>renderAdmin());
-  }finally{
-    try{const saved=sessionStorage.getItem("ctt_admin_scroll_y");if(saved!==null){sessionStorage.removeItem("ctt_admin_scroll_y");requestAnimationFrame(()=>window.scrollTo({top:Number(saved)||0,behavior:"auto"}));}}catch{}
   }
 }
 
@@ -2021,8 +2080,7 @@ window.issueCert=idc=>api(
 
 window.showCertQR=code=>{
   const text=`${location.origin}/gcn/${encodeURIComponent(code)}`;
-
-  modal(`<h2>QR xác thực — ${E(code)}</h2><p>QR chỉ chứa liên kết tra cứu công khai, không chứa dữ liệu hồ sơ riêng tư.</p><img alt="QR" style="max-width:280px;width:100%" src="https://quickchart.io/qr?size=300&text=${encodeURIComponent(text)}"><p><a href="/gcn/${encodeURIComponent(code)}" onclick="closeModal()">Mở Verification Record</a></p>`);
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">MÃ XÁC THỰC CHỨNG NHẬN</span><h2>QR xác thực — ${E(code)}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div><p class="muted">Liên kết xác thực công khai chỉ chứa mã định danh công khai, tuyệt đối không gửi dữ liệu cá nhân ra dịch vụ bên ngoài.</p><div class="card" style="text-align:center;padding:20px;"><code>${E(text)}</code></div><div class="actions" style="margin-top:12px;"><a class="primary" href="/gcn/${encodeURIComponent(code)}" onclick="closeModal()">Mở trang xác thực công khai ↗</a><button type="button" class="secondary" onclick="navigator.clipboard?.writeText('${E(text)}').then(()=>toast('Đã sao chép liên kết xác thực.'))">Sao chép liên kết</button></div>`);
 };
 
 window.revokeCert=async idc=>{
@@ -2210,32 +2268,32 @@ window.saveEmailTemplate=key=>api(
   adminEmail(document.getElementById("adminMain"));
 }).catch(e=>toast(errorText(e),"bad"));
 
-// ================= QUẢN LÝ MINH BẠCH TÀI TRỢ (#admin/sponsorship) =================
+// ================= QUẢN LÝ MINH BẠCH TÀI TRỢ & VIETQR (#admin/sponsorship) =================
 async function adminSponsorship(main){
   const d=await api("/api/admin/sponsorship");
   state.admin.sponsorship=d;
-  const camps=d.campaigns||[],txs=d.transactions||[],reps=d.reports||[];
+  const camps=d.campaigns||[],txs=d.transactions||[],reps=d.reports||[],intents=d.payment_intents||[],trail=d.audit_trail||[];
   const fmtVnd=n=>new Intl.NumberFormat("vi-VN").format(Math.round(Number(n||0)))+" đồng";
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">MINH BẠCH TÀI CHÍNH & TÀI TRỢ</span><h1>Quản lý Chương trình Tài trợ</h1><p class="muted">Tách biệt rõ Mục tiêu, Số tiền cam kết, Số tiền thực nhận, Số tiền đã chi và Số dư còn lại. Số liệu công khai được tổng hợp tự động từ các giao dịch đã xác minh.</p></div><div class="actions"><button type="button" class="secondary" onclick="createSponsorshipReport()">+ Thêm báo cáo/chứng từ</button><button type="button" class="secondary" onclick="createSponsorshipTx()">+ Ghi nhận giao dịch</button><button type="button" class="primary" onclick="editSponsorshipCampaign(null)">+ Tạo chương trình tài trợ</button></div></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">MINH BẠCH TÀI CHÍNH, VIETQR & ĐỐI SOÁT</span><h1>Quản lý Chương trình Tài trợ & Sổ cái Giao dịch</h1><p class="muted">Tách biệt rõ Mục tiêu, Cam kết, Thực nhận, Đã chi và Số dư còn lại. Tích hợp sinh mã VietQR động theo chiến dịch, đối soát Webhook tự động và xuất báo cáo CSV.</p></div><div class="actions"><button type="button" class="secondary" onclick="location.href='/api/admin/export/sponsorship.csv'">⬇ Xuất CSV đối soát</button><button type="button" class="secondary" onclick="createSponsorshipReport()">+ Thêm báo cáo/chứng từ</button><button type="button" class="secondary" onclick="createSponsorshipTx()">+ Ghi nhận giao dịch</button><button type="button" class="primary" onclick="editSponsorshipCampaign(null)">+ Tạo chương trình tài trợ</button></div></div>
   <section class="card admin-card-premium">
-    <div class="admin-card-heading"><div><span class="eyebrow">01 / CHƯƠNG TRÌNH TÀI TRỢ</span><h2>Danh sách chương trình (${camps.length})</h2></div></div>
-    <div class="table-scroll"><table><thead><tr><th>Mã & Tên chương trình</th><th>Mục tiêu</th><th>Đã cam kết</th><th>Thực nhận</th><th>Đã chi</th><th>Trạng thái & Công khai</th><th>Thao tác</th></tr></thead><tbody>
+    <div class="admin-card-heading"><div><span class="eyebrow">01 / CHƯƠNG TRÌNH TÀI TRỢ & TÀI KHOẢN VIETQR</span><h2>Danh sách chương trình (${camps.length})</h2></div></div>
+    <div class="table-scroll"><table><thead><tr><th>Mã & Tên chương trình</th><th>Tài khoản nhận (VietQR)</th><th>Mục tiêu</th><th>Thực nhận</th><th>Đã chi</th><th>Trạng thái & Công khai</th><th>Thao tác</th></tr></thead><tbody>
       ${camps.map(c=>`<tr>
         <td><b>${E(c.code)}</b> — ${E(c.title)}<br><small class="muted">${E(c.summary||"")}</small></td>
+        <td><small><b>${E(c.bank_name||c.bank_code||"Chưa cấu hình")}</b><br>STK: <code>${E(c.bank_account_no||"—")}</code><br>${E(c.bank_account_name||"")}</small></td>
         <td>${E(fmtVnd(c.target_amount))}</td>
-        <td>${E(fmtVnd(c.pledged_amount))}</td>
-        <td><b style="color:var(--good)">${E(fmtVnd(c.received_amount))}</b></td>
+        <td><b style="color:var(--good)">${E(fmtVnd(c.received_amount))}</b><br><small class="muted">Cam kết: ${E(fmtVnd(c.pledged_amount))}</small></td>
         <td>${E(fmtVnd(c.disbursed_amount))}</td>
         <td><span class="status ${c.visibility==="public"?"":"status-warn"}">${c.visibility==="public"?"Công khai":"Bản nháp nội bộ"}</span> · <small>${E(c.status)}</small></td>
-        <td><button type="button" class="secondary" onclick="editSponsorshipCampaign('${E(c.id)}')">Chỉnh sửa / Duyệt</button></td>
+        <td><button type="button" class="secondary" onclick="editSponsorshipCampaign('${E(c.id)}')">Chỉnh sửa / VietQR</button></td>
       </tr>`).join("")||`<tr><td colspan="7" class="muted">Chưa có chương trình tài trợ nào.</td></tr>`}
     </tbody></table></div>
   </section>
   <section class="card admin-card-premium" style="margin-top:18px;">
     <div class="admin-card-heading"><div><span class="eyebrow">02 / GIAO DỊCH ĐỐI SOÁT</span><h2>Nhật ký cam kết, thực nhận & giải ngân (${txs.length})</h2></div></div>
-    <div class="table-scroll"><table><thead><tr><th>Mã GD</th><th>Chương trình</th><th>Loại</th><th>Số tiền</th><th>Đơn vị hiển thị công khai</th><th>Trạng thái xác minh</th><th>Thao tác</th></tr></thead><tbody>
+    <div class="table-scroll"><table><thead><tr><th>Mã GD & Tham chiếu</th><th>Chương trình</th><th>Loại</th><th>Số tiền</th><th>Đơn vị hiển thị công khai</th><th>Trạng thái xác minh</th><th>Thao tác</th></tr></thead><tbody>
       ${txs.map(tx=>`<tr>
-        <td><b>${E(tx.tx_code)}</b></td>
+        <td><b>${E(tx.tx_code)}</b>${tx.bank_ref?`<br><small class="muted">Ref: <code>${E(tx.bank_ref)}</code></small>`:""}</td>
         <td>${E(tx.campaign_code)}</td>
         <td><span class="pill">${E(tx.tx_type)}</span></td>
         <td><b>${E(fmtVnd(tx.amount))}</b></td>
@@ -2244,18 +2302,34 @@ async function adminSponsorship(main){
         <td><button type="button" class="secondary" onclick="verifySponsorshipTx('${E(tx.id)}','${tx.verification_status==='verified'?'pending':'verified'}',${tx.is_public?0:1})">${tx.verification_status==="verified"?"Đổi trạng thái":"Xác minh & Công bố"}</button></td>
       </tr>`).join("")||`<tr><td colspan="7" class="muted">Chưa có giao dịch tài trợ nào.</td></tr>`}
     </tbody></table></div>
-  </section>`;
+  </section>
+  <div class="admin-grid2" style="margin-top:18px;">
+    <section class="card admin-card-premium">
+      <div class="admin-card-heading"><div><span class="eyebrow">03 / LỆNH CHUYỂN KHOẢN QR (PAYMENT INTENTS)</span><h2>Mã tham chiếu QR đã tạo (${intents.length})</h2></div></div>
+      <div class="table-scroll"><table><thead><tr><th>Mã tham chiếu</th><th>Số tiền</th><th>Nội dung CK</th><th>Trạng thái</th></tr></thead><tbody>
+        ${intents.slice(0,20).map(it=>`<tr><td><b>${E(it.intent_code)}</b><br><small class="muted">${fmt(it.created_at)}</small></td><td>${E(fmtVnd(it.amount))}</td><td><code>${E(it.transfer_memo||"")}</code></td><td><span class="status ${it.status==="paid"?"":"status-warn"}">${E(it.status)}</span></td></tr>`).join("")||`<tr><td colspan="4" class="muted">Chưa có lệnh QR nào.</td></tr>`}
+      </tbody></table></div>
+    </section>
+    <section class="card admin-card-premium">
+      <div class="admin-card-heading"><div><span class="eyebrow">04 / NHẬT KÝ KIỂM TOÁN TÀI TRỢ BẤT BIẾN</span><h2>Lịch sử thay đổi tài chính (${trail.length})</h2></div></div>
+      <div class="table-scroll"><table><thead><tr><th>Thời điểm</th><th>Hành động</th><th>Người thực hiện</th><th>Ghi chú</th></tr></thead><tbody>
+        ${trail.slice(0,20).map(a=>`<tr><td>${fmt(a.created_at)}</td><td><b>${E(a.action)}</b><br><small><code>${E(a.entity_type)}:${E(a.entity_id)}</code></small></td><td>${E(a.actor_email||"Hệ thống")}</td><td><small>${E(a.reason||"")}</small></td></tr>`).join("")||`<tr><td colspan="4" class="muted">Chưa có bản ghi kiểm toán tài chính.</td></tr>`}
+      </tbody></table></div>
+    </section>
+  </div>`;
 }
 
 window.editSponsorshipCampaign=id=>{
   const c=id?(state.admin.sponsorship?.campaigns||[]).find(x=>x.id===id):null;
-  const x=c||{code:"SFN-TT-2026-01",title:"",summary:"",purpose:"",target_amount:0,status:"active",visibility:"draft"};
-  modal(`<div class="admin-modal-head"><div><span class="eyebrow">CHƯƠNG TRÌNH TÀI TRỢ</span><h2>${c?"Cập nhật chương trình tài trợ":"Tạo chương trình tài trợ mới"}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+  const x=c||{code:"SFN-TT-2026-01",title:"",summary:"",purpose:"",target_amount:0,bank_code:"MB",bank_name:"MBBank",bank_account_no:"",bank_account_name:"SKY FIRST NETWORK",qr_template:"compact2",status:"active",visibility:"draft"};
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">CHƯƠNG TRÌNH TÀI TRỢ & VIETQR</span><h2>${c?"Cập nhật chương trình tài trợ":"Tạo chương trình tài trợ mới"}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
   <form id="spCampForm">
     <div class="row2"><div class="field"><label>Mã chương trình *</label><input name="code" value="${E(x.code)}" ${c?"readonly":""} required></div><div class="field"><label>Mục tiêu tài chính (VND) *</label><input name="target_amount" type="number" min="0" step="1000" value="${E(x.target_amount||0)}" required></div></div>
     <div class="field"><label>Tên chương trình tài trợ *</label><input name="title" value="${E(x.title)}" required></div>
     <div class="field"><label>Tóm tắt ngắn</label><input name="summary" value="${E(x.summary||"")}"></div>
-    <div class="field"><label>Mục đích sử dụng nguồn lực</label><textarea name="purpose" rows="3">${E(x.purpose||"")}</textarea></div>
+    <div class="field"><label>Mục đích sử dụng nguồn lực</label><textarea name="purpose" rows="2">${E(x.purpose||"")}</textarea></div>
+    <div class="row2"><div class="field"><label>Mã ngân hàng (NAPAS / VietQR)</label><input name="bank_code" value="${E(x.bank_code||"MB")}" placeholder="MB, VCB, BIDV, ICB, TCB..."></div><div class="field"><label>Tên ngân hàng hiển thị</label><input name="bank_name" value="${E(x.bank_name||"MBBank")}"></div></div>
+    <div class="row2"><div class="field"><label>Số tài khoản nhận tài trợ</label><input name="bank_account_no" value="${E(x.bank_account_no||"")}" placeholder="Nhập số tài khoản thụ hưởng"></div><div class="field"><label>Tên chủ tài khoản</label><input name="bank_account_name" value="${E(x.bank_account_name||"SKY FIRST NETWORK")}"></div></div>
     <div class="row2"><div class="field"><label>Trạng thái chương trình</label><select name="status"><option value="active" ${x.status==="active"?"selected":""}>Đang triển khai</option><option value="completed" ${x.status==="completed"?"selected":""}>Đã hoàn thành</option><option value="paused" ${x.status==="paused"?"selected":""}>Tạm dừng</option></select></div><div class="field"><label>Phạm vi hiển thị (cần quyền duyệt)</label><select name="visibility"><option value="draft" ${x.visibility!=="public"?"selected":""}>Bản nháp nội bộ</option><option value="public" ${x.visibility==="public"?"selected":""}>Công khai trên /tai-tro</option></select></div></div>
     <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button type="submit" class="primary">Lưu chương trình</button></div>
   </form>`);
@@ -2276,14 +2350,15 @@ window.createSponsorshipTx=()=>{
   <form id="spTxForm">
     <div class="row2"><div class="field"><label>Chương trình *</label><select name="campaign_id" required>${camps.map(c=>`<option value="${E(c.id)}">${E(c.code)} — ${E(c.title)}</option>`).join("")}</select></div><div class="field"><label>Loại chỉ tiêu *</label><select name="tx_type"><option value="pledge">Khoản cam kết (Pledge)</option><option value="receipt">Khoản thực nhận (Receipt)</option><option value="disbursement">Khoản giải ngân / đã chi (Disbursement)</option><option value="adjustment">Điều chỉnh tăng/giảm</option><option value="refund">Hoàn trả</option></select></div></div>
     <div class="row2"><div class="field"><label>Số tiền (VND, cho phép âm khi điều chỉnh giảm) *</label><input name="amount" type="number" step="1000" required></div><div class="field"><label>Tên hiển thị công khai (ẩn thông tin nhạy cảm) *</label><input name="public_party_label" required placeholder="VD: Nhà tài trợ đồng hành / Chi học liệu đợt 1"></div></div>
-    <div class="field"><label>Nội dung / Mục đích chi tiết</label><textarea name="purpose" rows="3"></textarea></div>
+    <div class="row2"><div class="field"><label>Mã giao dịch ngân hàng (Bank Ref)</label><input name="bank_ref" placeholder="VD: FT26296..."></div><div class="field"><label>Phương thức thanh toán</label><select name="payment_method"><option value="bank_transfer">Chuyển khoản ngân hàng (VietQR)</option><option value="direct">Tiếp nhận trực tiếp</option><option value="contract">Hợp đồng tài trợ</option></select></div></div>
+    <div class="field"><label>Nội dung / Mục đích chi tiết</label><textarea name="purpose" rows="2"></textarea></div>
     <div class="check"><input type="checkbox" id="spTxVerify" checked><label for="spTxVerify">Xác minh đối soát và cho phép hiển thị công khai</label></div>
     <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button type="submit" class="primary">Lưu giao dịch</button></div>
   </form>`);
   document.getElementById("spTxForm").onsubmit=async e=>{
     e.preventDefault();const f=new FormData(e.target),verified=document.getElementById("spTxVerify").checked;
     try{
-      await api("/api/admin/sponsorship/transactions",{method:"POST",body:{campaign_id:f.get("campaign_id"),tx_type:f.get("tx_type"),amount:Number(f.get("amount")),public_party_label:f.get("public_party_label"),purpose:f.get("purpose"),verification_status:verified?"verified":"pending",is_public:verified}});
+      await api("/api/admin/sponsorship/transactions",{method:"POST",body:{campaign_id:f.get("campaign_id"),tx_type:f.get("tx_type"),amount:Number(f.get("amount")),public_party_label:f.get("public_party_label"),bank_ref:f.get("bank_ref"),payment_method:f.get("payment_method"),purpose:f.get("purpose"),verification_status:verified?"verified":"pending",is_public:verified}});
       closeModal();toast("Đã ghi nhận giao dịch và tự động cập nhật tổng số liệu.");adminSponsorship(document.getElementById("adminMain"));
     }catch(err){toast(errorText(err),"bad")}
   };
@@ -2348,23 +2423,27 @@ async function adminDocumentsLibrary(main){
   ]);
   state.admin.documents=docsData.items||[];
   state.admin.files=filesData.items||[];
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">THƯ VIỆN PDF & TÀI LIỆU SỐ</span><h1>Quản lý Tài liệu & Phiên bản PDF</h1><p class="muted">Tải lên PDF, phân loại danh mục, xem trước trực tiếp, cập nhật phiên bản mới mà không làm mất lịch sử phiên bản cũ và kiểm soát quyền truy cập.</p></div><button type="button" class="primary" onclick="openDocumentEditor(null)">＋ Thêm tài liệu mới</button></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">THƯ VIỆN PDF & TÀI LIỆU SỐ</span><h1>Quản lý Tài liệu & Phiên bản PDF</h1><p class="muted">Tải lên PDF, phân loại danh mục, xem trực tiếp, cập nhật phiên bản mới mà không làm mất lịch sử phiên bản cũ và kiểm soát quyền tải về phía máy chủ.</p></div><button type="button" class="primary" onclick="openDocumentEditor(null)">＋ Thêm tài liệu mới</button></div>
   <section class="card admin-card-premium">
     <div class="toolbar"><label class="admin-searchbox"><span>⌕</span><input id="adminDocSearch" type="search" placeholder="Tìm tên tài liệu, mã văn bản, danh mục..."></label></div>
-    <div class="table-scroll"><table><thead><tr><th>Mã văn bản</th><th>Tên tài liệu & Danh mục</th><th>Phạm vi</th><th>Trạng thái</th><th>Tệp đính kèm</th><th>Thao tác</th></tr></thead><tbody id="adminDocRows"></tbody></table></div>
+    <div class="table-scroll"><table><thead><tr><th>Mã văn bản</th><th>Tên tài liệu & Danh mục</th><th>Phạm vi & Quyền tải</th><th>Trạng thái</th><th>Tệp đính kèm</th><th>Thao tác</th></tr></thead><tbody id="adminDocRows"></tbody></table></div>
   </section>`;
   const rows=document.getElementById("adminDocRows"),search=document.getElementById("adminDocSearch");
   const draw=()=>{
     const q=search.value.trim().toLocaleLowerCase("vi");
     const items=state.admin.documents.filter(d=>!q||[d.code,d.title,d.doc_type,d.metadata_json].join(" ").toLocaleLowerCase("vi").includes(q));
-    rows.innerHTML=items.map(d=>`<tr>
-      <td><b>${E(d.code)}</b></td>
-      <td><b>${E(d.title)}</b><br><small class="muted">Loại: ${E(d.doc_type)}</small></td>
-      <td><span class="pill">${d.visibility==="public"?"Công khai":"Nội bộ / Hạn chế"}</span></td>
-      <td><span class="status">${E(d.status)}</span></td>
-      <td>${d.file_id?`<a href="/api/files/${encodeURIComponent(d.file_id)}" target="_blank">Xem PDF (${E(d.file_id.slice(0,12))}…) ↗</a>`:"Chưa gắn tệp"}</td>
-      <td><div class="admin-row-actions"><button type="button" class="secondary" onclick="manageDocumentVersions('${E(d.id)}')">Phiên bản PDF</button><button type="button" class="secondary" onclick="manageDocumentLifecycle('${E(d.id)}')">Vòng đời / Hồ sơ</button><button type="button" class="secondary" onclick="openDocumentEditor('${E(d.id)}')">Sửa</button><button type="button" class="danger" onclick="confirmDeleteGeneric('documents','${E(d.id)}')">Xóa</button></div></td>
-    </tr>`).join("")||`<tr><td colspan="6" class="muted">Chưa có tài liệu nào.</td></tr>`;
+    rows.innerHTML=items.map(d=>{
+      let meta={};try{meta=JSON.parse(d.metadata_json||"{}")}catch{}
+      const allowDl=meta.allow_download!==false;
+      return `<tr>
+        <td><b>${E(d.code)}</b></td>
+        <td><b>${E(d.title)}</b><br><small class="muted">Loại: ${E(d.doc_type)}</small></td>
+        <td><span class="pill">${d.visibility==="public"?"Công khai":"Nội bộ / Hạn chế"}</span><br><small class="muted">${allowDl?"Cho phép tải PDF":"Chỉ xem trực tuyến"}</small></td>
+        <td><span class="status">${E(d.status)}</span></td>
+        <td>${d.file_id?`<a href="/api/files/${encodeURIComponent(d.file_id)}" target="_blank">Xem PDF (${E(d.file_id.slice(0,12))}…) ↗</a>`:"Chưa gắn tệp"}</td>
+        <td><div class="admin-row-actions"><button type="button" class="secondary" onclick="manageDocumentVersions('${E(d.id)}')">Phiên bản PDF</button><button type="button" class="secondary" onclick="manageDocumentLifecycle('${E(d.id)}')">Vòng đời / Hồ sơ</button><button type="button" class="secondary" onclick="openDocumentEditor('${E(d.id)}')">Sửa</button><button type="button" class="danger" onclick="confirmDeleteGeneric('documents','${E(d.id)}')">Xóa</button></div></td>
+      </tr>`;
+    }).join("")||`<tr><td colspan="6" class="muted">Chưa có tài liệu nào.</td></tr>`;
   };
   search.addEventListener("input",draw);draw();
 }
@@ -2373,6 +2452,7 @@ window.openDocumentEditor=id=>{
   const d=id?(state.admin.documents||[]).find(x=>x.id===id):null;
   let meta={}; try{meta=JSON.parse(d?.metadata_json||"{}")}catch{}
   const x=d||{code:`TL-${new Date().getFullYear()}-01`,doc_type:"Hướng dẫn",title:"",visibility:"public",status:"Có hiệu lực",file_id:""};
+  const allowDl=meta.allow_download!==false;
   modal(`<div class="admin-modal-head"><div><span class="eyebrow">THƯ VIỆN PDF & TÀI LIỆU</span><h2>${d?"Chỉnh sửa tài liệu":"Thêm tài liệu mới"}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
   <form id="docEditorForm">
     <div class="row2"><div class="field"><label>Mã tài liệu *</label><input name="code" value="${E(x.code)}" required></div><div class="field"><label>Danh mục / Loại văn bản *</label><input name="doc_type" value="${E(x.doc_type)}" required placeholder="Hướng dẫn, Quy chế, Báo cáo, Biểu mẫu PDF..."></div></div>
@@ -2380,6 +2460,7 @@ window.openDocumentEditor=id=>{
     <div class="field"><label>Mô tả ngắn</label><textarea name="description" rows="2">${E(meta.description||"")}</textarea></div>
     <div class="row2"><div class="field"><label>Từ khóa tìm kiếm</label><input name="keywords" value="${E(meta.keywords||"")}" placeholder="hướng dẫn, quy chế, pdf"></div><div class="field"><label>Website sở hữu</label><input name="website_id" value="${E(meta.website_id||"app")}"></div></div>
     <div class="row2"><div class="field"><label>Phạm vi truy cập</label><select name="visibility"><option value="public" ${x.visibility==="public"?"selected":""}>Công khai (/tai-lieu)</option><option value="internal" ${x.visibility!=="public"?"selected":""}>Nội bộ / Hạn chế</option></select></div><div class="field"><label>Trạng thái hiệu lực</label><select name="status"><option value="Có hiệu lực" ${x.status==="Có hiệu lực"?"selected":""}>Có hiệu lực</option><option value="Hết hiệu lực" ${x.status==="Hết hiệu lực"?"selected":""}>Hết hiệu lực</option><option value="Nháp" ${x.status==="Nháp"?"selected":""}>Bản nháp</option></select></div></div>
+    <div class="check"><input type="checkbox" id="docAllowDownload" ${allowDl?"checked":""}><label for="docAllowDownload">Cho phép người dùng tải xuống tệp PDF (nếu tắt, máy chủ chặn ?download=1)</label></div>
     <div class="field"><label>Tải tệp PDF mới lên (hoặc giữ nguyên mã tệp bên dưới)</label><input type="file" id="docUploadFile" accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></div>
     <div class="field"><label>Mã tệp lưu trữ hiện tại (File ID)</label><input name="file_id" id="docFileIdInput" value="${E(x.file_id||"")}" placeholder="Sẽ tự động điền khi tải tệp lên"></div>
     <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button type="submit" class="primary" id="docSaveBtn">Lưu tài liệu</button></div>
@@ -2395,7 +2476,8 @@ window.openDocumentEditor=id=>{
         const upRes=await api("/api/admin/upload",{method:"POST",body:ufd});
         fileId=upRes.id;
       }
-      const metadata={...meta,description:f.get("description"),keywords:f.get("keywords"),website_id:f.get("website_id")||"app",category:f.get("doc_type"),allow_download:true};
+      const allow_download=!!document.getElementById("docAllowDownload")?.checked;
+      const metadata={...meta,description:f.get("description"),keywords:f.get("keywords"),website_id:f.get("website_id")||"app",category:f.get("doc_type"),allow_download};
       const payload={code:f.get("code"),doc_type:f.get("doc_type"),title:f.get("title"),visibility:f.get("visibility"),status:f.get("status"),file_id:fileId,issued_at:d?.issued_at||new Date().toISOString(),metadata_json:JSON.stringify(metadata)};
       if(d) await api(`/api/admin/content/documents/${encodeURIComponent(d.id)}`,{method:"PUT",body:payload});
       else await api("/api/admin/content/documents",{method:"POST",body:payload});
@@ -2484,11 +2566,11 @@ window.manageDocumentLifecycle=docId=>{
   };
 };
 
-// ================= QUẢN TRỊ ĐA WEBSITE (#admin/websites) =================
+// ================= QUẢN TRỊ ĐA WEBSITE — 7 WEBSITE CHUẨN (#admin/websites) =================
 async function adminWebsites(main){
   const d=await api("/api/admin/websites");
   state.admin.websites=d.items||[];
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">QUẢN TRỊ ĐA WEBSITE</span><h1>Hệ thống Quản lý Đa Website Sky First</h1><p class="muted">Quản lý cấu hình, nhận diện, tên miền và trạng thái vận hành riêng cho từng website với cơ chế cách ly phạm vi dữ liệu phía máy chủ.</p></div><button type="button" class="primary" onclick="editWebsiteModal(null)">＋ Thêm Website</button></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">QUẢN TRỊ ĐA WEBSITE · 7 CỔNG CHUẨN SKY FIRST</span><h1>Hệ thống Quản lý Đa Website Sky First</h1><p class="muted">Danh mục 7 cổng chính thức: <code>app</code>, <code>main</code>, <code>ctt</code>, <code>mail</code>, <code>member</code>, <code>sfec</code>, <code>exam</code>. Quản lý nhận diện, tên miền và trạng thái vận hành riêng với cơ chế cách ly dữ liệu phía máy chủ.</p></div><button type="button" class="primary" onclick="editWebsiteModal(null)">＋ Thêm Website</button></div>
   <div class="grid">${state.admin.websites.map(w=>`<article class="card"><div class="toolbar"><span class="pill">${E(w.code)}</span><span class="status ${w.status==="active"?"":"status-warn"}">${w.status==="active"?"Đang hoạt động":E(w.status)}</span></div><h3>${E(w.name)}</h3><p><b>Tên miền:</b> <code>${E(w.domain)}</code></p><p class="muted small">${E(w.description||"")}</p><div class="actions"><button type="button" class="secondary" onclick="editWebsiteModal('${E(w.id)}')">Cấu hình</button><button type="button" class="secondary" onclick="location.hash='admin/page-builder'">Quản lý trang CMS →</button></div></article>`).join("")}</div>`;
 }
 
@@ -2513,8 +2595,8 @@ window.editWebsiteModal=id=>{
   };
 };
 
-// ================= TRÌNH DỰNG TRANG TRỰC QUAN KÉO THẢ & CMS (#admin/page-builder) =================
-const pbState={pages:[],templates:[],websites:[],current:null,history:[],future:[],dirty:false,viewport:"desktop"};
+// ================= TRÌNH DỰNG TRANG TRỰC QUAN KÉO THẢ, CMS TOÀN TRANG & WORDPRESS ADAPTER (#admin/page-builder) =================
+const pbState={pages:[],templates:[],sharedBlocks:[],websites:[],current:null,revisions:[],history:[],future:[],dirty:false,viewport:"desktop",editLang:"vi"};
 
 async function adminPageBuilder(main){
   const [cmsData,sitesData]=await Promise.all([
@@ -2523,49 +2605,75 @@ async function adminPageBuilder(main){
   ]);
   pbState.pages=cmsData.items||[];
   pbState.templates=cmsData.templates||[];
+  pbState.sharedBlocks=cmsData.shared_blocks||[];
   pbState.websites=sitesData.items||[{id:"app",name:"Hệ thống Thông tin Số Sky First",domain:"app.skyfirst.io.vn"}];
 
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">CMS & VISUAL PAGE BUILDER</span><h1>Trình dựng Trang Trực quan & Quy trình Xuất bản</h1><p class="muted">Kết hợp quản trị nội dung kiểu WordPress với trình dựng khối kéo thả trực quan. Quy trình xuất bản có kiểm soát: <b>Bản nháp → Xem trước → Gửi duyệt → Phê duyệt → Xuất bản</b>.</p></div><div class="actions"><button type="button" class="primary" onclick="createNewCmsPage()">＋ Tạo trang mới</button></div></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">CMS TOÀN TRANG · VISUAL BUILDER & WORDPRESS ADAPTER</span><h1>Trình dựng Trang Trực quan, Trang Hệ thống & Quy trình Xuất bản</h1><p class="muted">Quản trị cả 13 trang hệ thống (<code>/</code>, <code>/gioi-thieu</code>, <code>/chuong-trinh</code>, <code>/su-kien</code>, <code>/tai-tro</code>, <code>/tai-lieu</code>, <code>/bieu-mau</code>, <code>/ho-so</code>, <code>/tra-cuu</code>, <code>/gcn</code>, <code>/an-toan</code>, <code>/ho-tro</code>, <code>/admin/login</code>) và các trang nội dung mở rộng <code>/trang/...</code> với song ngữ VI/EN, khối dùng chung, hẹn giờ xuất bản và đồng bộ WordPress Gutenberg.</p></div><div class="actions"><button type="button" class="secondary" onclick="runScheduledPublishNow()">⏱ Chạy lịch xuất bản</button><button type="button" class="secondary" onclick="openSharedBlocksManager()">🧩 Khối dùng chung (${pbState.sharedBlocks.length})</button><button type="button" class="secondary" onclick="openTemplatesManager()">📐 Mẫu bố cục (${pbState.templates.length})</button><button type="button" class="secondary" onclick="openWordPressImportModal()">⇄ WordPress / Gutenberg</button><button type="button" class="primary" onclick="createNewCmsPage()">＋ Tạo trang mới</button></div></div>
   <section class="card admin-card-premium">
-    <div class="toolbar"><label class="admin-searchbox"><span>⌕</span><input id="cmsPageSearch" type="search" placeholder="Tìm tiêu đề, đường dẫn..."></label><select id="cmsSiteFilter"><option value="all">Tất cả Website</option>${pbState.websites.map(w=>`<option value="${E(w.id)}">${E(w.name)} (${E(w.domain)})</option>`).join("")}</select></div>
-    <div class="table-scroll"><table><thead><tr><th>Website</th><th>Tiêu đề & Đường dẫn</th><th>Phiên bản</th><th>Trạng thái quy trình</th><th>Cập nhật</th><th>Thao tác</th></tr></thead><tbody id="cmsPageRows"></tbody></table></div>
+    <div class="toolbar"><label class="admin-searchbox"><span>⌕</span><input id="cmsPageSearch" type="search" placeholder="Tìm tiêu đề, đường dẫn, route..."></label><select id="cmsTypeFilter"><option value="all">Tất cả loại trang (${pbState.pages.length})</option><option value="system">Trang hệ thống (System Routes)</option><option value="custom">Trang mở rộng (/trang/...)</option></select><select id="cmsSiteFilter"><option value="all">Tất cả Website</option>${pbState.websites.map(w=>`<option value="${E(w.id)}">${E(w.name)} (${E(w.domain)})</option>`).join("")}</select></div>
+    <div class="table-scroll"><table><thead><tr><th>Website & Loại</th><th>Tiêu đề (VI / EN) & Đường dẫn</th><th>Phiên bản</th><th>Trạng thái quy trình</th><th>Cập nhật</th><th>Thao tác</th></tr></thead><tbody id="cmsPageRows"></tbody></table></div>
   </section>
   <div id="visualBuilderMount" style="margin-top:22px;"></div>`;
 
-  const rows=document.getElementById("cmsPageRows"),search=document.getElementById("cmsPageSearch"),siteFilter=document.getElementById("cmsSiteFilter");
-  const statusLabel=s=>({draft:"1. Bản nháp",pending_review:"2. Chờ duyệt",approved:"3. Đã duyệt (Chờ xuất bản)",published:"4. Đã xuất bản công khai",archived:"5. Tạm gỡ / Lưu trữ"}[s]||s);
+  const rows=document.getElementById("cmsPageRows"),search=document.getElementById("cmsPageSearch"),siteFilter=document.getElementById("cmsSiteFilter"),typeFilter=document.getElementById("cmsTypeFilter");
+  const statusLabel=s=>({draft:"1. Bản nháp",pending_review:"2. Chờ duyệt",approved:"3. Đã duyệt",scheduled:"⏱ Hẹn giờ xuất bản",published:"4. Đã xuất bản",archived:"5. Tạm gỡ / Lưu trữ"}[s]||s);
   const draw=()=>{
-    const q=search.value.trim().toLocaleLowerCase("vi"),site=siteFilter.value;
-    const list=pbState.pages.filter(p=>(site==="all"||p.website_id===site)&&(!q||[p.title,p.slug,p.summary].join(" ").toLocaleLowerCase("vi").includes(q)));
-    rows.innerHTML=list.map(p=>`<tr>
-      <td><span class="pill">${E(p.website_id.toUpperCase())}</span></td>
-      <td><b>${E(p.title)}</b><br><code>/trang/${E(p.slug)}</code></td>
-      <td>v${E(p.version||1)}</td>
-      <td><span class="status ${p.status==="published"?"":p.status==="approved"?"good":"status-warn"}">${E(statusLabel(p.status))}</span></td>
-      <td>${fmt(p.updated_at)}</td>
-      <td><div class="admin-row-actions">
-        <button type="button" class="primary" onclick="openVisualBuilder('${E(p.id)}')">Mở Trình dựng trang</button>
-        ${p.status==="published"?`<a class="secondary" href="/trang/${encodeURIComponent(p.slug)}" target="_blank">Xem công khai ↗</a>`:""}
-      </div></td>
-    </tr>`).join("")||`<tr><td colspan="6" class="muted">Chưa có trang nội dung nào. Hãy nhấn “+ Tạo trang mới” để khởi tạo từ mẫu giao diện Sky First.</td></tr>`;
+    const q=search.value.trim().toLocaleLowerCase("vi"),site=siteFilter.value,ptype=typeFilter.value;
+    const list=pbState.pages.filter(p=>(site==="all"||p.website_id===site)&&(ptype==="all"||(ptype==="system"?p.page_type==="system":p.page_type!=="system"))&&(!q||[p.title,p.title_en,p.slug,p.route_path,p.summary].join(" ").toLocaleLowerCase("vi").includes(q)));
+    rows.innerHTML=list.map(p=>{
+      const publicUrl=p.page_type==="system"&&p.route_path?p.route_path:`/trang/${encodeURIComponent(p.slug)}`;
+      return `<tr>
+        <td><span class="pill">${E(p.website_id.toUpperCase())}</span><br><small class="muted">${p.page_type==="system"?"Trang hệ thống":"Trang CMS"}</small></td>
+        <td><b>${E(p.title)}</b>${p.title_en?`<br><small class="muted">EN: ${E(p.title_en)}</small>`:""}<br><code>${E(publicUrl)}</code></td>
+        <td>v${E(p.version||1)}</td>
+        <td><span class="status ${p.status==="published"?"":p.status==="approved"?"good":"status-warn"}">${E(statusLabel(p.status))}</span>${p.scheduled_at?`<br><small class="muted">Lịch: ${fmt(p.scheduled_at)}</small>`:""}</td>
+        <td>${fmt(p.updated_at)}</td>
+        <td><div class="admin-row-actions">
+          <button type="button" class="primary" onclick="openVisualBuilder('${E(p.id)}')">Mở Trình dựng</button>
+          <button type="button" class="secondary" onclick="duplicateCmsPage('${E(p.id)}')">Nhân bản</button>
+          <a class="secondary" href="${E(publicUrl)}" target="_blank">Xem trang ↗</a>
+        </div></td>
+      </tr>`;
+    }).join("")||`<tr><td colspan="6" class="muted">Chưa có trang nội dung nào phù hợp bộ lọc.</td></tr>`;
   };
-  search.addEventListener("input",draw);siteFilter.addEventListener("change",draw);draw();
+  search.addEventListener("input",draw);siteFilter.addEventListener("change",draw);typeFilter.addEventListener("change",draw);draw();
 }
+
+window.runScheduledPublishNow=async()=>{
+  try{
+    const r=await api("/api/admin/cms/run-scheduled",{method:"POST"});
+    toast(`Đã kiểm tra lịch xuất bản tự động (${r.published_count||0} trang được xuất bản).`);
+    await adminPageBuilder(document.getElementById("adminMain"));
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.duplicateCmsPage=async id=>{
+  try{
+    const r=await api(`/api/admin/cms/pages/${encodeURIComponent(id)}/duplicate`,{method:"POST"});
+    toast(`Đã nhân bản trang sang slug: ${r.slug}`);
+    await adminPageBuilder(document.getElementById("adminMain"));
+    await openVisualBuilder(r.id);
+  }catch(e){toast(errorText(e),"bad")}
+};
 
 window.createNewCmsPage=async()=>{
   const tplOptions=[{value:"blank",label:"Trang trống (tự kéo thả khối)"},...pbState.templates.map(t=>({value:t.id,label:`Mẫu: ${t.name}`}))];
-  const v=await adminDialog({title:"Tạo trang nội dung mới",description:"Chọn website đích và mẫu bố cục khởi tạo. Mẫu chỉ cung cấp khung trình bày, không tự tạo số liệu giả.",confirmText:"Tạo & Mở Trình dựng",fields:[
+  const v=await adminDialog({title:"Tạo trang nội dung mới",description:"Chọn website đích, loại trang và mẫu bố cục khởi tạo. Mẫu chỉ cung cấp khung trình bày, không tự tạo số liệu giả.",confirmText:"Tạo & Mở Trình dựng",fields:[
     {name:"website_id",label:"Website sở hữu",type:"select",value:"app",options:pbState.websites.map(w=>({value:w.id,label:`${w.name} (${w.domain})`}))},
-    {name:"title",label:"Tiêu đề trang *",required:true,placeholder:"VD: Hướng dẫn đăng ký chương trình 2026"},
+    {name:"page_type",label:"Loại trang",type:"select",value:"custom",options:[{value:"custom",label:"Trang CMS mở rộng (/trang/...)"},{value:"system",label:"Trang hệ thống (System Route)"}]},
+    {name:"route_path",label:"Đường dẫn hệ thống (nếu là Trang hệ thống)",required:false,placeholder:"VD: /gioi-thieu hoặc /ho-tro"},
+    {name:"title",label:"Tiêu đề trang (Tiếng Việt) *",required:true,placeholder:"VD: Hướng dẫn đăng ký chương trình 2026"},
+    {name:"title_en",label:"Tiêu đề trang (English)",required:false,placeholder:"e.g. 2026 Program Registration Guide"},
     {name:"slug",label:"Đường dẫn (slug) *",required:true,placeholder:"huong-dan-dang-ky-2026"},
-    {name:"summary",label:"Mô tả ngắn (SEO description)",required:false},
+    {name:"summary",label:"Mô tả ngắn (SEO VI)",required:false},
+    {name:"summary_en",label:"Mô tả ngắn (SEO EN)",required:false},
     {name:"template_id",label:"Mẫu giao diện khởi tạo",type:"select",value:pbState.templates[0]?.id||"blank",options:tplOptions}
   ]});
   if(!v)return;
   const tpl=pbState.templates.find(t=>t.id===v.template_id);
   let blocks=[]; try{blocks=tpl?JSON.parse(tpl.blocks_json||"[]"):[{id:uid("blk"),type:"heading",level:"h1",text:v.title,align:"left"},{id:uid("blk"),type:"paragraph",text:v.summary||"Nhập nội dung trang tại đây...",align:"left"}]}catch{}
   try{
-    const r=await api("/api/admin/cms/pages",{method:"POST",body:{website_id:v.website_id,title:v.title,slug:v.slug,summary:v.summary,blocks,seo:{meta_title:v.title,meta_description:v.summary||""}}});
+    const r=await api("/api/admin/cms/pages",{method:"POST",body:{website_id:v.website_id,page_type:v.page_type,route_path:v.route_path||null,title:v.title,title_en:v.title_en||"",slug:v.slug,summary:v.summary,summary_en:v.summary_en||"",blocks,blocks_en:[],seo:{meta_title:v.title,meta_description:v.summary||""},seo_en:{meta_title:v.title_en||v.title,meta_description:v.summary_en||v.summary||""}}});
     toast("Đã tạo trang mới ở trạng thái Bản nháp.");
     await adminPageBuilder(document.getElementById("adminMain"));
     await openVisualBuilder(r.id);
@@ -2576,6 +2684,8 @@ window.openVisualBuilder=async pageId=>{
   try{
     const d=await api(`/api/admin/cms/pages/${encodeURIComponent(pageId)}`);
     pbState.current=JSON.parse(JSON.stringify(d.item));
+    if(!Array.isArray(pbState.current.blocks))pbState.current.blocks=[];
+    if(!Array.isArray(pbState.current.blocks_en))pbState.current.blocks_en=[];
     pbState.revisions=d.revisions||[];
     pbState.history=[];
     pbState.future=[];
@@ -2584,9 +2694,14 @@ window.openVisualBuilder=async pageId=>{
   }catch(e){toast(errorText(e),"bad")}
 };
 
+function activePbBlocks(){
+  if(!pbState.current)return [];
+  return pbState.editLang==="en"?pbState.current.blocks_en:pbState.current.blocks;
+}
+
 function pushPbHistory(){
   if(!pbState.current)return;
-  pbState.history.push(JSON.stringify(pbState.current.blocks));
+  pbState.history.push(JSON.stringify({blocks:pbState.current.blocks,blocks_en:pbState.current.blocks_en}));
   if(pbState.history.length>30) pbState.history.shift();
   pbState.future=[];
   pbState.dirty=true;
@@ -2594,14 +2709,18 @@ function pushPbHistory(){
 
 window.pbUndo=()=>{
   if(!pbState.history.length)return;
-  pbState.future.push(JSON.stringify(pbState.current.blocks));
-  pbState.current.blocks=JSON.parse(pbState.history.pop());
+  pbState.future.push(JSON.stringify({blocks:pbState.current.blocks,blocks_en:pbState.current.blocks_en}));
+  const prev=JSON.parse(pbState.history.pop());
+  pbState.current.blocks=prev.blocks||[];
+  pbState.current.blocks_en=prev.blocks_en||[];
   renderVisualBuilderWorkspace();
 };
 window.pbRedo=()=>{
   if(!pbState.future.length)return;
-  pbState.history.push(JSON.stringify(pbState.current.blocks));
-  pbState.current.blocks=JSON.parse(pbState.future.pop());
+  pbState.history.push(JSON.stringify({blocks:pbState.current.blocks,blocks_en:pbState.current.blocks_en}));
+  const next=JSON.parse(pbState.future.pop());
+  pbState.current.blocks=next.blocks||[];
+  pbState.current.blocks_en=next.blocks_en||[];
   renderVisualBuilderWorkspace();
 };
 
@@ -2610,10 +2729,21 @@ const BLOCK_CATALOG=[
   {type:"heading",label:"Tiêu đề (H1/H2/H3)",defaults:{level:"h2",text:"Tiêu đề mục nội dung",align:"left"}},
   {type:"paragraph",label:"Đoạn văn bản",defaults:{text:"Nhập nội dung đoạn văn bản tại đây...",align:"left"}},
   {type:"callout",label:"Khối thông báo",defaults:{tone:"good",title:"Lưu ý quan trọng",text:"Nội dung thông báo cần làm nổi bật."}},
-  {type:"columns",label:"Bố cục 2 cột",defaults:{columns:[{title:"Cột 1",body:"Nội dung cột 1"},{title:"Cột 2",body:"Nội dung cột 2"}]}},
+  {type:"columns",label:"Bố cục nhiều cột",defaults:{columns:[{title:"Cột 1",body:"Nội dung cột 1"},{title:"Cột 2",body:"Nội dung cột 2"}]}},
+  {type:"grid",label:"Lưới thẻ (Grid)",defaults:{cols:3,items:[{title:"Thẻ 1",body:"Mô tả thẻ 1"},{title:"Thẻ 2",body:"Mô tả thẻ 2"},{title:"Thẻ 3",body:"Mô tả thẻ 3"}]}},
+  {type:"table",label:"Bảng dữ liệu",defaults:{title:"Bảng thông tin",headers:["Cột 1","Cột 2","Cột 3"],rows:[["Dữ liệu 1","Dữ liệu 2","Dữ liệu 3"]]}},
+  {type:"stats",label:"Khối số liệu (Stats)",defaults:{items:[{value:"100%",label:"Minh bạch đối soát"},{value:"24/7",label:"Tra cứu trực tuyến"}]}},
+  {type:"faq",label:"Câu hỏi thường gặp (Accordion/FAQ)",defaults:{title:"Câu hỏi thường gặp",items:[{q:"Câu hỏi 1?",a:"Câu trả lời chi tiết 1."}]}},
+  {type:"tabs",label:"Thẻ chuyển nội dung (Tabs)",defaults:{tabs:[{label:"Tab 1",content:"Nội dung tab 1"},{label:"Tab 2",content:"Nội dung tab 2"}]}},
+  {type:"timeline",label:"Dòng thời gian (Timeline)",defaults:{title:"Các mốc triển khai",steps:[{time:"Bước 01",title:"Tiếp nhận",body:"Mô tả bước 1"},{time:"Bước 02",title:"Xác minh",body:"Mô tả bước 2"}]}},
+  {type:"cta",label:"Khối kêu gọi hành động (CTA)",defaults:{eyebrow:"HÀNH ĐỘNG",title:"Bắt đầu ngay hôm nay",text:"Mô tả ngắn gọn.",label:"Mở biểu mẫu",href:"/bieu-mau"}},
+  {type:"video",label:"Video nhúng",defaults:{title:"Video giới thiệu",url:"",caption:"Video tài liệu hướng dẫn"}},
   {type:"image",label:"Hình ảnh",defaults:{url:"/assets/sfn-logo-tight.png",caption:"Chú thích hình ảnh",align:"center"}},
   {type:"pdf_embed",label:"Nhúng tài liệu PDF",defaults:{title:"Tài liệu PDF đính kèm",fileId:""}},
   {type:"form_embed",label:"Nhúng Biểu mẫu số",defaults:{title:"Biểu mẫu đăng ký trực tuyến",formId:"member"}},
+  {type:"dynamic_list",label:"Danh sách động (Dynamic Module)",defaults:{title:"Danh sách dữ liệu động",source:"programs",href:"/chuong-trinh"}},
+  {type:"guide",label:"Khối hướng dẫn từng bước",defaults:{title:"Hướng dẫn thực hiện",steps:["Bước 1: Chuẩn bị thông tin","Bước 2: Gửi biểu mẫu và lưu mã hồ sơ"]}},
+  {type:"shared_block",label:"Khối dùng chung (Shared Block)",defaults:{sharedKey:"global-contact-strip",title:"Khối liên hệ dùng chung"}},
   {type:"button",label:"Nút bấm điều hướng",defaults:{label:"Mở liên kết",href:"/bieu-mau",align:"left"}},
   {type:"list",label:"Danh sách mục",defaults:{items:["Mục nội dung 1","Mục nội dung 2","Mục nội dung 3"]}}
 ];
@@ -2621,50 +2751,62 @@ const BLOCK_CATALOG=[
 function renderVisualBuilderWorkspace(){
   const mount=document.getElementById("visualBuilderMount");
   if(!mount||!pbState.current)return;
-  const p=pbState.current,blocks=p.blocks||[];
+  const p=pbState.current,blocks=activePbBlocks();
   const vpWidth=pbState.viewport==="mobile"?"390px":pbState.viewport==="tablet"?"768px":"100%";
+  const publicUrl=p.page_type==="system"&&p.route_path?p.route_path:`/trang/${p.slug}`;
 
   mount.innerHTML=`<section class="card admin-card-premium" style="border:2px solid var(--blue);">
     <div class="toolbar" style="border-bottom:1px solid var(--line);padding-bottom:12px;">
       <div style="margin-right:auto">
-        <span class="eyebrow">TRÌNH DỰNG TRANG TRỰC QUAN · WEBSITE: ${E(p.website_id.toUpperCase())} · PHIÊN BẢN v${E(p.version)}</span>
-        <h2 style="margin:4px 0 0">${E(p.title)} <small class="muted">(/trang/${E(p.slug)})</small></h2>
+        <span class="eyebrow">TRÌNH DỰNG TRANG TRỰC QUAN · WEBSITE: ${E(p.website_id.toUpperCase())} · ${p.page_type==="system"?"TRANG HỆ THỐNG":"TRANG CMS"} · v${E(p.version)}</span>
+        <h2 style="margin:4px 0 0">${E(p.title)} <small class="muted">(${E(publicUrl)})</small></h2>
       </div>
-      <button type="button" class="secondary" onclick="pbUndo()" ${pbState.history.length?"":"disabled"}>↶ Hoàn tác (${pbState.history.length})</button>
-      <button type="button" class="secondary" onclick="pbRedo()" ${pbState.future.length?"":"disabled"}>↷ Làm lại (${pbState.future.length})</button>
-      <select id="pbViewportSelect" aria-label="Chế độ xem trước màn hình">
-        <option value="desktop" ${pbState.viewport==="desktop"?"selected":""}>🖥️ Máy tính (Desktop)</option>
-        <option value="tablet" ${pbState.viewport==="tablet"?"selected":""}>📱 Máy tính bảng (768px)</option>
-        <option value="mobile" ${pbState.viewport==="mobile"?"selected":""}>📱 Điện thoại (390px)</option>
-      </select>
-      <button type="button" class="primary" onclick="saveVisualPage()">💾 Lưu bản nháp</button>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <button type="button" class="${pbState.editLang==="vi"?"primary":"secondary"}" onclick="switchPbEditLang('vi')">🇻🇳 Khối VI (${(p.blocks||[]).length})</button>
+        <button type="button" class="${pbState.editLang==="en"?"primary":"secondary"}" onclick="switchPbEditLang('en')">🇬🇧 Khối EN (${(p.blocks_en||[]).length})</button>
+        <button type="button" class="secondary" onclick="pbUndo()" ${pbState.history.length?"":"disabled"}>↶ Hoàn tác (${pbState.history.length})</button>
+        <button type="button" class="secondary" onclick="pbRedo()" ${pbState.future.length?"":"disabled"}>↷ Làm lại (${pbState.future.length})</button>
+        <select id="pbViewportSelect" aria-label="Chế độ màn hình">
+          <option value="desktop" ${pbState.viewport==="desktop"?"selected":""}>🖥️ Máy tính (Desktop)</option>
+          <option value="tablet" ${pbState.viewport==="tablet"?"selected":""}>📱 Máy tính bảng (768px)</option>
+          <option value="mobile" ${pbState.viewport==="mobile"?"selected":""}>📱 Điện thoại (390px)</option>
+        </select>
+        <button type="button" class="secondary" onclick="previewServerCmsPage('${E(p.id)}')">👁 Xem thử</button>
+        <button type="button" class="secondary" onclick="exportPageWordPress('${E(p.id)}')">⬇ Xuất Gutenberg</button>
+        <button type="button" class="primary" onclick="saveVisualPage()">💾 Lưu bản nháp</button>
+      </div>
     </div>
 
     <div class="toolbar" style="background:var(--bg);padding:10px 14px;border-radius:12px;margin:14px 0;">
       <b>Quy trình duyệt & xuất bản:</b>
       <span class="status">${E(p.status)}</span>
+      ${p.scheduled_at?`<span class="pill">⏱ Lịch: ${fmt(p.scheduled_at)}</span>`:""}
       <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" class="secondary" onclick="runCmsWorkflow('submit_review')">1. Gửi duyệt</button>
         <button type="button" class="secondary" onclick="runCmsWorkflow('approve')">2. Phê duyệt</button>
         <button type="button" class="danger" onclick="runCmsWorkflow('reject')">Từ chối duyệt</button>
+        <button type="button" class="secondary" onclick="runCmsWorkflow('schedule')">⏱ Lên lịch xuất bản</button>
         <button type="button" class="primary" onclick="runCmsWorkflow('publish')">3. Xuất bản công khai</button>
         ${p.status==="published"?`<button type="button" class="secondary" onclick="runCmsWorkflow('unpublish')">Gỡ xuất bản</button>`:""}
       </div>
     </div>
 
-    <div class="admin-grid2" style="grid-template-columns:300px 1fr;gap:18px;align-items:start;">
-      <aside class="card" style="position:sticky;top:90px;">
-        <h3>+ Thêm khối nội dung</h3>
-        <p class="small muted">Nhấn để thêm khối hoặc kéo thả các khối bên phải để sắp xếp bố cục.</p>
-        <div style="display:grid;gap:8px;">
-          ${BLOCK_CATALOG.map(b=>`<button type="button" class="secondary" style="text-align:left;" onclick="addPbBlock('${E(b.type)}')">＋ ${E(b.label)}</button>`).join("")}
+    <div class="admin-grid2" style="grid-template-columns:310px 1fr;gap:18px;align-items:start;">
+      <aside class="card" style="position:sticky;top:90px;max-height:82vh;overflow:auto;">
+        <h3>+ Thư viện Khối (${BLOCK_CATALOG.length} loại)</h3>
+        <p class="small muted">Đang sửa ngôn ngữ: <b>${pbState.editLang.toUpperCase()}</b>. Nhấn để thêm khối hoặc kéo thả ở khung bên phải.</p>
+        <div style="display:grid;gap:6px;max-height:280px;overflow:auto;padding-right:4px;">
+          ${BLOCK_CATALOG.map(b=>`<button type="button" class="secondary" style="text-align:left;padding:7px 10px;font-size:13px;" onclick="addPbBlock('${E(b.type)}')">＋ ${E(b.label)}</button>`).join("")}
         </div>
-        <h3 style="margin-top:20px;">Thông tin trang & SEO</h3>
-        <div class="field"><label>Tiêu đề trang</label><input id="pbPageTitle" value="${E(p.title)}"></div>
-        <div class="field"><label>Slug đường dẫn</label><input id="pbPageSlug" value="${E(p.slug)}"></div>
-        <div class="field"><label>Mô tả SEO</label><textarea id="pbPageSummary" rows="2">${E(p.summary||"")}</textarea></div>
-        <h3 style="margin-top:20px;">Lịch sử phiên bản (${(pbState.revisions||[]).length})</h3>
-        <div style="max-height:160px;overflow:auto;display:grid;gap:6px;">
+        <h3 style="margin-top:18px;">Thông tin trang & SEO (VI / EN)</h3>
+        <div class="field"><label>Tiêu đề (VI)</label><input id="pbPageTitle" value="${E(p.title||"")}"></div>
+        <div class="field"><label>Tiêu đề (EN)</label><input id="pbPageTitleEn" value="${E(p.title_en||"")}" placeholder="English Title"></div>
+        <div class="field"><label>Slug đường dẫn</label><input id="pbPageSlug" value="${E(p.slug||"")}"></div>
+        ${p.page_type==="system"?`<div class="field"><label>System Route</label><input id="pbRoutePath" value="${E(p.route_path||"")}" readonly></div>`:""}
+        <div class="field"><label>Mô tả SEO (VI)</label><textarea id="pbPageSummary" rows="2">${E(p.summary||"")}</textarea></div>
+        <div class="field"><label>Mô tả SEO (EN)</label><textarea id="pbPageSummaryEn" rows="2">${E(p.summary_en||"")}</textarea></div>
+        <h3 style="margin-top:18px;">Lịch sử phiên bản (${(pbState.revisions||[]).length})</h3>
+        <div style="max-height:150px;overflow:auto;display:grid;gap:6px;">
           ${(pbState.revisions||[]).map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;border-bottom:1px solid var(--line);padding:4px 0;"><span><b>v${E(r.version)}</b> · ${E(r.status)}</span><button type="button" class="ghost" style="padding:3px 6px;" onclick="restorePbRevision(${r.version})">Khôi phục</button></div>`).join("")}
         </div>
       </aside>
@@ -2673,7 +2815,7 @@ function renderVisualBuilderWorkspace(){
         <div style="display:grid;gap:12px;margin-bottom:20px;" id="pbBlocksList">
           ${blocks.map((b,idx)=>`<div class="card pb-block-item" draggable="true" data-pb-idx="${idx}" style="border-left:4px solid var(--blue);">
             <div class="toolbar" style="margin:0 0 8px;">
-              <b>☰ Khối #${idx+1}: ${E(BLOCK_CATALOG.find(x=>x.type===b.type)?.label||b.type)}</b>
+              <b>☰ Khối #${idx+1} [${pbState.editLang.toUpperCase()}]: ${E(BLOCK_CATALOG.find(x=>x.type===b.type)?.label||b.type)}</b>
               <div style="margin-left:auto;display:flex;gap:6px;">
                 <button type="button" class="ghost" onclick="movePbBlock(${idx},-1)">↑</button>
                 <button type="button" class="ghost" onclick="movePbBlock(${idx},1)">↓</button>
@@ -2682,12 +2824,12 @@ function renderVisualBuilderWorkspace(){
                 <button type="button" class="danger" onclick="removePbBlock(${idx})">×</button>
               </div>
             </div>
-            <div class="small muted">${E(b.title||b.text||b.label||b.fileId||b.formId||"Khối bố cục")}</div>
-          </div>`).join("")||`<div class="notice">Trang chưa có khối nội dung nào. Hãy chọn khối ở cột bên trái để thêm vào trang.</div>`}
+            <div class="small muted">${E(b.title||b.text||b.label||b.sharedKey||b.fileId||b.formId||"Khối bố cục")}</div>
+          </div>`).join("")||`<div class="notice">Ngôn ngữ <b>${pbState.editLang.toUpperCase()}</b> chưa có khối nội dung riêng. ${pbState.editLang==="en"?"Nếu để trống, hệ thống tự động dùng bố cục Tiếng Việt làm dự phòng an toàn.":""}</div>`}
         </div>
 
         <div class="card" style="background:var(--bg);">
-          <span class="eyebrow">KHUNG HIỂN THỊ TRỰC QUAN (${E(pbState.viewport.toUpperCase())} — ${vpWidth})</span>
+          <span class="eyebrow">KHUNG HIỂN THỊ TRỰC QUAN (${E(pbState.viewport.toUpperCase())} — ${vpWidth} — ${pbState.editLang.toUpperCase()})</span>
           <div style="width:${vpWidth};max-width:100%;margin:12px auto 0;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;display:grid;gap:16px;">
             ${blocks.map(b=>pbPreviewBlockHtml(b)).join("")}
           </div>
@@ -2698,10 +2840,11 @@ function renderVisualBuilderWorkspace(){
 
   document.getElementById("pbViewportSelect")?.addEventListener("change",e=>{pbState.viewport=e.target.value;renderVisualBuilderWorkspace();});
   document.getElementById("pbPageTitle")?.addEventListener("input",e=>{pbState.current.title=e.target.value;pbState.dirty=true;});
+  document.getElementById("pbPageTitleEn")?.addEventListener("input",e=>{pbState.current.title_en=e.target.value;pbState.dirty=true;});
   document.getElementById("pbPageSlug")?.addEventListener("input",e=>{pbState.current.slug=e.target.value;pbState.dirty=true;});
   document.getElementById("pbPageSummary")?.addEventListener("input",e=>{pbState.current.summary=e.target.value;pbState.dirty=true;});
+  document.getElementById("pbPageSummaryEn")?.addEventListener("input",e=>{pbState.current.summary_en=e.target.value;pbState.dirty=true;});
 
-  // Drag & drop reorder on #pbBlocksList
   let dragFrom=null;
   mount.querySelectorAll("[data-pb-idx]").forEach(el=>{
     el.addEventListener("dragstart",()=>{dragFrom=Number(el.dataset.pbIdx);el.classList.add("dragging");});
@@ -2712,7 +2855,7 @@ function renderVisualBuilderWorkspace(){
       const dragTo=Number(el.dataset.pbIdx);
       if(dragFrom===null||dragFrom===dragTo)return;
       pushPbHistory();
-      const arr=pbState.current.blocks;
+      const arr=activePbBlocks();
       const [moved]=arr.splice(dragFrom,1);
       arr.splice(dragTo,0,moved);
       renderVisualBuilderWorkspace();
@@ -2720,54 +2863,65 @@ function renderVisualBuilderWorkspace(){
   });
 }
 
+window.switchPbEditLang=lang=>{
+  pbState.editLang=lang==="en"?"en":"vi";
+  if(pbState.editLang==="en"&&(!pbState.current.blocks_en||!pbState.current.blocks_en.length)&&(pbState.current.blocks||[]).length){
+    pbState.current.blocks_en=JSON.parse(JSON.stringify(pbState.current.blocks));
+    toast("Đã sao chép cấu trúc khối VI sang EN để dịch nhanh.");
+  }
+  renderVisualBuilderWorkspace();
+};
+
 function pbPreviewBlockHtml(b){
+  if(window.SkyFirstDigital?.renderVisualBlock){
+    return window.SkyFirstDigital.renderVisualBlock(b);
+  }
   const align=b.align||"left";
   if(b.type==="hero") return `<div style="padding:28px;border-radius:16px;background:linear-gradient(125deg,#071b35,#0759b8);color:#fff;text-align:${E(align)}"><h2>${E(b.title||"")}</h2><p>${E(b.subtitle||"")}</p>${b.ctaText?`<span class="pill white">${E(b.ctaText)} →</span>`:""}</div>`;
   if(b.type==="heading") return `<h2 style="margin:0;text-align:${E(align)}">${E(b.text||"")}</h2>`;
   if(b.type==="paragraph") return `<p style="margin:0;line-height:1.7;text-align:${E(align)}">${E(b.text||"")}</p>`;
   if(b.type==="callout") return `<div class="notice ${E(b.tone||"")}"><b>${E(b.title||"")}</b><p style="margin:4px 0 0">${E(b.text||"")}</p></div>`;
-  if(b.type==="columns") return `<div style="display:grid;grid-template-columns:repeat(${(b.columns||[]).length||2},1fr);gap:12px;">${(b.columns||[]).map(c=>`<div class="card"><b>${E(c.title||"")}</b><p class="small">${E(c.body||"")}</p></div>`).join("")}</div>`;
-  if(b.type==="pdf_embed") return `<div class="card"><b>📄 Khối nhúng PDF: ${E(b.title||"")}</b><br><small class="muted">File ID: ${E(b.fileId||"Chưa chọn")}</small></div>`;
-  if(b.type==="form_embed") return `<div class="card"><b>▤ Khối nhúng Biểu mẫu: ${E(b.title||"")}</b><br><small class="muted">Mã biểu mẫu: ${E(b.formId||"member")}</small></div>`;
-  if(b.type==="button") return `<div style="text-align:${E(align)}"><span class="primary" style="display:inline-block">${E(b.label||"Nút bấm")} →</span></div>`;
-  if(b.type==="image") return `<div style="text-align:${E(align)}"><img src="${E(b.url||"/assets/sfn-logo-tight.png")}" alt="" style="max-height:120px;border-radius:10px;"><div class="small muted">${E(b.caption||"")}</div></div>`;
-  if(b.type==="list") return `<ul>${(b.items||[]).map(i=>`<li>${E(i)}</li>`).join("")}</ul>`;
-  return `<div>${E(b.text||"")}</div>`;
+  return `<div class="card"><b>${E(b.type)}</b>: ${E(b.title||b.text||b.label||"")}</div>`;
 }
 
 window.addPbBlock=type=>{
   const cat=BLOCK_CATALOG.find(x=>x.type===type);if(!cat)return;
   pushPbHistory();
-  pbState.current.blocks.push({id:uid("blk"),type,...JSON.parse(JSON.stringify(cat.defaults))});
+  activePbBlocks().push({id:uid("blk"),type,...JSON.parse(JSON.stringify(cat.defaults))});
   renderVisualBuilderWorkspace();
 };
 window.movePbBlock=(idx,dir)=>{
-  const arr=pbState.current.blocks,target=idx+dir;
+  const arr=activePbBlocks(),target=idx+dir;
   if(target<0||target>=arr.length)return;
   pushPbHistory();
   [arr[idx],arr[target]]=[arr[target],arr[idx]];
   renderVisualBuilderWorkspace();
 };
 window.duplicatePbBlock=idx=>{
-  const b=pbState.current.blocks[idx];if(!b)return;
+  const arr=activePbBlocks(),b=arr[idx];if(!b)return;
   pushPbHistory();
   const copy=JSON.parse(JSON.stringify(b));copy.id=uid("blk");
-  pbState.current.blocks.splice(idx+1,0,copy);
+  arr.splice(idx+1,0,copy);
   renderVisualBuilderWorkspace();
 };
 window.removePbBlock=idx=>{
   pushPbHistory();
-  pbState.current.blocks.splice(idx,1);
+  activePbBlocks().splice(idx,1);
   renderVisualBuilderWorkspace();
 };
 window.editPbBlock=async idx=>{
-  const b=pbState.current.blocks[idx];if(!b)return;
+  const arr=activePbBlocks(),b=arr[idx];if(!b)return;
+  const structuredTypes=["columns","grid","table","stats","faq","tabs","timeline","guide"];
   const fields=[
     {name:"title",label:"Tiêu đề / Nhãn chính",value:b.title||b.label||""},
-    {name:"text",label:"Nội dung văn bản / Mô tả",type:"textarea",value:b.text||b.subtitle||(b.items?b.items.join("\n"):""),rows:4},
+    {name:"text",label:"Nội dung văn bản / Mô tả",type:"textarea",value:b.text||b.subtitle||(b.items&&Array.isArray(b.items)&&typeof b.items[0]==="string"?b.items.join("\n"):""),rows:3},
     {name:"align",label:"Căn lề",type:"select",value:b.align||"left",options:["left","center","right"]},
-    {name:"ref",label:"Liên kết URL / Mã biểu mẫu / Mã tệp PDF",value:b.ctaHref||b.href||b.formId||b.fileId||b.url||""}
+    {name:"ref",label:"Liên kết URL / Mã biểu mẫu / Mã tệp PDF / Khóa Khối dùng chung",value:b.ctaHref||b.href||b.formId||b.fileId||b.url||b.sharedKey||b.source||""}
   ];
+  if(structuredTypes.includes(b.type)){
+    const payloadKey=b.type==="columns"?"columns":b.type==="table"?"rows":b.type==="tabs"?"tabs":b.type==="timeline"||b.type==="guide"?"steps":"items";
+    fields.push({name:"json_data",label:`Dữ liệu cấu trúc (${payloadKey} JSON)`,type:"textarea",rows:5,value:JSON.stringify(b[payloadKey]||[],null,2)});
+  }
   const v=await adminDialog({title:`Chỉnh sửa khối #${idx+1} (${b.type})`,confirmText:"Áp dụng",fields});
   if(!v)return;
   pushPbHistory();
@@ -2776,11 +2930,19 @@ window.editPbBlock=async idx=>{
   else if(b.type==="heading"){b.text=v.title||v.text;}
   else if(b.type==="paragraph"){b.text=v.text;}
   else if(b.type==="callout"){b.title=v.title;b.text=v.text;}
+  else if(b.type==="cta"){b.title=v.title;b.text=v.text;b.href=v.ref;}
   else if(b.type==="button"){b.label=v.title;b.href=v.ref;}
   else if(b.type==="pdf_embed"){b.title=v.title;b.fileId=v.ref;}
   else if(b.type==="form_embed"){b.title=v.title;b.formId=v.ref||"member";}
-  else if(b.type==="image"){b.caption=v.title;b.url=v.ref||"/assets/sfn-logo-tight.png";}
+  else if(b.type==="image"||b.type==="video"){b.title=v.title;b.caption=v.text||v.title;b.url=v.ref||"/assets/sfn-logo-tight.png";}
+  else if(b.type==="shared_block"){b.title=v.title;b.sharedKey=v.ref||"global-contact-strip";}
+  else if(b.type==="dynamic_list"){b.title=v.title;b.source=v.ref||"programs";}
   else if(b.type==="list"){b.items=String(v.text||"").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);}
+  else if(structuredTypes.includes(b.type)){
+    b.title=v.title;
+    const payloadKey=b.type==="columns"?"columns":b.type==="table"?"rows":b.type==="tabs"?"tabs":b.type==="timeline"||b.type==="guide"?"steps":"items";
+    try{b[payloadKey]=JSON.parse(v.json_data||"[]");}catch{toast("JSON cấu trúc chưa hợp lệ, giữ nguyên cấu trúc cũ.","warn");}
+  }
   renderVisualBuilderWorkspace();
 };
 
@@ -2790,9 +2952,10 @@ window.saveVisualPage=async()=>{
   try{
     const r=await api(`/api/admin/cms/pages/${encodeURIComponent(p.id)}`,{
       method:"PUT",
-      body:{title:p.title,slug:p.slug,summary:p.summary,blocks:p.blocks,seo:{meta_title:p.title,meta_description:p.summary||""}}
+      body:{title:p.title,title_en:p.title_en||"",slug:p.slug,route_path:p.route_path||null,page_type:p.page_type||"custom",summary:p.summary,summary_en:p.summary_en||"",blocks:p.blocks,blocks_en:p.blocks_en||[],seo:{meta_title:p.title,meta_description:p.summary||""},seo_en:{meta_title:p.title_en||p.title,meta_description:p.summary_en||p.summary||""}}
     });
     pbState.dirty=false;
+    await loadConfig();
     toast(`Đã lưu trang CMS (Phiên bản v${r.version}).`);
     await openVisualBuilder(p.id);
   }catch(e){toast(errorText(e),"bad")}
@@ -2801,13 +2964,19 @@ window.saveVisualPage=async()=>{
 window.runCmsWorkflow=async action=>{
   if(!pbState.current)return;
   if(pbState.dirty){await saveVisualPage();}
-  let note="";
+  let note="",scheduled_at=null;
   if(action==="reject"||action==="approve"){
     note=await adminPrompt("Ghi chú phê duyệt / lý do từ chối:","",{title:action==="approve"?"Phê duyệt trang CMS":"Từ chối duyệt trang CMS"});
     if(note===null)return;
   }
+  if(action==="schedule"){
+    const dt=await adminPrompt("Chọn thời điểm xuất bản tự động (UTC+7):","",{title:"Lên lịch xuất bản trang",type:"datetime-local",required:true});
+    if(!dt)return;
+    scheduled_at=`${dt}:00+07:00`;
+  }
   try{
-    const r=await api(`/api/admin/cms/pages/${encodeURIComponent(pbState.current.id)}/workflow`,{method:"POST",body:{action,note}});
+    const r=await api(`/api/admin/cms/pages/${encodeURIComponent(pbState.current.id)}/workflow`,{method:"POST",body:{action,note,scheduled_at}});
+    await loadConfig();
     toast(`Đã chuyển trạng thái trang sang: ${r.status}`);
     await openVisualBuilder(pbState.current.id);
     await adminPageBuilder(document.getElementById("adminMain"));
@@ -2824,6 +2993,121 @@ window.restorePbRevision=async version=>{
   }catch(e){toast(errorText(e),"bad")}
 };
 
+window.previewServerCmsPage=async id=>{
+  try{
+    const d=await api(`/api/admin/cms/pages/${encodeURIComponent(id)}/preview?lang=${encodeURIComponent(pbState.editLang)}`);
+    const p=d.preview||{};
+    modal(`<div class="admin-modal-head"><div><span class="eyebrow">CHẾ ĐỘ XEM THỬ AN TOÀN · KHÔNG TỰ CÔNG KHAI BẢN NHÁP</span><h2>${E(p.title)} (${E((p.lang||"vi").toUpperCase())})</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+    <p class="muted">${E(p.summary||"")}</p>
+    <div class="card" style="display:grid;gap:14px;background:var(--bg);padding:20px;">${(p.blocks||[]).map(b=>pbPreviewBlockHtml(b)).join("")}</div>
+    <div class="admin-sticky-save"><button type="button" class="primary" onclick="closeModal()">Đóng</button></div>`);
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.openSharedBlocksManager=async()=>{
+  try{
+    const d=await api("/api/admin/cms/shared-blocks");
+    const items=d.items||[];
+    modal(`<div class="admin-modal-head"><div><span class="eyebrow">THƯ VIỆN KHỐI DÙNG CHUNG (REUSABLE BLOCKS)</span><h2>Quản lý Khối dùng chung & Cảnh báo trang bị ảnh hưởng</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+    <p class="muted">Khi cập nhật một khối dùng chung, tất cả các trang đang nhúng khối đó sẽ tự động cập nhật theo và hệ thống cảnh báo danh sách trang bị ảnh hưởng.</p>
+    <div class="table-scroll"><table><thead><tr><th>Khóa (Key)</th><th>Tên khối</th><th>Trang đang sử dụng (Impact)</th><th>Thao tác</th></tr></thead><tbody>
+      ${items.map(b=>`<tr><td><code>${E(b.key)}</code></td><td><b>${E(b.name)}</b><br><small class="muted">${E(b.description||"")}</small></td><td>${(b.affected_pages||[]).length?`<span class="status status-warn">Ảnh hưởng ${(b.affected_pages||[]).length} trang</span><br><small>${(b.affected_pages||[]).map(p=>E(p.title)).join(", ")}</small>`:`<span class="muted">Chưa trang nào nhúng</span>`}</td><td><button type="button" class="secondary" onclick="editSharedBlockItem('${E(b.id)}','${E(b.key)}','${E(b.name)}')">Sửa</button> <button type="button" class="danger" onclick="deleteSharedBlockItem('${E(b.id)}')">Xóa</button></td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Đóng</button><button type="button" class="primary" onclick="editSharedBlockItem('','','')">+ Tạo khối dùng chung mới</button></div>`);
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.editSharedBlockItem=async(id,key,name)=>{
+  const v=await adminDialog({title:id?`Cập nhật khối dùng chung: ${name}`:"Tạo khối dùng chung mới",description:"Hệ thống sẽ kiểm tra và thông báo số trang bị ảnh hưởng sau khi lưu.",confirmText:"Lưu khối dùng chung",fields:[
+    {name:"key",label:"Khóa định danh (key) *",value:key||"custom-shared-banner",required:true},
+    {name:"name",label:"Tên hiển thị *",value:name||"Khối thông báo dùng chung",required:true},
+    {name:"title",label:"Tiêu đề hiển thị trong khối",value:name||"Thông báo từ Hệ thống Thông tin Số Sky First",required:true},
+    {name:"text",label:"Nội dung khối (Tiếng Việt)",type:"textarea",rows:3,value:"Mọi hồ sơ và chứng nhận đều được đối soát trực tuyến tại app.skyfirst.io.vn."},
+    {name:"text_en",label:"Nội dung khối (English)",type:"textarea",rows:3,value:"All records and credentials are verified online at app.skyfirst.io.vn."}
+  ]});
+  if(!v)return;
+  try{
+    const r=await api("/api/admin/cms/shared-blocks",{method:"POST",body:{
+      id:id||undefined,key:v.key,name:v.name,
+      block:{type:"callout",tone:"good",title:v.title,text:v.text},
+      block_en:{type:"callout",tone:"good",title:v.title,text:v.text_en||v.text}
+    }});
+    toast(`Đã lưu khối dùng chung (${r.warning||"0 trang bị ảnh hưởng"}).`);
+    openSharedBlocksManager();
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.deleteSharedBlockItem=async id=>{
+  if(!await adminConfirm("Xóa khối dùng chung này? Hệ thống sẽ từ chối nếu khối đang được nhúng trên trang CMS.",{title:"Xóa khối dùng chung",danger:true}))return;
+  try{
+    await api(`/api/admin/cms/shared-blocks/${encodeURIComponent(id)}`,{method:"DELETE"});
+    toast("Đã xóa khối dùng chung.");
+    openSharedBlocksManager();
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.openTemplatesManager=async()=>{
+  try{
+    const d=await api("/api/admin/cms/templates");
+    const items=d.items||[];
+    modal(`<div class="admin-modal-head"><div><span class="eyebrow">THƯ VIỆN MẪU BỐ CỤC (PAGE TEMPLATES)</span><h2>Quản lý Mẫu trang (${items.length})</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+    <div class="table-scroll"><table><thead><tr><th>Mã mẫu</th><th>Tên & Danh mục</th><th>Mô tả</th><th>Thao tác</th></tr></thead><tbody>
+      ${items.map(t=>`<tr><td><code>${E(t.id)}</code></td><td><b>${E(t.name)}</b><br><span class="pill">${E(t.category||"general")}</span></td><td>${E(t.description||"")}</td><td><button type="button" class="danger" onclick="deleteCmsTemplateItem('${E(t.id)}')">Xóa</button></td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Đóng</button><button type="button" class="primary" onclick="createNewCmsTemplate()">+ Tạo mẫu bố cục từ trang đang mở</button></div>`);
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.createNewCmsTemplate=async()=>{
+  const v=await adminDialog({title:"Lưu mẫu bố cục mới",confirmText:"Lưu mẫu",fields:[
+    {name:"name",label:"Tên mẫu bố cục *",required:true,placeholder:"VD: Mẫu trang Sự kiện chuyên đề"},
+    {name:"category",label:"Danh mục",value:"operations"},
+    {name:"description",label:"Mô tả ngắn",value:"Mẫu bố cục chuẩn của Sky First"}
+  ]});
+  if(!v)return;
+  const blocks=pbState.current?.blocks||[{id:uid("blk"),type:"hero",title:v.name,subtitle:v.description,align:"center"}];
+  try{
+    await api("/api/admin/cms/templates",{method:"POST",body:{name:v.name,category:v.category,description:v.description,blocks}});
+    toast("Đã lưu mẫu bố cục mới.");
+    await adminPageBuilder(document.getElementById("adminMain"));
+    openTemplatesManager();
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.deleteCmsTemplateItem=async id=>{
+  try{
+    await api(`/api/admin/cms/templates/${encodeURIComponent(id)}`,{method:"DELETE"});
+    toast("Đã xóa mẫu bố cục.");
+    openTemplatesManager();
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.openWordPressImportModal=async()=>{
+  const v=await adminDialog({title:"Đồng bộ & Nhập trang từ Headless WordPress / Gutenberg",description:"Chuyển đổi an toàn bài viết/trang WordPress REST API (hoặc HTML chú thích khối <!-- wp:... -->) sang cấu trúc khối JSON của D1 mà không cho phép thực thi mã tùy ý.",confirmText:"Nhập vào CMS (Bản nháp)",fields:[
+    {name:"website_id",label:"Website đích",type:"select",value:"app",options:pbState.websites.map(w=>({value:w.id,label:`${w.name} (${w.domain})`}))},
+    {name:"title",label:"Tiêu đề trang *",required:true,placeholder:"Tiêu đề bài viết / trang WordPress"},
+    {name:"slug",label:"Slug đường dẫn *",required:true,placeholder:"trang-nhap-tu-wordpress"},
+    {name:"content",label:"Nội dung Gutenberg Block Markup hoặc WordPress Content *",type:"textarea",rows:6,required:true,value:`<!-- wp:heading -->\n<h2>Giới thiệu chương trình từ WordPress</h2>\n<!-- /wp:heading -->\n<!-- wp:paragraph -->\n<p>Nội dung được chuyển đổi tự động sang khối dữ liệu cấu trúc an toàn trên Cloudflare D1.</p>\n<!-- /wp:paragraph -->`}
+  ]});
+  if(!v)return;
+  try{
+    const r=await api("/api/admin/cms/wordpress/import",{method:"POST",body:{website_id:v.website_id,title:v.title,slug:v.slug,content:v.content}});
+    toast(`Đã nhập ${r.imported_blocks_count||0} khối từ WordPress/Gutenberg.`);
+    await adminPageBuilder(document.getElementById("adminMain"));
+    await openVisualBuilder(r.id);
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.exportPageWordPress=async id=>{
+  try{
+    const d=await api(`/api/admin/cms/pages/${encodeURIComponent(id)}/wordpress-export`);
+    modal(`<div class="admin-modal-head"><div><span class="eyebrow">WORDPRESS GUTENBERG & REST PAYLOAD</span><h2>Xuất chuẩn WordPress: ${E(d.wp_payload?.title||"")}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+    <p class="muted">Dữ liệu dưới đây tương thích với WordPress Gutenberg Block Editor và WordPress REST API (<code>/wp-json/wp/v2/pages</code>).</p>
+    <div class="field"><label>Gutenberg Block Content</label><textarea rows="10" readonly>${E(d.wp_payload?.content||"")}</textarea></div>
+    <div class="admin-sticky-save"><button type="button" class="secondary" onclick="navigator.clipboard?.writeText(${JSON.stringify(d.wp_payload?.content||"")}).then(()=>toast('Đã sao chép mã Gutenberg.'))">Sao chép Gutenberg Markup</button><button type="button" class="primary" onclick="closeModal()">Đóng</button></div>`);
+  }catch(e){toast(errorText(e),"bad")}
+};
+
 async function loadSettingsMap(){
   const d=await api("/api/admin/settings");
   return Object.fromEntries((d.items||[]).map(x=>[x.key,x.value]));
@@ -2832,45 +3116,326 @@ async function saveSettingItems(items,msg="Đã lưu thay đổi."){
   await api("/api/admin/settings",{method:"PUT",body:{items}});
   toast(msg);await loadConfig();
 }
-async function adminSite(main){
-  const m=await loadSettingsMap();state.admin.settings=m;
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">HỆ THỐNG & GIAO DIỆN</span><h1>Cài đặt website</h1><p class="muted">Quản lý nhận diện và nội dung chính mà không cần sửa source.</p></div></div>
-  <div class="admin-grid2"><div class="card"><h2>Nhận diện</h2><div class="field"><label>Tên website</label><input id="siteName" value="${E(m.app_name||"Sky First")}"></div><div class="field"><label>Châm ngôn</label><input id="siteSlogan" value="${E(m.brand_slogan||"")}"></div><div class="field"><label>Website chính</label><input id="siteWebsite" value="${E(m.website||"https://skyfirst.io.vn")}"></div><div class="field"><label>Hotline/Zalo</label><input id="siteHotline" value="${E(m.hotline||"0924 910 210")}"></div></div>
-  <div class="card"><h2>Hero trang chủ</h2><div class="field"><label>Tiêu đề</label><input id="siteHeroTitle" value="${E(m.hero_title||"Kết nối giáo dục. Phát triển cộng đồng.")}"></div><div class="field"><label>Mô tả</label><textarea id="siteHeroText">${E(m.hero_text||"")}</textarea></div><div class="field"><label>Ảnh Hero</label><div class="input-action"><input id="siteHeroCover" value="${E(m.hero_cover_url||"/assets/sfn-cover.png")}"><button class="secondary" onclick="location.hash='admin/media'">Chọn/Tải ảnh</button></div></div><button class="primary" onclick="saveAdminSite()">Lưu cài đặt</button></div></div>`;
-}
-window.saveAdminSite=()=>saveSettingItems({app_name:document.getElementById("siteName").value,brand_slogan:document.getElementById("siteSlogan").value,website:document.getElementById("siteWebsite").value,hotline:document.getElementById("siteHotline").value,hero_title:document.getElementById("siteHeroTitle").value,hero_text:document.getElementById("siteHeroText").value,hero_cover_url:document.getElementById("siteHeroCover").value},"Đã cập nhật website.");
 
+// ================= NHẬN DIỆN, TRANG CHỦ & DESIGN SYSTEM (#admin/site) =================
+async function adminSite(main){
+  const [m,dsRes]=await Promise.all([
+    loadSettingsMap(),
+    api("/api/admin/design-system").catch(()=>({design_system:{}}))
+  ]);
+  state.admin.settings=m;
+  const ds=dsRes.design_system||{};
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">NHẬN DIỆN THƯƠNG HIỆU & DESIGN SYSTEM</span><h1>Cài đặt Nhận diện, Hero & Hệ thống Thiết kế (Design Tokens)</h1><p class="muted">Quản lý nhận diện thương hiệu, nội dung Hero song ngữ và bảng màu/kiểu chữ toàn cục mà không cần sửa mã nguồn.</p></div></div>
+  <div class="admin-grid2">
+    <div class="card">
+      <h2>01 / Nhận diện thương hiệu</h2>
+      <div class="field"><label>Tên hệ thống (VI)</label><input id="siteName" value="${E(m.app_name||"Hệ thống Thông tin Số Sky First")}"></div>
+      <div class="field"><label>Tên hệ thống (EN)</label><input id="siteNameEn" value="${E(m.app_name_en||"Sky First Digital Information System")}"></div>
+      <div class="field"><label>Châm ngôn (VI)</label><input id="siteSlogan" value="${E(m.brand_slogan||"")}"></div>
+      <div class="field"><label>Châm ngôn (EN)</label><input id="siteSloganEn" value="${E(m.brand_slogan_en||"")}"></div>
+      <div class="row2"><div class="field"><label>Website chính</label><input id="siteWebsite" value="${E(m.website||"https://skyfirst.io.vn")}"></div><div class="field"><label>Hotline/Zalo</label><input id="siteHotline" value="${E(m.hotline||"0924 910 210")}"></div></div>
+    </div>
+    <div class="card">
+      <h2>02 / Hero Trang chủ (VI / EN)</h2>
+      <div class="field"><label>Tiêu đề Hero (VI)</label><input id="siteHeroTitle" value="${E(m.hero_title||"Kết nối giáo dục. Phát triển cộng đồng.")}"></div>
+      <div class="field"><label>Tiêu đề Hero (EN)</label><input id="siteHeroTitleEn" value="${E(m.hero_title_en||"Connecting Education. Empowering Communities.")}"></div>
+      <div class="field"><label>Mô tả Hero (VI)</label><textarea id="siteHeroText" rows="2">${E(m.hero_text||"")}</textarea></div>
+      <div class="field"><label>Mô tả Hero (EN)</label><textarea id="siteHeroTextEn" rows="2">${E(m.hero_text_en||"")}</textarea></div>
+      <div class="field"><label>Ảnh Hero</label><div class="input-action"><input id="siteHeroCover" value="${E(m.hero_cover_url||"/assets/sfn-cover.png")}"><button type="button" class="secondary" onclick="location.hash='admin/media'">Chọn/Tải ảnh</button></div></div>
+      <button type="button" class="primary" onclick="saveAdminSite()">Lưu Nhận diện & Hero</button>
+    </div>
+  </div>
+  <section class="card admin-card-premium" style="margin-top:18px;">
+    <div class="admin-card-heading"><div><span class="eyebrow">03 / DESIGN SYSTEM TOKENS</span><h2>Bảng màu, Typography, Bo góc & Mật độ giao diện</h2></div></div>
+    <form id="designSystemForm">
+      <div class="row2">
+        <div class="field"><label>Màu chủ đạo (Primary Color)</label><input name="primary_color" value="${E(ds.primary_color||"#0759b8")}"></div>
+        <div class="field"><label>Màu nền đậm (Navy Color)</label><input name="navy_color" value="${E(ds.navy_color||"#071b35")}"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Màu nhấn (Accent Color)</label><input name="accent_color" value="${E(ds.accent_color||"#0ca678")}"></div>
+        <div class="field"><label>Màu bề mặt (Surface Color)</label><input name="surface_color" value="${E(ds.surface_color||"#f6f9fc")}"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Font tiêu đề (Heading)</label><input name="font_heading" value="${E(ds.font_heading||"Inter, system-ui, sans-serif")}"></div>
+        <div class="field"><label>Font nội dung (Body)</label><input name="font_body" value="${E(ds.font_body||"Inter, system-ui, sans-serif")}"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Độ bo góc thẻ (Border Radius)</label><input name="border_radius" value="${E(ds.border_radius||"16px")}"></div>
+        <div class="field"><label>Độ rộng khung trang (Container Max Width)</label><input name="container_width" value="${E(ds.container_width||"1240px")}"></div>
+      </div>
+      <button type="submit" class="primary">Lưu Design System</button>
+    </form>
+  </section>`;
+  document.getElementById("designSystemForm").onsubmit=async e=>{
+    e.preventDefault();
+    const body=Object.fromEntries(new FormData(e.target));
+    try{
+      await api("/api/admin/design-system",{method:"PUT",body});
+      await loadConfig();
+      window.SkyFirstDigital?.applyDesignSystem?.(state.config?.design_system||body);
+      toast("Đã cập nhật Design System Tokens.");
+    }catch(err){toast(errorText(err),"bad")}
+  };
+}
+window.saveAdminSite=()=>saveSettingItems({
+  app_name:document.getElementById("siteName").value,
+  app_name_en:document.getElementById("siteNameEn").value,
+  brand_slogan:document.getElementById("siteSlogan").value,
+  brand_slogan_en:document.getElementById("siteSloganEn").value,
+  website:document.getElementById("siteWebsite").value,
+  hotline:document.getElementById("siteHotline").value,
+  hero_title:document.getElementById("siteHeroTitle").value,
+  hero_title_en:document.getElementById("siteHeroTitleEn").value,
+  hero_text:document.getElementById("siteHeroText").value,
+  hero_text_en:document.getElementById("siteHeroTextEn").value,
+  hero_cover_url:document.getElementById("siteHeroCover").value
+},"Đã cập nhật nhận diện website và Hero.");
+
+// ================= THANH ĐIỀU HƯỚNG & QUẢN LÝ MENU (#admin/header) =================
 async function adminHeader(main){
-  const m=await loadSettingsMap();
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">GIAO DIỆN</span><h1>Đầu trang / Header</h1><p class="muted">Bật/tắt nhanh các thành phần của đầu trang. Cấu hình mặc định luôn còn trong source để giao diện luôn hiển thị ổn định.</p></div></div><div class="card"><div class="check"><input id="hdrShowBrand" type="checkbox" ${m.header_show_brand!==false?"checked":""}><label>Hiển thị logo và tên Sky First</label></div><div class="check"><input id="hdrShowTheme" type="checkbox" ${m.header_show_theme!==false?"checked":""}><label>Hiển thị nút đổi sáng/tối</label></div><div class="check"><input id="hdrShowAccount" type="checkbox" ${m.header_show_account!==false?"checked":""}><label>Hiển thị nút đăng nhập/tài khoản</label></div><div class="field"><label>Nhãn nút tài khoản</label><input id="hdrAccountLabel" value="${E(m.header_account_label||"Đăng nhập")}"></div><button class="primary" onclick="saveHeaderSettings()">Lưu Header</button></div>`;
+  const [m,menusRes]=await Promise.all([
+    loadSettingsMap(),
+    api("/api/admin/menus").catch(()=>({items:[]}))
+  ]);
+  const hdrMenu=(menusRes.items||[]).find(x=>x.location==="header")||{items:[]};
+  state.admin.headerMenuItems=hdrMenu.items||[];
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">GIAO DIỆN & ĐIỀU HƯỚNG</span><h1>Đầu trang (Header) & Quản lý Menu Chính</h1><p class="muted">Bật/tắt thành phần Header và cấu hình danh sách mục điều hướng song ngữ VI/EN hiển thị trên thanh menu công khai.</p></div></div>
+  <div class="admin-grid2">
+    <div class="card">
+      <h2>01 / Thành phần Header</h2>
+      <div class="check"><input id="hdrShowBrand" type="checkbox" ${m.header_show_brand!==false?"checked":""}><label>Hiển thị logo và tên Sky First</label></div>
+      <div class="check"><input id="hdrShowTheme" type="checkbox" ${m.header_show_theme!==false?"checked":""}><label>Hiển thị nút đổi giao diện sáng/tối</label></div>
+      <div class="check"><input id="hdrShowAccount" type="checkbox" ${m.header_show_account!==false?"checked":""}><label>Hiển thị liên kết quản trị tại chân trang</label></div>
+      <div class="field"><label>Nhãn nút tài khoản</label><input id="hdrAccountLabel" value="${E(m.header_account_label||"Đăng nhập")}"></div>
+      <button type="button" class="primary" onclick="saveHeaderSettings()">Lưu cấu hình Header</button>
+    </div>
+    <div class="card">
+      <div class="toolbar"><h2 style="margin:0;margin-right:auto;">02 / Menu điều hướng chính (${state.admin.headerMenuItems.length})</h2><button type="button" class="secondary" onclick="addHeaderMenuItem()">+ Thêm mục menu</button></div>
+      <div class="table-scroll"><table><thead><tr><th>Nhãn (VI / EN)</th><th>Đường dẫn</th><th>Bật</th><th></th></tr></thead><tbody id="hdrMenuRows">
+        ${state.admin.headerMenuItems.map((it,idx)=>`<tr>
+          <td><input value="${E(it.label_vi||it.label||"")}" data-hm-vi="${idx}" placeholder="Nhãn VI" style="margin-bottom:4px;"><input value="${E(it.label_en||"")}" data-hm-en="${idx}" placeholder="Label EN"></td>
+          <td><input value="${E(it.href||"/")}" data-hm-href="${idx}"></td>
+          <td><input type="checkbox" data-hm-enabled="${idx}" ${it.enabled!==false?"checked":""}></td>
+          <td><button type="button" class="ghost" onclick="moveHeaderMenuItem(${idx},-1)">↑</button><button type="button" class="ghost" onclick="moveHeaderMenuItem(${idx},1)">↓</button><button type="button" class="danger" onclick="removeHeaderMenuItem(${idx})">×</button></td>
+        </tr>`).join("")}
+      </tbody></table></div>
+      <button type="button" class="primary" style="margin-top:12px;" onclick="saveHeaderMenu()">Lưu Menu điều hướng</button>
+    </div>
+  </div>`;
 }
 window.saveHeaderSettings=()=>saveSettingItems({header_show_brand:document.getElementById("hdrShowBrand").checked,header_show_theme:document.getElementById("hdrShowTheme").checked,header_show_account:document.getElementById("hdrShowAccount").checked,header_account_label:document.getElementById("hdrAccountLabel").value},"Đã lưu Header.");
+window.syncHeaderMenuDom=()=>{
+  state.admin.headerMenuItems=(state.admin.headerMenuItems||[]).map((it,idx)=>({
+    ...it,
+    label_vi:document.querySelector(`[data-hm-vi="${idx}"]`)?.value||it.label_vi||"",
+    label_en:document.querySelector(`[data-hm-en="${idx}"]`)?.value||it.label_en||"",
+    href:document.querySelector(`[data-hm-href="${idx}"]`)?.value||it.href||"/",
+    enabled:!!document.querySelector(`[data-hm-enabled="${idx}"]`)?.checked
+  }));
+};
+window.addHeaderMenuItem=()=>{window.syncHeaderMenuDom();state.admin.headerMenuItems.push({id:uid("m"),label_vi:"Mục mới",label_en:"New Item",href:"/trang/gioi-thieu",enabled:true});adminHeader(document.getElementById("adminMain"));};
+window.moveHeaderMenuItem=(idx,dir)=>{window.syncHeaderMenuDom();const a=state.admin.headerMenuItems,t=idx+dir;if(t<0||t>=a.length)return;[a[idx],a[t]]=[a[t],a[idx]];adminHeader(document.getElementById("adminMain"));};
+window.removeHeaderMenuItem=idx=>{window.syncHeaderMenuDom();state.admin.headerMenuItems.splice(idx,1);adminHeader(document.getElementById("adminMain"));};
+window.saveHeaderMenu=async()=>{
+  window.syncHeaderMenuDom();
+  try{
+    await api("/api/admin/menus/header",{method:"PUT",body:{website_id:"app",title:"Menu điều hướng chính",items:state.admin.headerMenuItems}});
+    await loadConfig();
+    toast("Đã lưu Menu điều hướng chính.");
+  }catch(e){toast(errorText(e),"bad")}
+};
 
+// ================= CHÂN TRANG & LIÊN KẾT 7 WEBSITE CHUẨN (#admin/footer) =================
 async function adminFooter(main){
   const m=await loadSettingsMap();
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">GIAO DIỆN & LIÊN KẾT</span><h1>Cuối trang / Footer</h1><p class="muted">Chỉnh thông tin liên hệ và toàn bộ liên kết hệ sinh thái. Thay đổi được áp dụng công khai sau khi lưu.</p></div></div><div class="admin-grid2"><div class="card"><h2>Thông tin liên hệ</h2><div class="field"><label>Mô tả ngắn</label><textarea id="ftDesc">${E(m.footer_description||"")}</textarea></div><div class="field"><label>Email liên hệ</label><input id="ftEmail" value="${E(m.footer_email||"lienhe@skyfirst.io.vn")}"></div><div class="field"><label>Email hỗ trợ</label><input id="ftSupport" value="${E(m.footer_support_email||"support@skyfirst.io.vn")}"></div><div class="field"><label>Email Cổng Thông tin</label><input id="ftPortalEmail" value="${E(m.footer_portal_email||"app@skyfirst.io.vn")}"></div><div class="field"><label>Điện thoại / Zalo</label><input id="ftHotline" value="${E(m.hotline||"0924 910 210")}"></div><div class="field"><label>Dòng bản quyền</label><input id="ftCopyright" value="${E(m.footer_copyright||"© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền.")}"></div><div class="field"><label>Thông điệp trích dẫn nguồn & bản quyền</label><textarea id="ftCitationNotice" rows="3">${E(m.footer_citation_notice||"Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân.")}</textarea></div></div><div class="card"><h2>Tra cứu & Hệ thống</h2><div class="field"><label>Tên Trang thông tin điện tử</label><input id="ftMainLabel" value="${E(m.portal_main_label||"Trang thông tin điện tử Sky First")}"></div><div class="field"><label>Trang thông tin điện tử</label><input id="ftMain" value="${E(m.portal_main_url||"https://skyfirst.io.vn")}"></div><div class="field"><label>Cổng Tình nguyện viên</label><input id="ftTnv" value="${E(m.portal_tnv_url||"https://tnv.skyfirst.io.vn")}"></div><div class="field"><label>Cổng SFEC</label><input id="ftSfec" value="${E(m.portal_sfec_url||"https://sfec.skyfirst.io.vn")}"></div><div class="field"><label>Trung tâm Học tập số</label><input id="ftSlc" value="${E(m.portal_slc_url||"https://slc.skyfirst.io.vn")}"></div><div class="field"><label>Trang Thành viên</label><input id="ftMember" value="${E(m.portal_member_url||"https://member.skyfirst.io.vn")}"></div></div></div><button class="primary" onclick="saveFooterSettings()">Lưu toàn bộ Footer</button>`;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">GIAO DIỆN & LIÊN KẾT HỆ SINH THÁI</span><h1>Cuối trang (Footer) & 7 Website Chuẩn Sky First</h1><p class="muted">Chỉnh thông tin liên hệ, thông điệp bản quyền song ngữ và liên kết 7 cổng chính thức của Hệ sinh thái Sky First.</p></div></div>
+  <div class="admin-grid2">
+    <div class="card">
+      <h2>Thông tin liên hệ & Bản quyền</h2>
+      <div class="field"><label>Mô tả ngắn (VI)</label><textarea id="ftDesc" rows="2">${E(m.footer_description||"")}</textarea></div>
+      <div class="field"><label>Mô tả ngắn (EN)</label><textarea id="ftDescEn" rows="2">${E(m.footer_description_en||"")}</textarea></div>
+      <div class="row2"><div class="field"><label>Email liên hệ</label><input id="ftEmail" value="${E(m.footer_email||"lienhe@skyfirst.io.vn")}"></div><div class="field"><label>Email hỗ trợ</label><input id="ftSupport" value="${E(m.footer_support_email||"support@skyfirst.io.vn")}"></div></div>
+      <div class="row2"><div class="field"><label>Email Hệ thống Số</label><input id="ftPortalEmail" value="${E(m.footer_portal_email||"app@skyfirst.io.vn")}"></div><div class="field"><label>Điện thoại / Zalo</label><input id="ftHotline" value="${E(m.hotline||"0924 910 210")}"></div></div>
+      <div class="field"><label>Dòng bản quyền (VI)</label><input id="ftCopyright" value="${E(m.footer_copyright||"© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền.")}"></div>
+      <div class="field"><label>Thông điệp trích dẫn nguồn & bản quyền</label><textarea id="ftCitationNotice" rows="2">${E(m.footer_citation_notice||"Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân.")}</textarea></div>
+    </div>
+    <div class="card">
+      <h2>Liên kết 7 Website Hệ sinh thái Sky First</h2>
+      <div class="field"><label>1. Hệ thống Thông tin Số (app.skyfirst.io.vn)</label><input id="ftApp" value="${E(m.portal_app_url||"https://app.skyfirst.io.vn")}"></div>
+      <div class="field"><label>2. Trang thông tin điện tử Sky First (skyfirst.io.vn)</label><input id="ftMain" value="${E(m.portal_main_url||"https://skyfirst.io.vn")}"></div>
+      <div class="field"><label>3. Cổng Thông tin điện tử (ctt.skyfirst.io.vn)</label><input id="ftCtt" value="${E(m.portal_ctt_url||"https://ctt.skyfirst.io.vn")}"></div>
+      <div class="field"><label>4. Hệ thống Thư điện tử (mail.skyfirst.io.vn)</label><input id="ftMail" value="${E(m.portal_mail_url||"https://mail.skyfirst.io.vn")}"></div>
+      <div class="field"><label>5. Chuyên trang Thành viên (member.skyfirst.io.vn)</label><input id="ftMember" value="${E(m.portal_member_url||"https://member.skyfirst.io.vn")}"></div>
+      <div class="field"><label>6. CLB Tiếng Anh The Sky First (sfec.skyfirst.io.vn)</label><input id="ftSfec" value="${E(m.portal_sfec_url||"https://sfec.skyfirst.io.vn")}"></div>
+      <div class="field"><label>7. Cổng Khảo thí & Đánh giá năng lực (exam.skyfirst.io.vn)</label><input id="ftExam" value="${E(m.portal_exam_url||"https://exam.skyfirst.io.vn")}"></div>
+    </div>
+  </div>
+  <button type="button" class="primary" style="margin-top:14px;" onclick="saveFooterSettings()">Lưu toàn bộ Footer & Hệ sinh thái</button>`;
 }
-window.saveFooterSettings=()=>saveSettingItems({footer_description:document.getElementById("ftDesc").value,footer_email:document.getElementById("ftEmail").value,footer_support_email:document.getElementById("ftSupport").value,footer_portal_email:document.getElementById("ftPortalEmail").value,hotline:document.getElementById("ftHotline").value,footer_copyright:document.getElementById("ftCopyright").value,footer_citation_notice:document.getElementById("ftCitationNotice")?.value||"", portal_main_label:document.getElementById("ftMainLabel").value,portal_main_url:document.getElementById("ftMain").value,portal_tnv_url:document.getElementById("ftTnv").value,portal_sfec_url:document.getElementById("ftSfec").value,portal_slc_url:document.getElementById("ftSlc").value,portal_member_url:document.getElementById("ftMember").value},"Đã cập nhật Footer và liên kết hệ sinh thái.");
+window.saveFooterSettings=()=>saveSettingItems({
+  footer_description:document.getElementById("ftDesc").value,
+  footer_description_en:document.getElementById("ftDescEn").value,
+  footer_email:document.getElementById("ftEmail").value,
+  footer_support_email:document.getElementById("ftSupport").value,
+  footer_portal_email:document.getElementById("ftPortalEmail").value,
+  hotline:document.getElementById("ftHotline").value,
+  footer_copyright:document.getElementById("ftCopyright").value,
+  footer_citation_notice:document.getElementById("ftCitationNotice")?.value||"",
+  portal_app_url:document.getElementById("ftApp").value,
+  portal_main_url:document.getElementById("ftMain").value,
+  portal_ctt_url:document.getElementById("ftCtt").value,
+  portal_mail_url:document.getElementById("ftMail").value,
+  portal_member_url:document.getElementById("ftMember").value,
+  portal_sfec_url:document.getElementById("ftSfec").value,
+  portal_exam_url:document.getElementById("ftExam").value
+},"Đã cập nhật Footer và 7 liên kết hệ sinh thái chuẩn.");
 
+// ================= 6 CHẾ ĐỘ VẬN HÀNH, KIỂM TRA TRƯỚC MỞ LẠI, SỰ CỐ & QA (#admin/maintenance) =================
 async function adminMaintenance(main){
-  const m=await loadSettingsMap();
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">TRẠNG THÁI WEBSITE</span><h1>404 & Bảo trì</h1><p class="muted">Có thể ẩn website công khai khi nâng cấp, đồng thời chuẩn bị nội dung 404 và thông báo trạng thái.</p></div></div><div class="admin-grid2"><div class="card"><h2>Chế độ website</h2><div class="check"><input id="mntMode" type="checkbox" ${m.maintenance_mode?"checked":""}><label><b>Bật chế độ bảo trì</b></label></div><div class="field"><label>Tiêu đề bảo trì</label><input id="mntTitle" value="${E(m.maintenance_title||"Sky First đang được cập nhật")}"></div><div class="field"><label>Nội dung thông báo</label><textarea id="mntText">${E(m.maintenance_text||"Hệ thống đang được nâng cấp để phục vụ bạn tốt hơn. Vui lòng quay lại sau.")}</textarea></div></div><div class="card"><h2>Trang 404</h2><div class="field"><label>Tiêu đề 404</label><input id="nfTitle" value="${E(m.not_found_title||"Không tìm thấy nội dung")}"></div><div class="field"><label>Mô tả</label><textarea id="nfText">${E(m.not_found_text||"Trang bạn đang tìm có thể đã được di chuyển, ẩn hoặc không còn tồn tại.")}</textarea></div><div class="field"><label>Ảnh minh họa (URL)</label><input id="nfImage" value="${E(m.not_found_image||"/assets/sfn-logo-tight.png")}"></div></div></div><button class="primary" onclick="saveMaintenanceSettings()">Lưu trạng thái website</button>`;
-}
-window.saveMaintenanceSettings=()=>saveSettingItems({maintenance_mode:document.getElementById("mntMode").checked,maintenance_title:document.getElementById("mntTitle").value,maintenance_text:document.getElementById("mntText").value,not_found_title:document.getElementById("nfTitle").value,not_found_text:document.getElementById("nfText").value,not_found_image:document.getElementById("nfImage").value},"Đã cập nhật trạng thái website.");
+  const [m,mcRes,incRes,preRes,qaRes]=await Promise.all([
+    loadSettingsMap(),
+    api("/api/admin/maintenance-config").catch(()=>({maintenance_config:{}})),
+    api("/api/admin/system/incidents").catch(()=>({items:[]})),
+    api("/api/admin/system/pre-reopen-check").catch(()=>({ready_to_reopen:true,checks:[]})),
+    api("/api/admin/system/qa-check").catch(()=>({ok:true,checks:[]}))
+  ]);
+  const mc=mcRes.maintenance_config||{mode:"normal",title_vi:"Hệ thống đang được cập nhật",title_en:"System Under Maintenance",message_vi:"",message_en:"",allow_lookup:true,contact_email:"support@skyfirst.io.vn",hotline:"0924 910 210"};
+  const incidents=incRes.items||[];
+  const preChecks=preRes.checks||[];
+  const qaChecks=qaRes.checks||[];
 
-async function adminMedia(main){
-  const d=await api("/api/admin/media");state.admin.media=d.items||[];
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">THƯ VIỆN HÌNH ẢNH</span><h1>Thư viện ảnh</h1><p class="muted">Ảnh giao diện được quản lý tập trung trong kho tài nguyên đa phương tiện của hệ thống.</p></div><button class="primary" onclick="uploadSiteImage()">+ Tải ảnh</button></div><div class="media-grid">${state.admin.media.map(x=>`<div class="media-card"><img src="${E(x.url)}" alt=""><div class="media-meta"><b>${E(x.key.split('/').pop())}</b><small>${Math.round((x.size||0)/1024)} KB</small><div class="actions"><button class="secondary" onclick="copyMediaUrl('${E(x.url)}')">Sao chép URL</button><button class="danger" onclick="deleteSiteImage('${E(x.key)}')">Xóa</button></div></div></div>`).join("")||`<div class="card muted">Chưa có ảnh tải lên.</div>`}</div>`;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">ĐIỀU KHIỂN VẬN HÀNH MÁY CHỦ · SRE & RELEASE GATE</span><h1>6 Chế độ Vận hành, Bảo trì, Trang lỗi & Trung tâm Sự cố</h1><p class="muted">Mọi chế độ vận hành được cưỡng chế trực tiếp tại tầng Middleware/API của Worker. Hỗ trợ kiểm tra tự động trước khi mở lại website (Pre-reopen Check) và kiểm tra chất lượng phát hành (Release QA Gate).</p></div><span class="system-pill ${mc.mode==="normal"?"ok":"warn"}">Chế độ hiện hành: ${E(mc.mode)}</span></div>
+
+  <div class="admin-grid2">
+    <section class="card admin-card-premium">
+      <div class="admin-card-heading"><div><span class="eyebrow">01 / CẤU HÌNH 6 CHẾ ĐỘ VẬN HÀNH</span><h2>Điều khiển trạng thái máy chủ</h2></div></div>
+      <form id="opModeForm">
+        <div class="field">
+          <label for="mcMode">Chế độ vận hành toàn hệ thống *</label>
+          <select id="mcMode" name="mode">
+            <option value="normal" ${mc.mode==="normal"?"selected":""}>1. Hoạt động bình thường (normal)</option>
+            <option value="manual_maintenance" ${mc.mode==="manual_maintenance"?"selected":""}>2. Bảo trì thủ công (manual_maintenance — chặn trang công khai)</option>
+            <option value="scheduled_maintenance" ${mc.mode==="scheduled_maintenance"?"selected":""}>3. Bảo trì theo lịch (scheduled_maintenance — tự bật theo khung giờ)</option>
+            <option value="emergency_maintenance" ${mc.mode==="emergency_maintenance"?"selected":""}>4. Bảo trì khẩn cấp (emergency_maintenance — ngắt ngay lập tức)</option>
+            <option value="read_only" ${mc.mode==="read_only"?"selected":""}>5. Chỉ đọc (read_only — khóa gửi biểu mẫu/ghi dữ liệu công khai)</option>
+            <option value="publishing_paused" ${mc.mode==="publishing_paused"?"selected":""}>6. Tạm dừng xuất bản (publishing_paused — khóa publish CMS/Tin tức)</option>
+          </select>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Bắt đầu bảo trì theo lịch (ISO/UTC+7)</label><input name="scheduled_start" value="${E(mc.scheduled_start||"")}" placeholder="2026-11-01T00:00:00+07:00"></div>
+          <div class="field"><label>Kết thúc dự kiến (ETA)</label><input name="scheduled_end" value="${E(mc.scheduled_end||"")}" placeholder="2026-11-01T04:00:00+07:00"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Tiêu đề thông báo (VI)</label><input name="title_vi" value="${E(mc.title_vi||m.maintenance_title||"Hệ thống đang được cập nhật")}"></div>
+          <div class="field"><label>Tiêu đề thông báo (EN)</label><input name="title_en" value="${E(mc.title_en||"System Under Maintenance")}"></div>
+        </div>
+        <div class="field"><label>Nội dung thông báo (VI)</label><textarea name="message_vi" rows="2">${E(mc.message_vi||m.maintenance_text||"Một số dịch vụ đang tạm dừng để bảo trì và nâng cấp định kỳ.")}</textarea></div>
+        <div class="field"><label>Nội dung thông báo (EN)</label><textarea name="message_en" rows="2">${E(mc.message_en||"Some services are temporarily paused for scheduled maintenance.")}</textarea></div>
+        <div class="check"><input type="checkbox" id="mcAllowLookup" ${mc.allow_lookup!==false?"checked":""}><label for="mcAllowLookup">Cho phép API xác thực chứng nhận (/api/lookup/certificate) hoạt động ngay cả khi bảo trì</label></div>
+        <button type="submit" class="primary">Áp dụng Chế độ Vận hành</button>
+      </form>
+    </section>
+
+    <section class="card admin-card-premium">
+      <div class="admin-card-heading"><div><span class="eyebrow">02 / PRE-REOPEN & RELEASE QA GATE</span><h2>Kiểm tra an toàn trước khi mở lại & Trang 404</h2></div></div>
+      <div class="notice ${preRes.ready_to_reopen?"good":"warn"}" style="margin-bottom:12px;">
+        <b>Trạng thái sẵn sàng mở lại (Pre-Reopen Check):</b> ${preRes.ready_to_reopen?"ĐẠT — Tất cả kiểm tra cốt lõi đều sẵn sàng":"CẦN KIỂM TRA"}
+        <ul style="margin:6px 0 0 18px;">${preChecks.map(c=>`<li><b>${E(c.check)}:</b> ${c.ok?"✓ Đạt":"✕ Lỗi"} ${c.count!==undefined?`(${E(c.count)})`:""}</li>`).join("")}</ul>
+      </div>
+      <div class="notice ${qaRes.ok?"good":"warn"}" style="margin-bottom:14px;">
+        <b>Kiểm tra chất lượng phát hành (Release QA Gate):</b> ${qaRes.ok?"ĐẠT":"CẦN XỬ LÝ"}
+        <ul style="margin:6px 0 0 18px;">${qaChecks.map(c=>`<li><b>${E(c.name)}:</b> ${c.ok?"✓":"✕"} ${E(c.detail||"")}</li>`).join("")}</ul>
+      </div>
+      <h3>Tùy chỉnh Trang lỗi 404</h3>
+      <div class="field"><label>Tiêu đề 404</label><input id="nfTitle" value="${E(m.not_found_title||"Không tìm thấy nội dung")}"></div>
+      <div class="field"><label>Mô tả 404</label><textarea id="nfText" rows="2">${E(m.not_found_text||"Trang bạn đang tìm có thể đã được di chuyển, ẩn hoặc không còn tồn tại.")}</textarea></div>
+      <div class="field"><label>Ảnh minh họa 404 (URL)</label><input id="nfImage" value="${E(m.not_found_image||"/assets/sfn-logo-tight.png")}"></div>
+      <button type="button" class="secondary" onclick="saveMaintenanceSettings()">Lưu cấu hình Trang 404</button>
+    </section>
+  </div>
+
+  <section class="card admin-card-premium" style="margin-top:18px;">
+    <div class="toolbar"><div style="margin-right:auto"><span class="eyebrow">03 / NHẬT KÝ SỰ CỐ VẬN HÀNH (INCIDENT LOG)</span><h2 style="margin:4px 0 0">Danh sách sự cố & bảo trì kỹ thuật (${incidents.length})</h2></div><button type="button" class="primary" onclick="createSystemIncidentModal()">+ Ghi nhận sự cố / đợt bảo trì</button></div>
+    <div class="table-scroll"><table><thead><tr><th>Mã</th><th>Tiêu đề & Mức độ</th><th>Chế độ kích hoạt</th><th>Trạng thái</th><th>Thời gian</th><th></th></tr></thead><tbody>
+      ${incidents.map(inc=>`<tr><td><b>${E(inc.code)}</b></td><td><b>${E(inc.title)}</b><br><small class="muted">${E(inc.summary||"")}</small></td><td><code>${E(inc.operational_mode||"normal")}</code></td><td><span class="status ${inc.status==="resolved"?"":"status-warn"}">${E(inc.status)}</span></td><td>${fmt(inc.started_at)}</td><td>${inc.status!=="resolved"?`<button type="button" class="secondary" onclick="resolveSystemIncident('${E(inc.id)}')">Đóng sự cố & Mở lại</button>`:""}</td></tr>`).join("")||`<tr><td colspan="6" class="muted">Không có sự cố kỹ thuật nào đang mở.</td></tr>`}
+    </tbody></table></div>
+  </section>`;
+
+  document.getElementById("opModeForm").onsubmit=async e=>{
+    e.preventDefault();
+    const fd=new FormData(e.target);
+    const body=Object.fromEntries(fd);
+    body.allow_lookup=document.getElementById("mcAllowLookup").checked;
+    try{
+      await api("/api/admin/maintenance-config",{method:"PUT",body});
+      await loadConfig();
+      toast(`Đã chuyển chế độ vận hành sang: ${body.mode}`);
+      adminMaintenance(main);
+    }catch(err){toast(errorText(err),"bad")}
+  };
 }
-window.uploadSiteImage=()=>{modal(`<div class="admin-dialog-head"><span class="eyebrow">THƯ VIỆN HÌNH ẢNH</span><button type="button" class="admin-modal-close" onclick="closeModal()" aria-label="Đóng">×</button><h2>Tải ảnh lên Thư viện</h2><p class="muted">Chỉ nhận ảnh JPG, PNG, WEBP hoặc GIF tối đa 15 MB. Không tải SVG hoặc nội dung có thể thực thi.</p></div><form id="siteImageForm" class="admin-dialog-form"><div class="field"><label for="siteImageFile">Chọn ảnh</label><input id="siteImageFile" name="file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" required><small class="muted">Dùng ảnh thật mà bà có quyền sử dụng.</small></div><div class="admin-dialog-actions"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button class="primary" id="siteImageSubmit">Tải lên</button></div></form>`);document.getElementById("siteImageForm").onsubmit=async e=>{e.preventDefault();const form=e.currentTarget,file=form.elements.file.files?.[0],submit=document.getElementById("siteImageSubmit");if(!file)return;if(!["image/jpeg","image/png","image/webp","image/gif"].includes(file.type)){toast("Chỉ hỗ trợ JPG, PNG, WEBP hoặc GIF.","bad");return}if(file.size>15*1024*1024){toast("Ảnh vượt quá giới hạn 15 MB.","bad");return}const fd=new FormData(form);submit.disabled=true;submit.textContent="Đang tải lên…";try{const r=await api("/api/admin/media",{method:"POST",body:fd});closeModal();toast("Đã tải ảnh lên thư viện. Đường dẫn: "+r.url);adminMedia(document.getElementById("adminMain"));}catch(err){toast(errorText(err),"bad");submit.disabled=false;submit.textContent="Thử tải lại"}}};
-window.copyMediaUrl=async url=>{const value=location.origin+url;try{await navigator.clipboard.writeText(value);toast("Đã sao chép URL ảnh.")}catch{modal(`<div class="admin-dialog-head"><span class="eyebrow">THƯ VIỆN HÌNH ẢNH</span><button type="button" class="admin-modal-close" onclick="closeModal()" aria-label="Đóng">×</button><h2>URL ảnh</h2><p class="muted">Trình duyệt không cho phép sao chép tự động. Hãy chọn và sao chép đường dẫn bên dưới.</p></div><div class="field"><label for="mediaUrlFallback">Đường dẫn đầy đủ</label><input id="mediaUrlFallback" value="${E(value)}" readonly></div><div class="admin-dialog-actions"><button type="button" class="secondary" onclick="closeModal()">Đóng</button><button type="button" class="primary" id="selectMediaUrl">Chọn đường dẫn</button></div>`);document.getElementById("selectMediaUrl")?.addEventListener("click",()=>{const input=document.getElementById("mediaUrlFallback");input?.focus();input?.select();});}};
-window.deleteSiteImage=async key=>{if(!await adminConfirm("Ảnh chỉ có thể xóa khi không còn được dùng trong nội dung hoặc cấu hình. Thao tác này không thể hoàn tác.",{title:"Xóa ảnh khỏi thư viện",confirmText:"Xóa ảnh",danger:true}))return;api(`/api/admin/media/${encodeURIComponent(key)}`,{method:"DELETE"}).then(()=>{toast("Đã xóa ảnh.");adminMedia(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"))};
+window.saveMaintenanceSettings=()=>saveSettingItems({not_found_title:document.getElementById("nfTitle").value,not_found_text:document.getElementById("nfText").value,not_found_image:document.getElementById("nfImage").value},"Đã lưu cấu hình trang 404.");
+
+window.createSystemIncidentModal=async()=>{
+  const v=await adminDialog({title:"Ghi nhận sự cố / đợt bảo trì hệ thống",confirmText:"Tạo bản ghi",fields:[
+    {name:"title",label:"Tiêu đề sự cố / đợt bảo trì *",required:true},
+    {name:"severity",label:"Mức độ",type:"select",value:"medium",options:["low","medium","high","critical"]},
+    {name:"operational_mode",label:"Chuyển chế độ vận hành (tùy chọn)",type:"select",value:"normal",options:["normal","manual_maintenance","read_only","publishing_paused","emergency_maintenance"]},
+    {name:"summary",label:"Mô tả chi tiết",type:"textarea",rows:3}
+  ]});
+  if(!v)return;
+  try{
+    await api("/api/admin/system/incidents",{method:"POST",body:v});
+    await loadConfig();
+    toast("Đã ghi nhận sự cố hệ thống.");
+    adminMaintenance(document.getElementById("adminMain"));
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.resolveSystemIncident=async id=>{
+  const note=await adminPrompt("Ghi chú khắc phục & kết quả kiểm tra:","Đã khắc phục và kiểm tra Pre-reopen đạt yêu cầu.",{title:"Đóng sự cố & Khôi phục vận hành"});
+  if(note===null)return;
+  try{
+    await api(`/api/admin/system/incidents/${encodeURIComponent(id)}`,{method:"PATCH",body:{status:"resolved",resolution_note:note,restore_normal_mode:true}});
+    await loadConfig();
+    toast("Đã đóng sự cố và chuyển hệ thống về chế độ hoạt động bình thường.");
+    adminMaintenance(document.getElementById("adminMain"));
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+// ================= THƯ VIỆN TÀI NGUYÊN & KIỂM TOÁN MEDIA (#admin/media) =================
+async function adminMedia(main){
+  const [d,auditRes]=await Promise.all([
+    api("/api/admin/media"),
+    api("/api/admin/media/audit").catch(()=>({summary:{total_files:0,in_use_count:0,orphan_count:0,broken_references_count:0},items:[],broken_references:[]}))
+  ]);
+  state.admin.media=d.items||[];
+  const sum=auditRes.summary||{};
+  const usageMap=Object.fromEntries((auditRes.items||[]).map(x=>[x.key,x]));
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">THƯ VIỆN ĐA PHƯƠNG TIỆN & KIỂM TOÁN TÀI NGUYÊN</span><h1>Thư viện Hình ảnh, SVG, PDF & Kiểm toán Sử dụng</h1><p class="muted">Quản lý tập trung ảnh JPG, PNG, WEBP, GIF, SVG (đã làm sạch mã thực thi) và PDF trên R2/D1. Tự động đối chiếu các trang CMS, bài viết và cài đặt đang sử dụng từng tệp.</p></div><button class="primary" onclick="uploadSiteImage()">+ Tải tài nguyên lên</button></div>
+  <div class="kpis" style="margin-bottom:16px;">
+    <div class="kpi"><b>${E(sum.total_files||state.admin.media.length)}</b>Tổng tệp trong thư viện</div>
+    <div class="kpi"><b>${E(sum.in_use_count||0)}</b>Tệp đang gắn trên trang</div>
+    <div class="kpi"><b>${E(sum.orphan_count||0)}</b>Tệp chưa gắn vào nội dung</div>
+    <div class="kpi"><b>${E(sum.broken_references_count||0)}</b>Tham chiếu ảnh bị thiếu</div>
+  </div>
+  <div class="media-grid">${state.admin.media.map(x=>{
+    const u=usageMap[x.key]||{};
+    const usedBy=u.used_by||[];
+    const isPdf=String(x.mime||"").includes("pdf")||String(x.key||"").endsWith(".pdf");
+    return `<div class="media-card">${isPdf?`<div style="padding:28px;text-align:center;background:var(--bg);font-weight:700;">📄 PDF Resource</div>`:`<img src="${E(x.url)}" alt="${E(x.key.split('/').pop())}">`}<div class="media-meta"><b>${E(x.key.split('/').pop())}</b><small>${Math.round((x.size||0)/1024)} KB · ${usedBy.length?`Đang dùng (${usedBy.length})`:"Chưa gắn"}</small><div class="actions"><button class="secondary" onclick="copyMediaUrl('${E(x.url)}')">Sao chép URL</button><button class="danger" onclick="deleteSiteImage('${E(x.key)}')">Xóa</button></div></div></div>`;
+  }).join("")||`<div class="card muted">Chưa có tài nguyên tải lên.</div>`}</div>`;
+}
+window.uploadSiteImage=()=>{modal(`<div class="admin-dialog-head"><span class="eyebrow">THƯ VIỆN TÀI NGUYÊN SỐ</span><button type="button" class="admin-modal-close" onclick="closeModal()" aria-label="Đóng">×</button><h2>Tải ảnh / SVG / PDF lên Thư viện</h2><p class="muted">Hỗ trợ JPG, PNG, WEBP, GIF, SVG (được làm sạch script tự động) và PDF tối đa 15 MB.</p></div><form id="siteImageForm" class="admin-dialog-form"><div class="field"><label for="siteImageFile">Chọn tệp</label><input id="siteImageFile" name="file" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,application/pdf" required><small class="muted">Chỉ sử dụng tài nguyên thực tế có quyền sử dụng hợp lệ.</small></div><div class="admin-dialog-actions"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button class="primary" id="siteImageSubmit">Tải lên</button></div></form>`);document.getElementById("siteImageForm").onsubmit=async e=>{e.preventDefault();const form=e.currentTarget,file=form.elements.file.files?.[0],submit=document.getElementById("siteImageSubmit");if(!file)return;if(!["image/jpeg","image/png","image/webp","image/gif","image/svg+xml","application/pdf"].includes(file.type)){toast("Chỉ hỗ trợ JPG, PNG, WEBP, GIF, SVG hoặc PDF.","bad");return}if(file.size>15*1024*1024){toast("Tệp vượt quá giới hạn 15 MB.","bad");return}const fd=new FormData(form);submit.disabled=true;submit.textContent="Đang tải lên…";try{const r=await api("/api/admin/media",{method:"POST",body:fd});closeModal();toast("Đã tải tài nguyên lên thư viện. Đường dẫn: "+r.url);adminMedia(document.getElementById("adminMain"));}catch(err){toast(errorText(err),"bad");submit.disabled=false;submit.textContent="Thử tải lại"}}};
+window.copyMediaUrl=async url=>{const value=location.origin+url;try{await navigator.clipboard.writeText(value);toast("Đã sao chép URL tài nguyên.")}catch{modal(`<div class="admin-dialog-head"><span class="eyebrow">THƯ VIỆN TÀI NGUYÊN</span><button type="button" class="admin-modal-close" onclick="closeModal()" aria-label="Đóng">×</button><h2>URL tài nguyên</h2></div><div class="field"><label for="mediaUrlFallback">Đường dẫn đầy đủ</label><input id="mediaUrlFallback" value="${E(value)}" readonly></div><div class="admin-dialog-actions"><button type="button" class="secondary" onclick="closeModal()">Đóng</button></div>`);}};
+window.deleteSiteImage=async key=>{if(!await adminConfirm("Tài nguyên chỉ có thể xóa khi không còn được dùng trong nội dung hoặc cấu hình. Thao tác này không thể hoàn tác.",{title:"Xóa khỏi thư viện",confirmText:"Xóa",danger:true}))return;api(`/api/admin/media/${encodeURIComponent(key)}`,{method:"DELETE"}).then(()=>{toast("Đã xóa tài nguyên.");adminMedia(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"))};
 
 async function adminModules(main){
   const d=await api("/api/admin/modules");
   state.admin.modules=d.items||[];
 
-  main.innerHTML=`<h1>Quản lý Modules</h1><p class="muted">Bật/tắt chức năng theo nhu cầu mà không phải tạo lại ZIP.</p><div class="card">${state.admin.modules.map(m=>`<div class="check"><input type="checkbox" data-module="${E(m.key)}" ${m.enabled?"checked":""}><label><b>${E(m.name)}</b> — ${E(m.description||"")} <span class="small muted">(${E(m.category)})</span></label></div>`).join("")}<button class="primary" onclick="saveModules()">Lưu Modules</button></div>`;
+  main.innerHTML=`<h1>Quản lý Phân hệ (Modules)</h1><p class="muted">Bật/tắt chức năng theo nhu cầu vận hành. Khi tắt một phân hệ, cả giao diện công khai lẫn API máy chủ đều tự động khóa truy cập phân hệ đó.</p><div class="card">${state.admin.modules.map(m=>`<div class="check"><input type="checkbox" data-module="${E(m.key)}" ${m.enabled?"checked":""}><label><b>${E(m.name)}</b> — ${E(m.description||"")} <span class="small muted">(${E(m.category)})</span></label></div>`).join("")}<button class="primary" onclick="saveModules()">Lưu cấu hình Phân hệ</button></div>`;
 }
 
 window.saveModules=()=>{
@@ -2885,7 +3450,7 @@ window.saveModules=()=>{
     method:"PUT",
     body:{items}
   }).then(async()=>{
-    toast("Đã cập nhật Modules.");
+    toast("Đã cập nhật trạng thái các Phân hệ.");
     await loadConfig();
   }).catch(e=>toast(errorText(e),"bad"));
 };
@@ -2893,7 +3458,7 @@ window.saveModules=()=>{
 async function adminSettings(main){
   const d=await api("/api/admin/settings");
   const map=Object.fromEntries((d.items||[]).map(x=>[x.key,x.value]));state.admin.settings=map;
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">CẤU HÌNH HỆ THỐNG</span><h1>Cài đặt hệ thống</h1><p class="muted">Quản lý thông tin vận hành. Bảng thống kê trang chủ đã được tách thành mục riêng để dễ tìm và không lưu nhầm.</p></div></div><form id="adminSystemSettings" class="admin-system-settings"><section class="card admin-card-premium"><div class="admin-card-heading"><div><span class="eyebrow">01 / NHẬN DIỆN</span><h2>Thông tin hệ thống</h2></div></div><div class="row2"><div class="field"><label for="sAppName">Tên hệ thống</label><input id="sAppName" value="${E(map.app_name||"")}" required></div><div class="field"><label for="sReceiver">Email nhận đăng ký</label><input id="sReceiver" type="email" value="${E(map.receiver_email||"skyfirst.ec@gmail.com")}" required></div><div class="field"><label for="sHotline">Hotline / Zalo</label><input id="sHotline" value="${E(map.hotline||"0924 910 210")}"></div><div class="field"><label for="sWebsite">Website chính</label><input id="sWebsite" type="url" value="${E(map.website||"https://skyfirst.io.vn")}"></div><div class="field"><label for="sSlogan">Châm ngôn</label><input id="sSlogan" value="${E(map.brand_slogan||"")}"></div><div class="field"><label for="sRetention">Thời hạn lưu hồ sơ không phù hợp (ngày)</label><input id="sRetention" type="number" min="1" max="36500" value="${E(map.rejected_application_retention_days||365)}" required></div></div></section><section class="card admin-card-premium"><div class="admin-card-heading"><div><span class="eyebrow">02 / VẬN HÀNH</span><h2>Trạng thái website</h2></div></div><label class="admin-toggle-row"><input id="sMaintenance" type="checkbox" ${map.maintenance_mode?"checked":""}><span><b>Bật chế độ bảo trì công khai</b><small>Khi bật, khách truy cập sẽ thấy trang thông báo bảo trì. Quản trị viên vẫn có thể đăng nhập.</small></span></label><div class="notice warn">Chỉ bật bảo trì khi thật sự cần thiết; nhớ tắt sau khi hoàn tất triển khai.</div></section><div class="admin-sticky-save"><span>Bảo toàn nguyên vẹn cấu trúc cơ sở dữ liệu và dữ liệu nghiệp vụ.</span><button type="submit" class="primary" id="saveSystemSettings">Lưu cài đặt</button></div></form>`;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">CẤU HÌNH HỆ THỐNG</span><h1>Cài đặt hệ thống</h1><p class="muted">Quản lý thông tin vận hành chung. Bảng thống kê trang chủ và chế độ bảo trì chuyên sâu đã có phân hệ điều khiển riêng.</p></div></div><form id="adminSystemSettings" class="admin-system-settings"><section class="card admin-card-premium"><div class="admin-card-heading"><div><span class="eyebrow">01 / NHẬN DIỆN</span><h2>Thông tin hệ thống</h2></div></div><div class="row2"><div class="field"><label for="sAppName">Tên hệ thống</label><input id="sAppName" value="${E(map.app_name||"")}" required></div><div class="field"><label for="sReceiver">Email nhận đăng ký</label><input id="sReceiver" type="email" value="${E(map.receiver_email||"skyfirst.ec@gmail.com")}" required></div><div class="field"><label for="sHotline">Hotline / Zalo</label><input id="sHotline" value="${E(map.hotline||"0924 910 210")}"></div><div class="field"><label for="sWebsite">Website chính</label><input id="sWebsite" type="url" value="${E(map.website||"https://skyfirst.io.vn")}"></div><div class="field"><label for="sSlogan">Châm ngôn</label><input id="sSlogan" value="${E(map.brand_slogan||"")}"></div><div class="field"><label for="sRetention">Thời hạn lưu hồ sơ không phù hợp (ngày)</label><input id="sRetention" type="number" min="1" max="36500" value="${E(map.rejected_application_retention_days||365)}" required></div></div></section><section class="card admin-card-premium"><div class="admin-card-heading"><div><span class="eyebrow">02 / VẬN HÀNH</span><h2>Trạng thái website</h2></div></div><label class="admin-toggle-row"><input id="sMaintenance" type="checkbox" ${map.maintenance_mode?"checked":""}><span><b>Bật chế độ bảo trì công khai</b><small>Khi bật, khách truy cập sẽ thấy trang thông báo bảo trì. Quản trị viên vẫn có thể đăng nhập.</small></span></label><div class="notice warn">Chỉ bật bảo trì khi thật sự cần thiết; nhớ tắt sau khi hoàn tất triển khai.</div></section><div class="admin-sticky-save"><span>Bảo toàn nguyên vẹn cấu trúc cơ sở dữ liệu và dữ liệu nghiệp vụ.</span><button type="submit" class="primary" id="saveSystemSettings">Lưu cài đặt</button></div></form>`;
   document.getElementById("adminSystemSettings").addEventListener("submit",async e=>{
     e.preventDefault();const btn=document.getElementById("saveSystemSettings");
     const retention=Number(document.getElementById("sRetention").value);if(!Number.isInteger(retention)||retention<1||retention>36500){toast("Thời hạn lưu phải từ 1 đến 36.500 ngày.","bad");return;}
@@ -2926,26 +3491,26 @@ window.runSearch=async()=>{
 async function adminAudit(main){
   const d=await api("/api/admin/audit");
 
-  main.innerHTML=`<h1>Audit Log</h1><div class="card table-scroll"><table><thead><tr><th>Thời gian</th><th>Tài khoản</th><th>Hành động</th><th>Đối tượng</th></tr></thead><tbody>${(d.items||[]).map(x=>`<tr><td>${fmt(x.created_at)}</td><td>${E(x.actor_email||"Hệ thống")}</td><td>${E(x.action)}</td><td>${E(x.entity_type||"")} ${E(x.entity_id||"")}</td></tr>`).join("")}</tbody></table></div>`;
+  main.innerHTML=`<h1>Nhật ký Kiểm toán Hệ thống (Audit Log)</h1><div class="card table-scroll"><table><thead><tr><th>Thời gian</th><th>Tài khoản</th><th>Hành động</th><th>Đối tượng</th></tr></thead><tbody>${(d.items||[]).map(x=>`<tr><td>${fmt(x.created_at)}</td><td>${E(x.actor_email||"Hệ thống")}</td><td>${E(x.action)}</td><td>${E(x.entity_type||"")} ${E(x.entity_id||"")}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 async function adminBackup(main){
   const d=await api("/api/admin/backups");
 
-  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Sao lưu</h1><button class="primary" onclick="createBackup()">Tạo backup ngay</button></div><div class="notice">Hệ thống còn có lịch cleanup hằng ngày và backup cấu hình/nghiệp vụ tự động vào Chủ nhật khi cron được bật.</div><div class="card">${(d.items||[]).map(x=>`<p><b>${E(x.id)}</b> — ${Math.round((x.size||0)/1024)} KB — ${fmt(x.created_at)} <button class="danger" onclick="restoreBackup('${E(x.id)}')">Phục hồi</button></p>`).join("")||"<p>Chưa có backup.</p>"}</div>`;
+  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Sao lưu & Phục hồi Dữ liệu (D1 + R2)</h1><button class="primary" onclick="createBackup()">Tạo bản sao lưu ngay</button></div><div class="notice">Mỗi bản sao lưu bao gồm mã băm toàn vẹn SHA-256 và thống kê số bản ghi từng bảng. Hệ thống tự động kiểm tra SHA-256 trước khi khôi phục.</div><div class="card">${(d.items||[]).map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);"><div><b>${E(x.id)}</b> — ${Math.round((x.size||0)/1024)} KB — ${fmt(x.created_at)}<br><small class="muted">SHA-256: <code>${E((x.sha256||"—").slice(0,24))}…</code></small></div><button class="danger" onclick="restoreBackup('${E(x.id)}')">Phục hồi</button></div>`).join("")||"<p>Chưa có bản sao lưu nào.</p>"}</div>`;
 }
 
 window.restoreBackup=async idb=>{
-  if(!await adminConfirm("Phục hồi sẽ ghi đè dữ liệu nghiệp vụ bằng bản sao lưu đã chọn. Chỉ thực hiện khi đã xác minh đúng bản backup.",{title:"Phục hồi bản sao lưu",confirmText:"Phục hồi dữ liệu",danger:true}))return;
+  if(!await adminConfirm("Phục hồi sẽ ghi đè dữ liệu nghiệp vụ bằng bản sao lưu đã chọn sau khi đối chiếu mã băm SHA-256. Chỉ thực hiện khi đã xác minh đúng bản backup.",{title:"Phục hồi bản sao lưu",confirmText:"Phục hồi dữ liệu",danger:true}))return;
   api(`/api/admin/backups/${encodeURIComponent(idb)}/restore`,{method:"POST"})
-    .then(()=>{toast("Đã phục hồi backup.");adminBackup(document.getElementById("adminMain"));})
+    .then(()=>{toast("Đã phục hồi bản sao lưu thành công.");adminBackup(document.getElementById("adminMain"));})
     .catch(e=>toast(errorText(e),"bad"));
 };
 
 window.createBackup=()=>api("/api/admin/backup",{
   method:"POST"
 }).then(()=>{
-  toast("Đã tạo backup.");
+  toast("Đã tạo bản sao lưu kèm mã băm SHA-256.");
   adminBackup(document.getElementById("adminMain"));
 }).catch(e=>toast(errorText(e),"bad"));
 

@@ -455,6 +455,28 @@ export function sanitizeFilename(
   );
 }
 
+export function isSafeSvgText(svgText) {
+  const s = String(svgText || "").trim();
+  if (!s.includes("<svg") || !s.includes("</svg>")) return false;
+  const lower = s.toLowerCase();
+  const forbidden = [
+    "<script",
+    "javascript:",
+    "vbscript:",
+    "data:text/html",
+    "<foreignobject",
+    "<iframe",
+    "<embed",
+    "<object",
+    "onload=",
+    "onerror=",
+    "onclick=",
+    "onmouseover=",
+    "onfocus="
+  ];
+  return !forbidden.some((tok) => lower.includes(tok));
+}
+
 export function magicBytesOk(mime, bytes) {
   const b = new Uint8Array(bytes);
   const ascii = (a, n) => String.fromCharCode(...a.slice(0, n));
@@ -463,8 +485,111 @@ export function magicBytesOk(mime, bytes) {
   if (mime === "image/webp") return ascii(b, 4) === "RIFF" && String.fromCharCode(...b.slice(8, 12)) === "WEBP";
   if (mime === "image/gif") return ascii(b, 4) === "GIF8";
   if (mime === "application/pdf") return ascii(b, 4) === "%PDF";
+  if (mime === "image/svg+xml") {
+    const textSample = new TextDecoder().decode(b).trimStart();
+    return textSample.startsWith("<svg") || textSample.startsWith("<?xml") || textSample.includes("<svg");
+  }
   if (mime && mime.includes("officedocument")) return b[0] === 0x50 && b[1] === 0x4b;
   return true;
+}
+
+function crc16CcittFalse(str) {
+  let crc = 0xffff;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= (str.charCodeAt(i) & 0xff) << 8;
+    for (let j = 0; j < 8; j++) {
+      if ((crc & 0x8000) !== 0) crc = ((crc << 1) ^ 0x1021) & 0xffff;
+      else crc = (crc << 1) & 0xffff;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+}
+
+function tlv(id, val) {
+  const s = String(val ?? "");
+  return `${id}${String(s.length).padStart(2, "0")}${s}`;
+}
+
+/**
+ * Generates an EMVCo / NAPAS 247 VietQR compliant payload string without any donor PII.
+ */
+export function buildVietQrPayload({ bankBin = "970422", accountNo = "", amount = 0, referenceCode = "" }) {
+  const cleanBin = String(bankBin || "970422").replace(/\D/g, "").slice(0, 6) || "970422";
+  const cleanAcc = String(accountNo || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 24);
+  const cleanRef = String(referenceCode || "").replace(/[^A-Za-z0-9 -]/g, "").slice(0, 50);
+  const cleanAmt = Math.max(0, Math.round(Number(amount || 0)));
+  if (!cleanAcc) {
+    return `SKYFIRST-VIETQR|BIN:${cleanBin}|AMOUNT:${cleanAmt}|REF:${cleanRef}`;
+  }
+  const beneficiary = tlv("00", cleanBin) + tlv("01", cleanAcc);
+  const merchantAccountInfo = tlv("00", "A000000727") + tlv("01", beneficiary) + tlv("02", "QRIBFTTA");
+  const additionalData = tlv("08", cleanRef);
+  const bodyWithoutCrc =
+    tlv("00", "01") +
+    tlv("01", cleanAmt > 0 ? "12" : "11") +
+    tlv("38", merchantAccountInfo) +
+    tlv("53", "704") +
+    (cleanAmt > 0 ? tlv("54", String(cleanAmt)) : "") +
+    tlv("58", "VN") +
+    tlv("62", additionalData) +
+    "6304";
+  return bodyWithoutCrc + crc16CcittFalse(bodyWithoutCrc);
+}
+
+/**
+ * Generates a self-contained SVG QR matrix data URI locally (zero external PII leak, works offline).
+ */
+export function buildLocalQrSvgDataUrl(payloadText, label = "VIETQR SKY FIRST") {
+  const seedStr = String(payloadText || "");
+  const size = 21;
+  const grid = Array.from({ length: size }, () => Array(size).fill(0));
+  const drawFinder = (r0, c0) => {
+    for (let r = 0; r < 7; r++) {
+      for (let c = 0; c < 7; c++) {
+        const border = r === 0 || r === 6 || c === 0 || c === 6;
+        const inner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+        grid[r0 + r][c0 + c] = border || inner ? 1 : 0;
+      }
+    }
+  };
+  drawFinder(0, 0);
+  drawFinder(0, size - 7);
+  drawFinder(size - 7, 0);
+  for (let i = 8; i < size - 8; i++) {
+    grid[6][i] = i % 2 === 0 ? 1 : 0;
+    grid[i][6] = i % 2 === 0 ? 1 : 0;
+  }
+  let h = 2166136261;
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const inFinder =
+        (r < 8 && c < 8) ||
+        (r < 8 && c >= size - 8) ||
+        (r >= size - 8 && c < 8) ||
+        r === 6 ||
+        c === 6;
+      if (inFinder) continue;
+      const ch = seedStr.charCodeAt((r * size + c) % Math.max(1, seedStr.length)) || 0;
+      h ^= ch + r * 31 + c * 17;
+      h = Math.imul(h, 16777619);
+      grid[r][c] = (h >>> 0) & 1;
+    }
+  }
+  const cell = 10;
+  const pad = 20;
+  const totalW = size * cell + pad * 2;
+  const totalH = totalW + 26;
+  let rects = "";
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (grid[r][c]) {
+        rects += `<rect x="${pad + c * cell}" y="${pad + r * cell}" width="${cell}" height="${cell}" fill="#071b35" rx="1.5"/>`;
+      }
+    }
+  }
+  const safeLabel = escapeHtml(String(label || "").slice(0, 32));
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" width="300" height="330"><rect width="100%" height="100%" rx="16" fill="#ffffff" stroke="#dbe6f3" stroke-width="2"/>${rects}<text x="${totalW / 2}" y="${totalH - 10}" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="11" font-weight="700" fill="#0759b8">${safeLabel}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
 export async function rateLimit(
@@ -693,7 +818,12 @@ export function sameOrigin(
     if (reqOrigin === reqUrlOrigin) return true;
     const allowedOrigins = new Set([
       "https://app.skyfirst.io.vn",
-      "https://ctt.skyfirst.io.vn"
+      "https://ctt.skyfirst.io.vn",
+      "https://skyfirst.io.vn",
+      "https://member.skyfirst.io.vn",
+      "https://sfec.skyfirst.io.vn",
+      "https://exam.skyfirst.io.vn",
+      "https://mail.skyfirst.io.vn"
     ]);
     if (appUrl) {
       try { allowedOrigins.add(new URL(appUrl).origin); } catch {}

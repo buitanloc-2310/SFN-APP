@@ -1,10 +1,12 @@
 import {
   json, readJson, uid, randomToken, sha256, ageFromDob, flattenFields, sanitizeFilename,
-  requestIp, ipHash, rateLimit, escapeHtml, safeEq, magicBytesOk, conditionOk
+  requestIp, ipHash, rateLimit, escapeHtml, safeEq, magicBytesOk, conditionOk,
+  buildVietQrPayload, buildLocalQrSvgDataUrl
 } from "./utils.js";
 import {getAuthUser} from "./auth.js";
 import {sendTemplatedEmail, answersToEmail} from "./email.js";
-import {recalculateCampaignTotals} from "./admin.js";
+import {recalculateCampaignTotals, runScheduledCmsPublishing} from "./admin.js";
+import {resolveOperationalState} from "./index.js";
 
 export const LOOKUP_DATA_POLICY_VI =
   "Hệ thống chỉ cung cấp các thông tin được phép công khai theo chính sách dữ liệu của Sky First Network. Thông tin cá nhân và dữ liệu nội bộ không thuộc phạm vi công khai phải được bảo vệ, không trả về trong phản hồi tra cứu hoặc hiển thị trên giao diện người dùng.";
@@ -392,6 +394,50 @@ async function lookupCredentialsByContact(env, {email = "", phone = ""}) {
   return publicItems;
 }
 
+async function resolveSharedBlocksInList(env, blocks = [], lang = "vi") {
+  if (!Array.isArray(blocks) || !blocks.length) return [];
+  if (!(await tableExists(env, "cms_shared_blocks"))) return blocks;
+  let sharedMap = null;
+  const out = [];
+  for (const b of blocks) {
+    if (b && b.type === "shared_block" && (b.sharedKey || b.sharedId)) {
+      if (!sharedMap) {
+        sharedMap = new Map();
+        try {
+          const rs = await env.DB.prepare("SELECT * FROM cms_shared_blocks WHERE status='active'").all();
+          for (const sb of rs.results || []) {
+            sharedMap.set(sb.key, sb);
+            sharedMap.set(sb.id, sb);
+          }
+        } catch {}
+      }
+      const target = sharedMap.get(b.sharedKey || b.sharedId);
+      if (target) {
+        let cfg = {};
+        try { cfg = JSON.parse(target.config_json || "{}"); } catch {}
+        out.push({
+          ...cfg,
+          id: b.id || target.id,
+          type: target.block_type || cfg.type || "callout",
+          title: lang === "en" && cfg.title_en ? cfg.title_en : (cfg.title || target.name),
+          text: lang === "en" && cfg.text_en ? cfg.text_en : (cfg.text || ""),
+          ctaText: lang === "en" && cfg.ctaText_en ? cfg.ctaText_en : (cfg.ctaText || ""),
+          _shared_key: target.key,
+          resolved_shared_block: {
+            key: target.key,
+            name: target.name,
+            title: lang === "en" && cfg.title_en ? cfg.title_en : (cfg.title || target.name),
+            text: lang === "en" && cfg.text_en ? cfg.text_en : (cfg.text || "")
+          }
+        });
+        continue;
+      }
+    }
+    out.push(b);
+  }
+  return out;
+}
+
 export async function publicRoute(request,env,url,ctx){
   const p=url.pathname;
 
@@ -487,16 +533,19 @@ export async function publicRoute(request,env,url,ctx){
     }
 
     // Check duplicate provider_tx_id (idempotent retry protection)
-    const existingTx=await env.DB.prepare("SELECT id,tx_code,campaign_id,verification_status,payment_state,amount FROM sponsorship_transactions WHERE provider_tx_id=? LIMIT 1").bind(providerTxId).first();
-    if(existingTx){
-      return json({
-        ok:true,
-        duplicate:true,
-        tx_id:existingTx.id,
-        tx_code:existingTx.tx_code,
-        verification_status:existingTx.verification_status,
-        payment_state:existingTx.payment_state
-      },200,{"Cache-Control":"no-store"});
+    const txCols = await tableColumns(env, "sponsorship_transactions");
+    if (txCols.has("provider_tx_id")) {
+      const existingTx=await env.DB.prepare("SELECT id,tx_code,campaign_id,verification_status,payment_state,amount FROM sponsorship_transactions WHERE provider_tx_id=? LIMIT 1").bind(providerTxId).first();
+      if(existingTx){
+        return json({
+          ok:true,
+          duplicate:true,
+          tx_id:existingTx.id,
+          tx_code:existingTx.tx_code,
+          verification_status:existingTx.verification_status,
+          payment_state:existingTx.payment_state
+        },200,{"Cache-Control":"no-store"});
+      }
     }
 
     // Resolve intent & campaign
@@ -512,7 +561,6 @@ export async function publicRoute(request,env,url,ctx){
       camp=await env.DB.prepare("SELECT * FROM sponsorship_campaigns WHERE code=? OR id=? LIMIT 1").bind(campaignCode,campaignCode).first();
     }
     if(!camp && refCode){
-      // Attempt matching campaign prefix in reference code (e.g. SFN-TT-2026-01-XXXX)
       const allCamps=await env.DB.prepare("SELECT * FROM sponsorship_campaigns").all();
       camp=(allCamps.results||[]).find(c=>refCode.startsWith(c.code));
     }
@@ -552,7 +600,6 @@ export async function publicRoute(request,env,url,ctx){
     const partyLabel = String(body.donor_label || intent?.donor_label || "Nhà tài trợ chuyển khoản QR").slice(0,160);
     const purposeText = String(body.purpose || intent?.purpose || `Chuyển khoản tham chiếu ${refCode || txCode}`).slice(0,500);
 
-    const txCols = await tableColumns(env, "sponsorship_transactions");
     const batchStmts = [];
     if (txCols.has("payment_state")) {
       batchStmts.push(
@@ -628,13 +675,73 @@ export async function publicRoute(request,env,url,ctx){
   }
 
   if(p==="/api/config"&&request.method==="GET"){
-    let mods={results:[]},forms={results:[]};
+    let mods={results:[]},forms={results:[]},websites={results:[]},menus={results:[]},sysPages={results:[]},sharedBlocks={results:[]};
+    const siteId = String(url.searchParams.get("website_id") || "app").trim();
     try{
       if(env.DB){
         mods=await env.DB.prepare("SELECT key,name,category,enabled,sort_order,description FROM modules ORDER BY sort_order").all();
         forms=await env.DB.prepare("SELECT id,name,prefix,description,audience,min_age,version FROM forms WHERE enabled=1 ORDER BY rowid").all();
+        if(await tableExists(env,"websites")){
+          websites=await env.DB.prepare("SELECT id,code,name,domain,description,logo_url,primary_color,navy_color,status,maintenance_mode,config_json,theme_json,seo_json FROM websites WHERE status IN ('active','maintenance') ORDER BY CASE WHEN id='app' THEN 0 ELSE 1 END, id ASC").all();
+        }
+        if(await tableExists(env,"menus")){
+          menus=await env.DB.prepare("SELECT location,name,items_json,updated_at FROM menus WHERE website_id=?").bind(siteId).all();
+        }
+        if(await tableExists(env,"cms_pages")){
+          const pgCols=await tableColumns(env,"cms_pages");
+          if(pgCols.has("page_type")){
+            sysPages=await env.DB.prepare("SELECT id,slug,route_path,title,title_en,summary,summary_en,seo_json,seo_en_json,blocks_json,blocks_en_json,updated_at FROM cms_pages WHERE website_id=? AND page_type='system' AND status='published'").bind(siteId).all();
+          }
+        }
+        if(await tableExists(env,"cms_shared_blocks")){
+          sharedBlocks=await env.DB.prepare("SELECT id,key,name,block_type,config_json FROM cms_shared_blocks WHERE website_id=? AND status='active'").bind(siteId).all();
+        }
       }
     }catch(err){ console.error("PUBLIC_CONFIG_DB_FALLBACK",err); }
+
+    const enabledModuleSet = new Set(
+      (mods.results || []).filter(m => Number(m.enabled) !== 0).map(m => m.key)
+    );
+
+    const parsedMenus = {};
+    for (const m of menus.results || []) {
+      let items = [];
+      try { items = JSON.parse(m.items_json || "[]"); } catch {}
+      parsedMenus[m.location] = items.filter(it => {
+        if (it.enabled === false) return false;
+        if (it.module_key && (mods.results || []).some(mod => mod.key === it.module_key) && !enabledModuleSet.has(it.module_key)) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    const systemPagesMap = {};
+    for (const sp of sysPages.results || []) {
+      const rKey = sp.route_path || `/${sp.slug}`;
+      let blocksVi = [], blocksEn = [], seoVi = {}, seoEn = {};
+      try { blocksVi = JSON.parse(sp.blocks_json || "[]"); } catch {}
+      try { blocksEn = JSON.parse(sp.blocks_en_json || "[]"); } catch {}
+      try { seoVi = JSON.parse(sp.seo_json || "{}"); } catch {}
+      try { seoEn = JSON.parse(sp.seo_en_json || "{}"); } catch {}
+      const reqLang = (url.searchParams.get("lang") || "vi").toLowerCase() === "en" ? "en" : "vi";
+      systemPagesMap[rKey] = {
+        id: sp.id,
+        slug: sp.slug,
+        route_path: rKey,
+        title: reqLang === "en" && sp.title_en ? sp.title_en : sp.title,
+        title_vi: sp.title,
+        title_en: sp.title_en || sp.title,
+        summary: sp.summary || "",
+        summary_en: sp.summary_en || sp.summary || "",
+        blocks: blocksVi,
+        blocks_en: blocksEn.length ? blocksEn : blocksVi,
+        seo: seoVi,
+        seo_en: Object.keys(seoEn).length ? seoEn : seoVi,
+        updated_at: sp.updated_at
+      };
+    }
+
     const homeStatsDefaults={
       source:"d1",
       values:{programs:null,members:null,certificates:null,partners:null,sponsorship:null},
@@ -644,6 +751,13 @@ export async function publicRoute(request,env,url,ctx){
         certificates:"Chứng nhận đã phát hành",
         partners:"Đối tác & đơn vị đồng hành",
         sponsorship:"Tổng tiền tài trợ (thực nhận)"
+      },
+      labels_en:{
+        programs:"Programs & Events",
+        members:"Community Members",
+        certificates:"Issued Credentials",
+        partners:"Partner Units",
+        sponsorship:"Verified Sponsorship Received"
       },
       sponsorship_basis:"received",
       sponsorship_unit:"VND",
@@ -655,7 +769,8 @@ export async function publicRoute(request,env,url,ctx){
       ...homeStatsDefaults,
       ...(storedHomeStats&&typeof storedHomeStats==="object"?storedHomeStats:{}),
       values:{...homeStatsDefaults.values,...(storedHomeStats?.values||{})},
-      labels:{...homeStatsDefaults.labels,...(storedHomeStats?.labels||{})}
+      labels:{...homeStatsDefaults.labels,...(storedHomeStats?.labels||{})},
+      labels_en:{...homeStatsDefaults.labels_en,...(storedHomeStats?.labels_en||{})}
     };
     let d1Stats=null;
     try{
@@ -686,6 +801,30 @@ export async function publicRoute(request,env,url,ctx){
         };
       }
     }catch(err){console.error("HOME_STATS_D1_FALLBACK",err)}
+
+    const opState = await resolveOperationalState(env, siteId);
+    const defaultDesignSystem = {
+      primary_color: "#0759b8",
+      navy_color: "#071b35",
+      accent_color: "#0b78d1",
+      surface_color: "#f4f7fb",
+      success_color: "#0f766e",
+      warning_color: "#b45309",
+      danger_color: "#b91c1c",
+      font_heading: "Be Vietnam Pro, Inter, system-ui, sans-serif",
+      font_body: "Inter, system-ui, sans-serif",
+      radius_scale: "rounded",
+      density: "comfortable",
+      card_style: "elevated",
+      default_theme: "light",
+      allow_dark_mode: true,
+      logo_url: "/assets/sfn-logo-tight.png",
+      wordmark_url: "/assets/sfn-wordmark.png",
+      cover_url: "/assets/sfn-cover.png",
+      favicon_url: "/assets/sfn-logo-tight.png"
+    };
+    const storedDesign = await getSetting(env, "design_system", defaultDesignSystem);
+
     return json({
       home_stats:{...homeStats,d1_values:d1Stats},
       app_name:await getSetting(env,"app_name","Hệ thống Thông tin Số Sky First"),
@@ -699,30 +838,56 @@ export async function publicRoute(request,env,url,ctx){
       support_email:await getSetting(env,"support_email","support@skyfirst.io.vn"),
       receiver_email:await getSetting(env,"receiver_email","app@skyfirst.io.vn"),
       slogan:await getSetting(env,"brand_slogan","Kết nối tri thức • Lan tỏa giá trị • Vì cộng đồng bền vững"),
+      slogan_en:await getSetting(env,"brand_slogan_en","Connecting Knowledge • Spreading Value • For a Sustainable Community"),
       hero_title:await getSetting(env,"hero_title","Hệ thống Thông tin Số Sky First"),
+      hero_title_en:await getSetting(env,"hero_title_en","Sky First Digital Information System"),
       hero_text:await getSetting(env,"hero_text","Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First."),
+      hero_text_en:await getSetting(env,"hero_text_en","Explore, verify, register, and manage Sky First programs, activities, official documents, electronic forms, digital credentials, and community support services."),
       hero_cover_url:await getSetting(env,"hero_cover_url",""),
-      maintenance_mode:await getSetting(env,"maintenance_mode",false),
+      maintenance_mode:opState.is_maintenance,
+      operational_mode:opState.mode,
+      operational_state:opState,
+      design_system:{...defaultDesignSystem,...(storedDesign||{})},
+      menus:parsedMenus,
+      system_pages:systemPagesMap,
+      cms_system_pages:systemPagesMap,
+      shared_blocks:(sharedBlocks.results||[]).map(sb=>{
+        let cfg={}; try{cfg=JSON.parse(sb.config_json||"{}")}catch{}
+        return {...sb,config:cfg,config_json:undefined};
+      }),
+      websites:(websites.results||[]).map(w=>{
+        let cfg={},theme={},seo={};
+        try{cfg=JSON.parse(w.config_json||"{}")}catch{}
+        try{theme=JSON.parse(w.theme_json||"{}")}catch{}
+        try{seo=JSON.parse(w.seo_json||"{}")}catch{}
+        return {...w,config:cfg,theme,seo,config_json:undefined,theme_json:undefined,seo_json:undefined};
+      }),
       header_show_brand:await getSetting(env,"header_show_brand",true),
       header_show_theme:await getSetting(env,"header_show_theme",true),
       header_show_account:await getSetting(env,"header_show_account",true),
       header_account_label:await getSetting(env,"header_account_label","Đăng nhập"),
+      header_account_label_en:await getSetting(env,"header_account_label_en","Admin Sign In"),
       footer_description:await getSetting(env,"footer_description","Hệ thống thông tin và dịch vụ số phục vụ tra cứu, đăng ký chương trình, biểu mẫu, chứng nhận và minh bạch hoạt động."),
+      footer_description_en:await getSetting(env,"footer_description_en","Central digital information and verification system serving program registration, electronic forms, credential verification, and financial transparency."),
       footer_email:await getSetting(env,"footer_email","lienhe@skyfirst.io.vn"),
       footer_support_email:await getSetting(env,"footer_support_email","support@skyfirst.io.vn"),
       footer_portal_email:await getSetting(env,"footer_portal_email","app@skyfirst.io.vn"),
       portal_main_label:await getSetting(env,"portal_main_label","Trang Thông tin Điện tử Sky First"),
       portal_main_url:await getSetting(env,"portal_main_url","https://skyfirst.io.vn"),
-      portal_tnv_url:await getSetting(env,"portal_tnv_url","https://tnv.skyfirst.io.vn"),
+      portal_ctt_url:await getSetting(env,"portal_ctt_url","https://ctt.skyfirst.io.vn"),
+      portal_mail_url:await getSetting(env,"portal_mail_url","https://mail.skyfirst.io.vn"),
       portal_sfec_url:await getSetting(env,"portal_sfec_url","https://sfec.skyfirst.io.vn"),
-      portal_slc_url:await getSetting(env,"portal_slc_url","https://slc.skyfirst.io.vn"),
       portal_member_url:await getSetting(env,"portal_member_url","https://member.skyfirst.io.vn"),
+      portal_exam_url:await getSetting(env,"portal_exam_url","https://exam.skyfirst.io.vn"),
       footer_copyright:await getSetting(env,"footer_copyright","© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền."),
       footer_copyright_en:await getSetting(env,"footer_copyright_en","© 2026 Sky First Digital Information System. All rights reserved."),
       footer_citation_notice:await getSetting(env,"footer_citation_notice","Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân."),
       footer_citation_notice_en:await getSetting(env,"footer_citation_notice_en","All cited information must clearly state the source and link to the original content where possible; content must not be distorted and must comply with copyright, intellectual property, and personal data protection regulations."),
       lookup_data_policy_notice:LOOKUP_DATA_POLICY_VI,
+      lookup_data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
       lookup_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
+      lookup_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN,
+      i18n_overrides:await getSetting(env,"i18n_overrides",{}),
       modules:mods.results||[],
       forms:forms.results||[],
       google_oauth:!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_REDIRECT_URI),
@@ -752,6 +917,7 @@ export async function publicRoute(request,env,url,ctx){
     const cmsRes=hasCms?(batchRes[hasSp?7:6]?.results||[]):[];
     const pages=[
       {type:"page",title:"Hệ thống Thông tin Số Sky First",ref:"/",description:"Điểm truy cập tập trung các chức năng và dịch vụ số Sky First"},
+      {type:"page",title:"Giới thiệu Hệ thống Thông tin Số Sky First",ref:"/gioi-thieu",description:"Sứ mệnh, hạ tầng số và hệ sinh thái các cổng thông tin Sky First"},
       {type:"page",title:"Chương trình đào tạo & cộng đồng",ref:"/chuong-trinh",description:"Danh mục chương trình và lớp học thực tế"},
       {type:"page",title:"Sự kiện & Hoạt động",ref:"/su-kien",description:"Lịch sự kiện và hoạt động công khai"},
       {type:"page",title:"Thư viện Tài liệu & PDF",ref:"/tai-lieu",description:"Tài liệu, văn bản và hướng dẫn được phân loại"},
@@ -759,7 +925,8 @@ export async function publicRoute(request,env,url,ctx){
       {type:"page",title:"Tra cứu Chứng nhận",ref:"/gcn",description:"Tra cứu Giấy chứng nhận, Giấy xác nhận, Bằng khen bằng mã"},
       {type:"page",title:"Tra cứu Hồ sơ",ref:"/ho-so",description:"Theo dõi tiến trình xử lý hồ sơ đã gửi"},
       {type:"page",title:"Minh bạch Tài trợ",ref:"/tai-tro",description:"Công khai mục tiêu, số tiền cam kết, thực nhận, giải ngân và chứng từ"},
-      {type:"page",title:"An toàn & Bảo mật số",ref:"/an-toan",description:"Hướng dẫn bảo vệ tài khoản, cảnh báo giả mạo và báo cáo sự cố"}
+      {type:"page",title:"An toàn & Bảo mật số",ref:"/an-toan",description:"Hướng dẫn bảo vệ tài khoản, cảnh báo giả mạo và báo cáo sự cố"},
+      {type:"page",title:"Hỗ trợ & Liên hệ",ref:"/ho-tro",description:"Trung tâm giải đáp thắc mắc và hỗ trợ kỹ thuật Sky First"}
     ].filter(x=>(x.title+' '+x.description).toLowerCase().includes(q.toLowerCase()));
     const items=[...pages,...spRes,...cmsRes,...(news.results||[]),...(events.results||[]),...(programs.results||[]),...(units.results||[]),...(forms.results||[]),...(docs.results||[])].slice(0,40);
     if(/^(SFN-(GCN|GXN|BK)-\d{5,8}|\d{8}|\d{3}-(GCN|GXN|BK)-SFN\/\d{4})$/i.test(q)){
@@ -785,8 +952,11 @@ export async function publicRoute(request,env,url,ctx){
       return {
         ...d,
         file_id:fid,
+        title_en:meta.title_en||d.title,
         category:meta.category||d.doc_type||"Tài liệu",
+        category_en:meta.category_en||meta.category||d.doc_type||"Document",
         description:meta.description||"",
+        description_en:meta.description_en||meta.description||"",
         keywords:meta.keywords||"",
         website_id:meta.website_id||"app",
         related_record_code:meta.related_record_code||"",
@@ -803,14 +973,30 @@ export async function publicRoute(request,env,url,ctx){
 
   if(p==="/api/public/sponsorship"&&request.method==="GET"){
     if(!(await tableExists(env,"sponsorship_campaigns"))){
-      return json({summary:{campaigns_count:0,target_amount:0,pledged_amount:0,received_amount:0,disbursed_amount:0,remaining_amount:0,pending_amount:0,currency:"VND",has_data:false,updated_at:null},campaigns:[],reports:[]},200,publicCacheHeaders(120));
+      return json({
+        summary:{campaigns_count:0,target_amount:0,pledged_amount:0,received_amount:0,disbursed_amount:0,remaining_amount:0,pending_amount:0,currency:"VND",has_data:false,updated_at:null},
+        five_stats:[
+          {key:"target_amount",label_vi:"Mục tiêu huy động",label_en:"Target Amount",amount:0,currency:"VND"},
+          {key:"pledged_amount",label_vi:"Cam kết tài trợ",label_en:"Pledged Amount",amount:0,currency:"VND"},
+          {key:"received_amount",label_vi:"Số tiền thực nhận (đã đối soát)",label_en:"Verified Received Amount",amount:0,currency:"VND"},
+          {key:"disbursed_amount",label_vi:"Đã giải ngân (có chứng từ)",label_en:"Verified Disbursed Amount",amount:0,currency:"VND"},
+          {key:"remaining_amount",label_vi:"Số dư thực tế",label_en:"Remaining Balance",amount:0,currency:"VND",is_overspent:false}
+        ],
+        transparency_sections:{campaigns_overview:[],verified_ledger:[],financial_reports:[]},
+        campaigns:[],
+        transactions:[],
+        reports:[]
+      },200,publicCacheHeaders(120));
     }
     const spCols=await tableColumns(env,"sponsorship_campaigns");
     const extraCols=["bank_name","bank_bin","bank_account_no","bank_account_name","pending_amount","refunded_amount","adjusted_amount"].filter(c=>spCols.has(c));
     const selectSql=`SELECT id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,updated_at${extraCols.length?","+extraCols.join(","):""} FROM sponsorship_campaigns WHERE visibility='public' AND status IN ('active','completed','paused','closed') ORDER BY COALESCE(start_at,created_at) DESC LIMIT 100`;
-    const [campRs,repRs]=await env.DB.batch([
+    const txCols=await tableColumns(env,"sponsorship_transactions");
+    const txExtra=["payment_state","expected_amount","reference_code","reconciliation_note"].filter(c=>txCols.has(c));
+    const [campRs,repRs,txRs]=await env.DB.batch([
       env.DB.prepare(selectSql),
-      env.DB.prepare("SELECT r.id,r.campaign_id,r.title,r.report_period,r.file_id,r.summary,r.published_at,c.code AS campaign_code,c.title AS campaign_title FROM sponsorship_reports r JOIN sponsorship_campaigns c ON c.id=r.campaign_id WHERE r.status='published' AND c.visibility='public' ORDER BY COALESCE(r.published_at,r.created_at) DESC LIMIT 100")
+      env.DB.prepare("SELECT r.id,r.campaign_id,r.title,r.report_period,r.file_id,r.summary,r.published_at,c.code AS campaign_code,c.title AS campaign_title FROM sponsorship_reports r JOIN sponsorship_campaigns c ON c.id=r.campaign_id WHERE r.status='published' AND c.visibility='public' ORDER BY COALESCE(r.published_at,r.created_at) DESC LIMIT 100"),
+      env.DB.prepare(`SELECT t.tx_code,t.campaign_id,t.tx_type,t.amount,t.currency,t.public_party_label,t.purpose,t.voucher_file_id,t.occurred_at,t.verified_at,c.code AS campaign_code,c.title AS campaign_title${txExtra.length?","+txExtra.map(col=>"t."+col).join(","):""} FROM sponsorship_transactions t JOIN sponsorship_campaigns c ON c.id=t.campaign_id WHERE c.visibility='public' AND t.verification_status='verified' AND t.is_public=1 ORDER BY t.occurred_at DESC LIMIT 200`)
     ]);
     // Section VII.4: NEVER clamp negative balance to 0! Remaining = Received - Disbursed (exact formula)
     const campaigns=(campRs.results||[]).map(c=>{
@@ -836,8 +1022,12 @@ export async function publicRoute(request,env,url,ctx){
     const received_amount=activeForSum.reduce((s,c)=>s+c.received_amount,0);
     const disbursed_amount=activeForSum.reduce((s,c)=>s+c.disbursed_amount,0);
     const pending_amount=activeForSum.reduce((s,c)=>s+c.pending_amount,0);
+    const refunded_amount=activeForSum.reduce((s,c)=>s+c.refunded_amount,0);
+    const adjusted_amount=activeForSum.reduce((s,c)=>s+c.adjusted_amount,0);
     const remaining_amount=received_amount-disbursed_amount;
     const latestUpdate=campaigns.reduce((m,c)=>(!m||String(c.updated_at)>m)?String(c.updated_at):m,null);
+    const verifiedLedger = txRs.results || [];
+    const reportsList = repRs.results || [];
     return json({
       summary:{
         campaigns_count:campaigns.length,
@@ -847,6 +1037,8 @@ export async function publicRoute(request,env,url,ctx){
         received_amount,
         disbursed_amount,
         pending_amount,
+        refunded_amount,
+        adjusted_amount,
         remaining_amount,
         is_overspent:remaining_amount<0,
         balance_formula:"remaining_amount = received_amount - disbursed_amount",
@@ -854,8 +1046,24 @@ export async function publicRoute(request,env,url,ctx){
         has_data:campaigns.length>0,
         updated_at:latestUpdate
       },
+      five_stats:[
+        {key:"target_amount",label_vi:"Mục tiêu huy động",label_en:"Target Amount",amount:target_amount,currency:"VND"},
+        {key:"pledged_amount",label_vi:"Cam kết tài trợ",label_en:"Pledged Amount",amount:pledged_amount,currency:"VND"},
+        {key:"received_amount",label_vi:"Số tiền thực nhận (đã đối soát)",label_en:"Verified Received Amount",amount:received_amount,currency:"VND"},
+        {key:"disbursed_amount",label_vi:"Đã giải ngân (có chứng từ)",label_en:"Verified Disbursed Amount",amount:disbursed_amount,currency:"VND"},
+        {key:"remaining_amount",label_vi:"Số dư thực tế",label_en:"Remaining Balance",amount:remaining_amount,currency:"VND",is_overspent:remaining_amount<0}
+      ],
+      transparency_sections:{
+        campaigns_overview:campaigns,
+        verified_ledger:verifiedLedger,
+        financial_reports:reportsList,
+        received_ledger:verifiedLedger.filter(t=>t.tx_type==="receipt"),
+        disbursement_ledger:verifiedLedger.filter(t=>t.tx_type==="disbursement"),
+        published_reports:reportsList
+      },
       campaigns,
-      reports:repRs.results||[]
+      transactions:verifiedLedger,
+      reports:reportsList
     },200,publicCacheHeaders(120));
   }
 
@@ -864,7 +1072,9 @@ export async function publicRoute(request,env,url,ctx){
   if(spQrMatch&&request.method==="POST"){
     const rl=await rateLimit(env,`sp-qr:${await ipHash(request)}`,15,300);
     if(!rl.ok) return json({error:"RATE_LIMIT"},429,{"Cache-Control":"no-store"});
-    if(!(await tableExists(env,"sponsorship_campaigns"))) return json({error:"NOT_FOUND"},404);
+    if(!(await tableExists(env,"sponsorship_campaigns")) || !(await tableExists(env,"sponsorship_payment_intents"))){
+      return json({error:"SERVICE_UNAVAILABLE",message:"Bảng đối soát mã tham chiếu chuyển khoản chưa sẵn sàng."},503,{"Cache-Control":"no-store"});
+    }
     const codeOrId=decodeURIComponent(spQrMatch[1]);
     const camp=await env.DB.prepare("SELECT * FROM sponsorship_campaigns WHERE visibility='public' AND (code=? OR id=?) LIMIT 1").bind(codeOrId,codeOrId).first();
     if(!camp) return json({error:"NOT_FOUND",message:"Không tìm thấy chương trình tài trợ công khai."},404);
@@ -882,23 +1092,32 @@ export async function publicRoute(request,env,url,ctx){
     const rnd=new Uint32Array(1); crypto.getRandomValues(rnd);
     const refCode=`${camp.code}-${String(100000+(rnd[0]%900000))}`;
     const intentId=uid("spqr");
-    const bankName=camp.bank_name||await getSetting(env,"sponsorship_bank_name","Ngân hàng TMCP Ngoại thương Việt Nam (Vietcombank)");
-    const bankBin=camp.bank_bin||await getSetting(env,"sponsorship_bank_bin","970436");
+    const bankName=camp.bank_name||await getSetting(env,"sponsorship_bank_name","Ngân hàng TMCP Quân đội (MB Bank)");
+    const bankBin=camp.bank_bin||await getSetting(env,"sponsorship_bank_bin","970422");
     const accountNo=camp.bank_account_no||await getSetting(env,"sponsorship_bank_account_no","");
     const accountName=camp.bank_account_name||await getSetting(env,"sponsorship_bank_account_name","SKY FIRST NETWORK");
 
-    const qrText=accountNo
-      ? `BANK:${bankBin}|ACC:${accountNo}|NAME:${accountName}|AMOUNT:${amount}|ADDINFO:${refCode}`
-      : `SKYFIRST-SPONSORSHIP|CAMPAIGN:${camp.code}|REF:${refCode}|AMOUNT:${amount}`;
-    const qrImageUrl=`https://quickchart.io/qr?size=300&text=${encodeURIComponent(qrText)}`;
+    // Standards-compliant EMVCo/VietQR payload that ONLY contains bank BIN, accountNo, amount, and anonymous refCode (ZERO donor PII)
+    const qrText = buildVietQrPayload({
+      bankBin,
+      accountNo,
+      amount,
+      referenceCode: refCode
+    });
+    const qrSvgDataUrl = buildLocalQrSvgDataUrl(qrText, `${refCode} · ${amount.toLocaleString("vi-VN")} VND`);
 
-    if(await tableExists(env,"sponsorship_payment_intents")){
-      await env.DB.prepare(`
+    // Strictly persist intent in D1 BEFORE returning ok: true
+    try {
+      const ins = await env.DB.prepare(`
         INSERT INTO sponsorship_payment_intents(
           id,campaign_id,reference_code,expected_amount,currency,donor_label,donor_email,
-          purpose,recipient_bank_bin,recipient_account_no,recipient_account_name,qr_payload,payment_state,ip_hash
-        ) VALUES(?,?,?,?,'VND',?,?,?,?,?,?,?,'qr_generated',?)
+          purpose,recipient_bank_bin,recipient_account_no,recipient_account_name,qr_payload,payment_state,expires_at,ip_hash
+        ) VALUES(?,?,?,?,'VND',?,?,?,?,?,?,?,'qr_generated',datetime('now','+24 hours'),?)
       `).bind(intentId,camp.id,refCode,amount,donorLabel,donorEmail,purpose,bankBin,accountNo,accountName,qrText,await ipHash(request)).run();
+      if (!ins) throw new Error("INTENT_INSERT_EMPTY");
+    } catch (err) {
+      console.error("QR_INTENT_PERSIST_FAILED", err);
+      return json({error:"INTENT_PERSIST_FAILED",message:"Không thể khởi tạo phiên đối soát chuyển khoản. Vui lòng thử lại."},500,{"Cache-Control":"no-store"});
     }
 
     const noticeText="Lưu ý đối soát: Mã QR chỉ hỗ trợ điền sẵn nội dung tham chiếu chuyển khoản. Khoản tài trợ chỉ được tính vào Số tiền thực nhận sau khi hệ thống xác thực giao dịch ngân hàng hoặc Quản trị viên đối soát sao kê.";
@@ -912,8 +1131,11 @@ export async function publicRoute(request,env,url,ctx){
         expected_amount:amount,
         currency:"VND",
         payment_state:"qr_generated",
+        transfer_memo:refCode,
+        emvco_payload:qrText,
         qr_payload:qrText,
-        qr_image_url:qrImageUrl,
+        qr_svg_data_url:qrSvgDataUrl,
+        qr_image_url:qrSvgDataUrl,
         notice:noticeText
       },
       intent_id:intentId,
@@ -931,7 +1153,7 @@ export async function publicRoute(request,env,url,ctx){
         account_name:accountName
       },
       qr_payload:qrText,
-      qr_image_url:qrImageUrl,
+      qr_image_url:qrSvgDataUrl,
       notice:noticeText
     },201,{"Cache-Control":"no-store"});
   }
@@ -1066,23 +1288,62 @@ export async function publicRoute(request,env,url,ctx){
 
   if(p==="/api/public/pages"&&request.method==="GET"){
     if(!(await tableExists(env,"cms_pages"))) return json({items:[]},200,publicCacheHeaders(120));
+    try{await runScheduledCmsPublishing(env);}catch{}
     const site=String(url.searchParams.get("website_id")||"app").trim();
-    const rs=await env.DB.prepare("SELECT id,website_id,slug,title,summary,cover_file_id,category,tags_json,published_at,updated_at FROM cms_pages WHERE status='published' AND website_id=? ORDER BY COALESCE(published_at,updated_at) DESC LIMIT 100").bind(site).all();
+    const includeSystem = url.searchParams.get("include_system") === "1";
+    const pgCols=await tableColumns(env,"cms_pages");
+    const extraCols=["page_type","route_path","title_en","summary_en","locale"].filter(c=>pgCols.has(c));
+    const whereSys = !includeSystem && pgCols.has("page_type") ? " AND COALESCE(page_type,'custom')!='system'" : "";
+    const rs=await env.DB.prepare(`SELECT id,website_id,slug,title,summary,cover_file_id,category,tags_json,published_at,updated_at${extraCols.length?","+extraCols.join(","):""} FROM cms_pages WHERE status='published' AND website_id=?${whereSys} ORDER BY COALESCE(published_at,updated_at) DESC LIMIT 100`).bind(site).all();
     return json({items:rs.results||[]},200,publicCacheHeaders(120));
   }
 
   const pageDetailMatch=p.match(/^\/api\/public\/pages\/([^/]+)$/);
   if(pageDetailMatch&&request.method==="GET"){
     if(!(await tableExists(env,"cms_pages"))) return json({error:"NOT_FOUND",message:"Không tìm thấy trang nội dung."},404);
+    try{await runScheduledCmsPublishing(env);}catch{}
     const slugOrId=decodeURIComponent(pageDetailMatch[1]);
     const site=String(url.searchParams.get("website_id")||"app").trim();
-    const row=await env.DB.prepare("SELECT id,website_id,slug,title,summary,cover_file_id,category,tags_json,seo_json,blocks_json,published_at,updated_at FROM cms_pages WHERE status='published' AND website_id=? AND (slug=? OR id=?) LIMIT 1").bind(site,slugOrId,slugOrId).first();
+    const lang=String(url.searchParams.get("lang")||"vi").toLowerCase()==="en"?"en":"vi";
+    const pgCols=await tableColumns(env,"cms_pages");
+    const hasRoutePath=pgCols.has("route_path");
+    const row=await env.DB.prepare(
+      hasRoutePath
+        ? "SELECT * FROM cms_pages WHERE status='published' AND website_id=? AND (slug=? OR id=? OR route_path=?) LIMIT 1"
+        : "SELECT * FROM cms_pages WHERE status='published' AND website_id=? AND (slug=? OR id=?) LIMIT 1"
+    ).bind(...(hasRoutePath?[site,slugOrId,slugOrId,`/${slugOrId.replace(/^\/+/,"")}`]:[site,slugOrId,slugOrId])).first();
     if(!row) return json({error:"NOT_FOUND",message:"Trang nội dung không tồn tại hoặc chưa được xuất bản."},404);
-    let blocks=[],seo={},tags=[];
+    let blocks=[],blocksEn=[],seo={},seoEn={},tags=[];
     try{blocks=JSON.parse(row.blocks_json||"[]")}catch{}
+    try{blocksEn=JSON.parse(row.blocks_en_json||"[]")}catch{}
     try{seo=JSON.parse(row.seo_json||"{}")}catch{}
+    try{seoEn=JSON.parse(row.seo_en_json||"{}")}catch{}
     try{tags=JSON.parse(row.tags_json||"[]")}catch{}
-    return json({item:{...row,blocks,seo,tags,blocks_json:undefined,seo_json:undefined,tags_json:undefined}},200,publicCacheHeaders(120));
+    const resolvedVi = await resolveSharedBlocksInList(env, blocks, "vi");
+    const resolvedEn = await resolveSharedBlocksInList(env, blocksEn.length ? blocksEn : blocks, "en");
+    return json({
+      item:{
+        ...row,
+        title_vi: row.title,
+        title_en: row.title_en || row.title,
+        summary_vi: row.summary || "",
+        summary_en: row.summary_en || row.summary || "",
+        title: lang === "en" && row.title_en ? row.title_en : row.title,
+        summary: lang === "en" && row.summary_en ? row.summary_en : row.summary,
+        blocks: lang === "en" ? resolvedEn : resolvedVi,
+        blocks_vi: resolvedVi,
+        blocks_en: resolvedEn,
+        seo: lang === "en" && Object.keys(seoEn).length ? seoEn : seo,
+        seo_vi: seo,
+        seo_en: Object.keys(seoEn).length ? seoEn : seo,
+        tags,
+        blocks_json:undefined,
+        blocks_en_json:undefined,
+        seo_json:undefined,
+        seo_en_json:undefined,
+        tags_json:undefined
+      }
+    },200,publicCacheHeaders(120));
   }
 
   if(p==="/api/public/news"&&request.method==="GET"){
@@ -1304,7 +1565,9 @@ export async function publicRoute(request,env,url,ctx){
         error:"MISSING_FIELDS",
         message:"Vui lòng nhập đầy đủ mã hồ sơ và email đã đăng ký.",
         data_policy_notice:LOOKUP_DATA_POLICY_VI,
-        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+        data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
+        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
+        query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
       },400);
     }
 
@@ -1326,7 +1589,9 @@ export async function publicRoute(request,env,url,ctx){
         error:"NOT_FOUND",
         message:"Không tìm thấy hồ sơ phù hợp với mã và email đã nhập.",
         data_policy_notice:LOOKUP_DATA_POLICY_VI,
-        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+        data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
+        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
+        query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
       },404);
     }
 
@@ -1344,7 +1609,9 @@ export async function publicRoute(request,env,url,ctx){
       },
       queried_at:new Date().toISOString(),
       data_policy_notice:LOOKUP_DATA_POLICY_VI,
-      query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+      data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
+      query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
+      query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
     },200,{"Cache-Control":"private, no-store"});
   }
 
@@ -1361,7 +1628,9 @@ export async function publicRoute(request,env,url,ctx){
         error:"MISSING_FIELDS",
         message:"Vui lòng nhập mã GCN/GXN/BK (hoặc email / số điện thoại đã đăng ký) cần xác thực.",
         data_policy_notice:LOOKUP_DATA_POLICY_VI,
-        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+        data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
+        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
+        query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
       },400,{"Cache-Control":"no-store"});
     }
 
@@ -1372,7 +1641,9 @@ export async function publicRoute(request,env,url,ctx){
           error:"NOT_FOUND",
           message:"Không tìm thấy thông tin xác thực phù hợp với mã đã nhập.",
           data_policy_notice:LOOKUP_DATA_POLICY_VI,
-          query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+          data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
+          query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
+          query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
         },404,{"Cache-Control":"no-store"});
       }
       return json({
@@ -1380,7 +1651,9 @@ export async function publicRoute(request,env,url,ctx){
         verified:item.status==="issued",
         queried_at:new Date().toISOString(),
         data_policy_notice:LOOKUP_DATA_POLICY_VI,
-        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+        data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
+        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
+        query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
       },200,{"Cache-Control":"no-store"});
     }
 
@@ -1390,7 +1663,9 @@ export async function publicRoute(request,env,url,ctx){
         error:"NOT_FOUND",
         message:"Không tìm thấy bản ghi chứng nhận công khai phù hợp với thông tin đã nhập.",
         data_policy_notice:LOOKUP_DATA_POLICY_VI,
-        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+        data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
+        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
+        query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
       },404,{"Cache-Control":"no-store"});
     }
     return json({
@@ -1399,7 +1674,9 @@ export async function publicRoute(request,env,url,ctx){
       verified:items[0].status==="issued",
       queried_at:new Date().toISOString(),
       data_policy_notice:LOOKUP_DATA_POLICY_VI,
-      query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI
+      data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
+      query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
+      query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
     },200,{"Cache-Control":"no-store"});
   }
 

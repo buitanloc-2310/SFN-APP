@@ -479,7 +479,7 @@ export async function authRoute(request, env, url) {
       u.id
     );
     try {
-      await env.DB.prepare("DELETE FROM rate_limits WHERE k IN (?, ?)").bind(`login:${ipKey}`, `login-acct:${await sha256(email)}`).run();
+      await env.DB.prepare("DELETE FROM rate_limits WHERE key IN (?, ?)").bind(`login:${ipKey}`, `login-acct:${await sha256(email)}`).run();
     } catch {}
 
     await auditAuth(env, request, full, "Đăng nhập quản trị thành công", "user", String(u.id), {portal, roles:roleIds});
@@ -503,9 +503,10 @@ export async function authRoute(request, env, url) {
     p === "/api/auth/login-2fa" &&
     request.method === "POST"
   ) {
+    const ipKey = await ipHash(request);
     const rl = await rateLimit(
       env,
-      `login-2fa:${await ipHash(request)}`,
+      `login-2fa:${ipKey}`,
       8,
       300
     );
@@ -579,6 +580,10 @@ export async function authRoute(request, env, url) {
     await env.DB.prepare(
       "UPDATE auth_tokens SET used_at=CURRENT_TIMESTAMP WHERE id=?"
     ).bind(row.id).run();
+
+    try {
+      await env.DB.prepare("DELETE FROM rate_limits WHERE key IN (?, ?)").bind(`login-2fa:${ipKey}`, `2fa-chal:${row.id}`).run();
+    } catch {}
 
     const s = await createSession(
       request,
@@ -1604,33 +1609,72 @@ export async function createInvitedAccount(
       .bind(
         uidUser,
         role,
-        String(
-          body?.scope_unit_code ||
-          ""
-        ),
+        body?.scope_unit_code || "",
         actor.id
       )
       .run();
   }
 
-  await auditAuth(env, request, actor, "Khởi tạo tài khoản quản trị", "user", String(uidUser), {
+  const token = randomToken(32);
+  const tokenHash = await sha256(token);
+
+  await env.DB.prepare(`
+    INSERT INTO auth_tokens(
+      id,
+      user_id,
+      token_type,
+      token_hash,
+      portal,
+      expires_at
+    )
+    VALUES(
+      ?,?,
+      'password_reset',
+      ?,?,
+      datetime('now','+48 hours')
+    )
+  `)
+    .bind(
+      uid("invite"),
+      uidUser,
+      tokenHash,
+      body?.portal || "admin"
+    )
+    .run();
+
+  const activationLink =
+    `${env.APP_URL || "https://app.skyfirst.io.vn"}/?reset=${encodeURIComponent(token)}`;
+
+  const mailResult = await sendTemplatedEmail(
+    env,
+    "account_invite",
     email,
+    {
+      full_name: fullName,
+      email,
+      activation_link: activationLink,
+      link: activationLink,
+      temp_password:
+        activationMode === "self"
+          ? temp
+          : "Thiết lập qua liên kết kích hoạt một lần"
+    }
+  );
+
+  await auditAuth(env, request, actor, "Cấp tài khoản quản trị mới", "user", String(uidUser), {
+    invited_email: email,
     roles,
+    scope_unit_code: body?.scope_unit_code || "",
     activation_mode: activationMode,
-    must_change_password: !!mustChangePassword
+    email_sent: !!mailResult?.ok
   });
 
-  if (activationMode === "email") {
-    const token = randomToken(32);
-    const tokenHash = await sha256(token);
-    const tokenId = uid("activate");
-    const expires = new Date(Date.now() + 48*60*60*1000).toISOString();
-    await env.DB.prepare(`INSERT INTO auth_tokens(id,user_id,token_type,token_hash,portal,expires_at) VALUES(?,?,'password_reset',?,'admin',?)`)
-      .bind(tokenId,uidUser,tokenHash,expires).run();
-    const activationLink = `${env.APP_URL || "https://app.skyfirst.io.vn"}/?reset=${encodeURIComponent(token)}`;
-    await sendTemplatedEmail(env,"account_invite",email,{full_name:fullName,email,activation_link:activationLink});
-    return json({ok:true,user_id:uidUser,activation_sent:true,status:"invited"});
-  }
-
-  return json({ok:true,user_id:uidUser,temp_password:temp,activation_sent:false,status:"active",must_change_password:!!mustChangePassword});
+  return json({
+    ok:true,
+    id:uidUser,
+    activation_mode: activationMode,
+    activation_link: activationLink,
+    email_sent: !!mailResult?.ok,
+    ...(activationMode === "self" ? {temp_password: temp} : {})
+  });
 }

@@ -12,7 +12,7 @@ if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
 
 // 1. Initialize SQLite database with all migrations 0001..0010
 const migSet = new Set(fs.readdirSync(path.join(root, 'migrations')).filter(f => f.endsWith('.sql')));
-for (const extra of ['0009_super_website_universal_email_and_cms.sql', '0010_forensic_security_and_financial_reconciliation.sql']) {
+for (const extra of ['0009_super_website_universal_email_and_cms.sql', '0010_forensic_security_and_financial_reconciliation.sql', '0011_v10_admin_cms_i18n_governance.sql']) {
   if (fs.existsSync(path.join(root, 'migrations', extra))) migSet.add(extra);
 }
 const migrations = [...migSet].sort();
@@ -31,39 +31,63 @@ conn.commit()
   }
 }
 
-// Create D1-compatible adapter backed by real SQLite via python3 helper
-function runSqliteOp(ops) {
-  const input = JSON.stringify({dbPath, ops});
-  const py = `
+import {spawn} from 'node:child_process';
+import readline from 'node:readline';
+
+const pyDaemon = spawn('python3', ['-u', '-c', `
 import sqlite3, json, sys
-data = json.loads(sys.stdin.read())
-conn = sqlite3.connect(data["dbPath"])
+conn = sqlite3.connect(sys.argv[1])
 conn.row_factory = sqlite3.Row
-out = []
-for op in data["ops"]:
-    sql = op["sql"]
-    params = op.get("params", [])
-    mode = op["mode"]
-    cur = conn.cursor()
-    cur.execute(sql, params)
-    if mode == "all":
-        rows = [dict(r) for r in cur.fetchall()]
-        out.append({"results": rows, "meta": {"last_row_id": cur.lastrowid, "changes": cur.rowcount}})
-    elif mode == "first":
-        row = cur.fetchone()
-        out.append(dict(row) if row else None)
-    else:
-        rows = [dict(r) for r in cur.fetchall()] if cur.description else []
-        out.append({"results": rows, "first": rows[0] if rows else None, "meta": {"last_row_id": cur.lastrowid, "changes": cur.rowcount}})
-conn.commit()
-conn.close()
-print(json.dumps(out))
-`;
-  const r = spawnSync('python3', ['-c', py], {input, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024});
-  if (r.status !== 0) {
-    throw new Error(r.stderr || 'SQLite error');
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    req = json.loads(line)
+    req_id = req["id"]
+    try:
+        out = []
+        for op in req["ops"]:
+            sql = op["sql"]
+            params = op.get("params", [])
+            mode = op["mode"]
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            if mode == "all":
+                rows = [dict(r) for r in cur.fetchall()]
+                out.append({"results": rows, "meta": {"last_row_id": cur.lastrowid, "changes": cur.rowcount}})
+            elif mode == "first":
+                row = cur.fetchone()
+                out.append(dict(row) if row else None)
+            else:
+                rows = [dict(r) for r in cur.fetchall()] if cur.description else []
+                out.append({"results": rows, "first": rows[0] if rows else None, "meta": {"last_row_id": cur.lastrowid, "changes": cur.rowcount}})
+        conn.commit()
+        print(json.dumps({"id": req_id, "ok": True, "out": out}), flush=True)
+    except Exception as e:
+        conn.rollback()
+        print(json.dumps({"id": req_id, "ok": False, "error": str(e)}), flush=True)
+`, dbPath], {stdio: ['pipe', 'pipe', 'inherit']});
+
+let seqId = 0;
+const pendingSql = new Map();
+const rl = readline.createInterface({input: pyDaemon.stdout});
+rl.on('line', line => {
+  if (!line.trim()) return;
+  const msg = JSON.parse(line);
+  const p = pendingSql.get(msg.id);
+  if (p) {
+    pendingSql.delete(msg.id);
+    if (msg.ok) p.resolve(msg.out);
+    else p.reject(new Error(msg.error || 'SQLite error'));
   }
-  return JSON.parse(r.stdout);
+});
+
+function runSqliteOpAsync(ops) {
+  return new Promise((resolve, reject) => {
+    const id = ++seqId;
+    pendingSql.set(id, {resolve, reject});
+    pyDaemon.stdin.write(JSON.stringify({id, ops}) + '\n');
+  });
 }
 
 class D1Statement {
@@ -75,14 +99,13 @@ class D1Statement {
     return new D1Statement(this.sql, vals.map(v => v === undefined ? null : v));
   }
   async all() {
-    return runSqliteOp([{sql: this.sql, params: this.params, mode: 'all'}])[0];
+    return (await runSqliteOpAsync([{sql: this.sql, params: this.params, mode: 'all'}]))[0];
   }
   async first() {
-    const res = runSqliteOp([{sql: this.sql, params: this.params, mode: 'first'}])[0];
-    return res;
+    return (await runSqliteOpAsync([{sql: this.sql, params: this.params, mode: 'first'}]))[0];
   }
   async run() {
-    return runSqliteOp([{sql: this.sql, params: this.params, mode: 'run'}])[0];
+    return (await runSqliteOpAsync([{sql: this.sql, params: this.params, mode: 'run'}]))[0];
   }
 }
 
@@ -92,7 +115,7 @@ const DB = {
   },
   async batch(stmts) {
     const ops = stmts.map(s => ({sql: s.sql, params: s.params, mode: 'all'}));
-    return runSqliteOp(ops);
+    return await runSqliteOpAsync(ops);
   }
 };
 
@@ -1090,7 +1113,329 @@ let mainCampId = '';
   assert(loginAfterRestore.status === 200 && loginAfterRestore.data.ok === true, 'User credentials remain intact and functional after backup restore');
 }
 
+
+// 23. 7-Website Canonical Ecosystem Registry & Per-Website Maintenance Enforcement
+{
+  const wsRes = await callWorker('/api/admin/websites', {cookie: superAdminCookie});
+  const wsIds = (wsRes.data.items || []).map(w => w.id).sort();
+  assert(
+    wsRes.status === 200 &&
+    JSON.stringify(wsIds) === JSON.stringify(['app', 'ctt', 'exam', 'mail', 'main', 'member', 'sfec']),
+    '7-Website Canonical Ecosystem Registry contains exact 7 websites (app, main, ctt, mail, member, sfec, exam) and removes deprecated slc/tnv/gme'
+  );
+
+  // Set sfec website to maintenance and verify public CMS page under sfec returns 503 WEBSITE_MAINTENANCE
+  const sfecSite = wsRes.data.items.find(w => w.id === 'sfec');
+  await callWorker('/api/admin/websites/sfec', {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {...sfecSite, status: 'maintenance'}
+  });
+  const sfecBlocked = await callWorker('/api/public/pages/gioi-thieu-he-thong-so?website_id=sfec');
+  assert(sfecBlocked.status === 503 && sfecBlocked.data.error === 'WEBSITE_MAINTENANCE', 'Per-website maintenance status blocks public CMS pages of that website with 503 WEBSITE_MAINTENANCE');
+
+  // Restore sfec to active
+  await callWorker('/api/admin/websites/sfec', {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {...sfecSite, status: 'active'}
+  });
+}
+
+// 24. Full-Page System CMS Overrides, Bilingual VI/EN, Shared Blocks (with Impact Guard), Templates, Scheduled Publishing & WordPress Gutenberg Adapter
+{
+  // Verify 13 system pages are seeded and returned in /api/config
+  const cfgVi = await callWorker('/api/config?lang=vi');
+  const cfgEn = await callWorker('/api/config?lang=en');
+  assert(
+    cfgVi.status === 200 &&
+    cfgVi.data.cms_system_pages?.['/'] &&
+    cfgVi.data.cms_system_pages?.['/gioi-thieu'] &&
+    cfgVi.data.cms_system_pages?.['/ho-tro'] &&
+    cfgVi.data.cms_system_pages?.['/admin/login'] &&
+    cfgEn.data.cms_system_pages?.['/gioi-thieu']?.title === 'About Sky First Digital Information System',
+    'All 13 system pages are managed in D1 cms_pages and serve localized VI/EN content via /api/config'
+  );
+
+  // Shared Blocks CRUD + affected_pages impact warning + 409 SHARED_BLOCK_IN_USE guard
+  const sbCreate = await callWorker('/api/admin/cms/shared-blocks', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {
+      key: 'test-reusable-banner',
+      name: 'Banner Dùng Chung Kiểm Thử',
+      block: {type: 'callout', tone: 'good', title: 'Thông báo chung VI', text: 'Nội dung khối dùng chung VI'},
+      block_en: {type: 'callout', tone: 'good', title: 'Shared Notice EN', text: 'Shared block body EN'}
+    }
+  });
+  assert(sbCreate.status === 200 && sbCreate.data.ok === true, 'Created reusable shared block (VI/EN)');
+
+  // Embed shared block in a CMS page and publish it
+  const sbPage = await callWorker('/api/admin/cms/pages', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {
+      website_id: 'app',
+      title: 'Trang Nhúng Khối Dùng Chung',
+      title_en: 'Page Embedding Shared Block',
+      slug: 'trang-nhung-khoi-dung-chung',
+      blocks: [{id: 'sb1', type: 'shared_block', sharedKey: 'test-reusable-banner'}],
+      blocks_en: [{id: 'sb1_en', type: 'shared_block', sharedKey: 'test-reusable-banner'}]
+    }
+  });
+  const sbPageId = sbPage.data.id;
+
+  // Check preview before publishing (must work for admin without making page public)
+  const previewRes = await callWorker(`/api/admin/cms/pages/${encodeURIComponent(sbPageId)}/preview?lang=en`, {cookie: superAdminCookie});
+  const pubBefore = await callWorker('/api/public/pages/trang-nhung-khoi-dung-chung');
+  assert(
+    previewRes.status === 200 &&
+    previewRes.data.preview?.blocks?.[0]?.resolved_shared_block?.title === 'Shared Notice EN' &&
+    pubBefore.status === 404,
+    'CMS Preview resolves shared blocks in requested language without publishing draft page publicly'
+  );
+
+  // Attempting to delete a shared block currently used by a page must be blocked with 409 SHARED_BLOCK_IN_USE
+  const sbList = await callWorker('/api/admin/cms/shared-blocks', {cookie: superAdminCookie});
+  const targetSb = sbList.data.items.find(x => x.key === 'test-reusable-banner');
+  const delSbInUse = await callWorker(`/api/admin/cms/shared-blocks/${encodeURIComponent(targetSb.id)}`, {
+    method: 'DELETE', cookie: superAdminCookie
+  });
+  assert(
+    delSbInUse.status === 409 &&
+    delSbInUse.data.error === 'SHARED_BLOCK_IN_USE' &&
+    targetSb.affected_pages.some(p => p.slug === 'trang-nhung-khoi-dung-chung'),
+    'Shared block tracks affected_pages and blocks deletion with 409 SHARED_BLOCK_IN_USE while embedded'
+  );
+
+  // Scheduled publishing workflow
+  const pastIso = new Date(Date.now() - 60000).toISOString();
+  const schedRes = await callWorker(`/api/admin/cms/pages/${encodeURIComponent(sbPageId)}/workflow`, {
+    method: 'POST', cookie: superAdminCookie,
+    body: {action: 'schedule', scheduled_at: pastIso}
+  });
+  const runSched = await callWorker('/api/admin/cms/run-scheduled', {method: 'POST', cookie: superAdminCookie});
+  const pubAfterSched = await callWorker('/api/public/pages/trang-nhung-khoi-dung-chung?lang=en');
+  assert(
+    schedRes.status === 200 &&
+    schedRes.data.status === 'scheduled' &&
+    runSched.data.published_count >= 1 &&
+    pubAfterSched.status === 200 &&
+    pubAfterSched.data.item?.title === 'Page Embedding Shared Block',
+    'Scheduled CMS page transitions to published when scheduled runner executes and serves English content on ?lang=en'
+  );
+
+  // Page duplication
+  const dupPage = await callWorker(`/api/admin/cms/pages/${encodeURIComponent(sbPageId)}/duplicate`, {
+    method: 'POST', cookie: superAdminCookie
+  });
+  assert(dupPage.status === 201 && dupPage.data.slug.startsWith('trang-nhung-khoi-dung-chung-ban-sao'), 'CMS page duplication creates independent draft copy');
+
+  // Headless WordPress / Gutenberg Import & Export
+  const wpImp = await callWorker('/api/admin/cms/wordpress/import', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {
+      website_id: 'app',
+      title: 'Trang Đồng Bộ Từ WordPress',
+      slug: 'trang-dong-bo-tu-wordpress',
+      wp_post_id: 2026,
+      content: '<!-- wp:heading -->\n<h2>Tiêu đề từ Gutenberg</h2>\n<!-- /wp:heading -->\n<!-- wp:paragraph -->\n<p>Đoạn văn bản an toàn từ WordPress.<script>alert(1)</script></p>\n<!-- /wp:paragraph -->'
+    }
+  });
+  const wpExp = await callWorker(`/api/admin/cms/pages/${encodeURIComponent(wpImp.data.id)}/wordpress-export`, {cookie: superAdminCookie});
+  assert(
+    wpImp.status === 201 &&
+    wpImp.data.imported_blocks_count === 2 &&
+    wpExp.status === 200 &&
+    wpExp.data.wp_payload?.content.includes('<!-- wp:heading') &&
+    !wpExp.data.wp_payload?.content.includes('<script>'),
+    'WordPress Gutenberg import converts blocks into structured D1 JSON (stripping unsafe scripts) and exports valid Gutenberg markup'
+  );
+}
+
+// 25. Design System Token Editor & Dynamic Menu Manager
+{
+  const dsPut = await callWorker('/api/admin/design-system', {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {primary_color: '#0b5ed7', navy_color: '#071b35', accent_color: '#0ca678', border_radius: '18px'}
+  });
+  const menuPut = await callWorker('/api/admin/menus/header', {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {
+      website_id: 'app',
+      title: 'Menu Chính',
+      items: [
+        {id: 'm1', label_vi: 'Trang chủ', label_en: 'Home', href: '/', enabled: true},
+        {id: 'm2', label_vi: 'Giới thiệu', label_en: 'About', href: '/gioi-thieu', enabled: true}
+      ]
+    }
+  });
+  const cfgCheck = await callWorker('/api/config');
+  assert(
+    dsPut.status === 200 &&
+    menuPut.status === 200 &&
+    cfgCheck.data.design_system?.primary_color === '#0b5ed7' &&
+    cfgCheck.data.menus?.header?.length === 2,
+    'Design System tokens and Dynamic Menus persist in D1 and propagate immediately to /api/config'
+  );
+}
+
+// 26. Server-Side Enforcement of All 6 Operational Modes & Disabled Module Guard
+{
+  // 26.1 read_only mode: GET works, public POST (/api/public/safety-reports) blocked with 503 READ_ONLY_MODE
+  await callWorker('/api/admin/maintenance-config', {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {mode: 'read_only', title_vi: 'Chế độ chỉ đọc', message_vi: 'Đang khóa ghi dữ liệu tạm thời'}
+  });
+  const roPost = await callWorker('/api/public/safety-reports', {
+    method: 'POST', body: {category: 'Khác', title: 'Test ReadOnly', description: 'Test'}
+  });
+  const roGet = await callWorker('/api/public/news');
+  assert(roPost.status === 503 && roPost.data.error === 'READ_ONLY_MODE' && roGet.status === 200, 'read_only mode blocks public write requests with 503 READ_ONLY_MODE while allowing public reads');
+
+  // 26.2 publishing_paused mode: CMS publish workflow blocked with 423 PUBLISHING_PAUSED
+  await callWorker('/api/admin/maintenance-config', {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {mode: 'publishing_paused', title_vi: 'Tạm dừng xuất bản'}
+  });
+  const pagesList = await callWorker('/api/admin/cms/pages', {cookie: superAdminCookie});
+  const anyPageId = pagesList.data.items[0].id;
+  const pubBlocked = await callWorker(`/api/admin/cms/pages/${encodeURIComponent(anyPageId)}/workflow`, {
+    method: 'POST', cookie: superAdminCookie, body: {action: 'publish'}
+  });
+  assert(pubBlocked.status === 423 && pubBlocked.data.error === 'PUBLISHING_PAUSED', 'publishing_paused mode blocks CMS publishing at the server API with 423 PUBLISHING_PAUSED');
+
+  // 26.3 manual_maintenance mode: unauthenticated public page/API blocked with 503, authenticated Admin bypasses (200), and allowed certificate lookup works
+  await callWorker('/api/admin/maintenance-config', {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {mode: 'manual_maintenance', title_vi: 'Đang bảo trì định kỳ', allow_lookup: true}
+  });
+  const mntPublicHtml = await callWorker('/chuong-trinh');
+  const mntPublicApi = await callWorker('/api/public/classes');
+  const mntAdminBypass = await callWorker('/chuong-trinh', {cookie: superAdminCookie});
+  const mntCertLookup = await callWorker('/api/lookup/certificate?code=SFN-GCN-99999999');
+  assert(
+    mntPublicHtml.status === 503 &&
+    mntPublicApi.status === 503 && mntPublicApi.data.error === 'MAINTENANCE_MODE' &&
+    mntAdminBypass.status === 200 &&
+    mntCertLookup.status !== 503,
+    'manual_maintenance mode returns 503 to anonymous visitors, allows authenticated Admin bypass, and honors allow_lookup for credential verification'
+  );
+
+  // Restore normal mode
+  await callWorker('/api/admin/maintenance-config', {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {mode: 'normal', allow_lookup: true}
+  });
+
+  // 26.4 Disabled module server guard: disable sponsorship_transparency -> /api/public/sponsorship returns 403 MODULE_DISABLED
+  const modsRes = await callWorker('/api/admin/modules', {cookie: superAdminCookie});
+  const allMods = modsRes.data.items || [];
+  await callWorker('/api/admin/modules', {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {items: allMods.map(m => ({key: m.key, enabled: (m.key === 'sponsorship' || m.key === 'sponsorship_transparency') ? false : !!m.enabled}))}
+  });
+  const modBlocked = await callWorker('/api/public/sponsorship');
+  assert(modBlocked.status === 403 && modBlocked.data.error === 'MODULE_DISABLED', 'Disabling a module in Admin enforces 403 MODULE_DISABLED on its public API');
+
+  // Re-enable all modules
+  await callWorker('/api/admin/modules', {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {items: allMods.map(m => ({key: m.key, enabled: true}))}
+  });
+}
+
+// 27. Sponsorship 3 Transparency Sections, EMVCo / VietQR Zero-PII Payload & CSV Export
+{
+  const qrCheck = await callWorker('/api/public/sponsorship/SFN-TT-2026-01/qr-intent', {
+    method: 'POST',
+    body: {donor_name: 'Nguyễn Văn Ẩn Danh', donor_email: 'secret@example.com', donor_phone: '0988777666', expected_amount: 1200000}
+  });
+  const qrIntent = qrCheck.data.intent || {};
+  assert(
+    qrCheck.status === 201 &&
+    qrIntent.emvco_payload?.startsWith('000201') &&
+    qrIntent.qr_svg_data_url?.startsWith('data:image/svg+xml;utf8,') &&
+    !qrIntent.emvco_payload.includes('secret@example.com') &&
+    !qrIntent.emvco_payload.includes('0988777666') &&
+    !qrIntent.transfer_memo.includes('secret@example.com'),
+    'VietQR / EMVCo payload and SVG QR are generated locally and contain zero personal donor email/phone PII'
+  );
+
+  const spFull = await callWorker('/api/public/sponsorship');
+  assert(
+    spFull.status === 200 &&
+    Array.isArray(spFull.data.transparency_sections?.received_ledger) &&
+    Array.isArray(spFull.data.transparency_sections?.disbursement_ledger) &&
+    Array.isArray(spFull.data.transparency_sections?.published_reports),
+    '/api/public/sponsorship provides all 3 structured transparency sections (received_ledger, disbursement_ledger, published_reports)'
+  );
+
+  const csvRes = await callWorker('/api/admin/export/sponsorship.csv', {cookie: superAdminCookie});
+  assert(
+    csvRes.status === 200 &&
+    String(csvRes.data).includes('tx_code,campaign_code,tx_type,amount') &&
+    String(csvRes.data).includes('SFN-TT-2026-01'),
+    'Admin sponsorship CSV export (/api/admin/export/sponsorship.csv) outputs verified ledger transactions'
+  );
+}
+
+// 28. PDF Download Permission Guard, SVG Sanitization & Media Hygiene Audit
+{
+  // Create a public document with allow_download: false
+  const noDlDoc = await callWorker('/api/admin/content/documents', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {
+      code: 'QC-VIEW-ONLY-01',
+      doc_type: 'Quy chế',
+      title: 'Quy chế Chỉ Xem Trực Tuyến',
+      visibility: 'public',
+      status: 'Có hiệu lực',
+      file_id: 'file_pdf_v2',
+      metadata_json: JSON.stringify({allow_download: false})
+    }
+  });
+  const inlineView = await callWorker('/api/files/file_pdf_v2');
+  const dlAttempt = await callWorker('/api/files/file_pdf_v2?download=1');
+  assert(
+    noDlDoc.status === 200 &&
+    inlineView.status === 200 &&
+    dlAttempt.status === 403 && dlAttempt.data.error === 'DOWNLOAD_DISABLED',
+    'Server enforces allow_download=false by blocking ?download=1 with 403 DOWNLOAD_DISABLED while allowing inline PDF viewing'
+  );
+
+  // Media Hygiene Audit
+  const mediaAudit = await callWorker('/api/admin/media/audit', {cookie: superAdminCookie});
+  assert(
+    mediaAudit.status === 200 &&
+    typeof mediaAudit.data.summary?.total_files === 'number' &&
+    Array.isArray(mediaAudit.data.broken_references),
+    '/api/admin/media/audit inspects R2/D1 assets, usage references, and broken links'
+  );
+}
+
+// 29. Deep Health Check, Pre-Reopen Check, Release QA Gate & System Incidents
+{
+  const deepHealth = await callWorker('/api/admin/system/health', {cookie: superAdminCookie});
+  const preReopen = await callWorker('/api/admin/system/pre-reopen-check', {cookie: superAdminCookie});
+  const qaGate = await callWorker('/api/admin/system/qa-check', {cookie: superAdminCookie});
+  assert(
+    deepHealth.status === 200 && deepHealth.data.ok === true &&
+    preReopen.status === 200 && preReopen.data.ready_to_reopen === true &&
+    qaGate.status === 200 && qaGate.data.ok === true,
+    'Deep Health Check, Pre-Reopen Check, and Release QA Gate all pass with 100% healthy status'
+  );
+
+  const incCreate = await callWorker('/api/admin/system/incidents', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {title: 'Bảo trì nâng cấp V10', severity: 'low', operational_mode: 'normal', summary: 'Kiểm thử trung tâm sự cố'}
+  });
+  const incResolve = await callWorker(`/api/admin/system/incidents/${encodeURIComponent(incCreate.data.id)}`, {
+    method: 'PATCH', cookie: superAdminCookie,
+    body: {status: 'resolved', resolution_note: 'Hoàn tất nâng cấp V10', restore_normal_mode: true}
+  });
+  assert(incCreate.status === 201 && incResolve.status === 200, 'System Incident Center records and resolves operational incidents');
+}
+
 console.log(`\n========================================`);
 console.log(`TOTAL E2E & REGRESSION TESTS: ${passed + failed} | PASSED: ${passed} | FAILED: ${failed}`);
 console.log(`========================================`);
 if (failed > 0) process.exit(1);
+
+pyDaemon.kill();

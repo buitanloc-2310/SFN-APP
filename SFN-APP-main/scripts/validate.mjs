@@ -19,7 +19,7 @@ const required=[
   'public/email-templates/fundraising-update.html',
   'migrations/0001_schema.sql','migrations/0002_seed.sql','migrations/0005_digital_information_infrastructure.sql',
   'migrations/0008_sky_first_digital_information_system.sql','migrations/0009_super_website_universal_email_and_cms.sql',
-  'migrations/0010_forensic_security_and_financial_reconciliation.sql','wrangler.jsonc'
+  'migrations/0010_forensic_security_and_financial_reconciliation.sql','migrations/0011_v10_admin_cms_i18n_governance.sql','wrangler.jsonc'
 ];
 let ok=true;
 for(const f of required){
@@ -49,7 +49,7 @@ for(const token of ['{{PREHEADER}}','{{EMAIL_CATEGORY}}','{{EMAIL_HEADING}}','{{
   }
 }
 if(ok){
-  console.log('Sky First Digital Information System V9 Super Website (app.skyfirst.io.vn) validation: OK');
+  console.log('Sky First Digital Information System V10 Super Website (app.skyfirst.io.vn) validation: OK');
   process.exit(0);
 }
 process.exit(1);
