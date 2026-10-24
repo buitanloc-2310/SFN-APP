@@ -20,3 +20,13 @@ Bảng dưới đây ánh xạ từng hạng mục trong **Siêu Yêu cầu Th�
 | **Mục 14** | Bảo toàn tra cứu `/tra-cuu`, `/gcn`, `/ho-so`, quy tắc mã `SFN-GCN/GXN/BK-########`, thông báo chính sách bảo vệ dữ liệu | `src/public.js` (`lookupCredential`, `lookupCredentialsByContact`), `public/digital-portal.js` | `test-all.mjs` — Mục 6, 7 & 15 (`Certificate lookup by code and email/phone`) | **Hoàn thành (Verified)** |
 | **Mục 15** | Trung tâm Email tự động (`email_universal_auto.html`), chống XSS trong biến mẫu, lưu lịch sử phiên bản mẫu email | `src/email.js`, `src/admin.js` (`/api/admin/email-templates/*`), `public/email-templates/email_universal_auto.html` | `test-all.mjs` — Mục 10 & 13 (`Universal HTML Email Template & XSS Protection`) | **Hoàn thành (Verified)** |
 | **Mục 16-18** | Bảo mật Auth (PBKDF2 100k/150k, khóa 2FA sau 5 lần sai, sửa lỗi `rate_limits`), Sao lưu SHA-256 nguyên tử, Deep Health & QA Gate | `src/auth.js`, `src/admin.js` (`buildBackupSnapshot`, `/api/admin/system/health`, `/qa-check`) | `test-all.mjs` — Mục 4, 5, 14, 19, 22 & 29 (`147/147 PASS`) | **Hoàn thành (Verified)** |
+
+
+## Phụ lục — Khắc phục lỗi thao tác Admin và QR chứng nhận (24/10/2026)
+
+| Hạng mục | Thay đổi trong mã nguồn | Trạng thái kiểm thử | Giới hạn sản xuất |
+|---|---|---|---|
+| Mã tham chiếu của lỗi 500 | `src/index.js`, `public/app.js`: giữ request ID trong JSON/header và hiển thị cùng thông báo lỗi Admin | Đã kiểm tra cú pháp và bộ hồi quy | Cần request ID/log từ môi trường đang chạy để xác định exception thực tế |
+| Lệch schema ảnh hưởng ghi nhật ký | `src/admin.js`: audit insert chỉ dùng các cột hiện có, nhưng vẫn yêu cầu cột `action` và không nuốt lỗi ghi audit | Bộ E2E 149/149 đạt trên SQLite được seed bởi migration | Không thay thế việc đối chiếu schema D1 sản xuất |
+| Chẩn đoán schema Admin | `src/admin.js`, `public/app.js`: hiển thị bảng/cột cốt lõi còn thiếu trong tổng quan Admin; health endpoint chịu lỗi telemetry email/backup tốt hơn | Đã chạy validate và E2E | Chỉ hoạt động sau khi triển khai bản mã nguồn này; không tự chạy migration |
+| QR xác thực GCN/GXN/BK | `src/public.js`, `public/digital-portal.js`, `public/app.js`: tạo QR SVG tại máy chủ, hiển thị trên kết quả tra cứu và cửa sổ QR Admin | 2 kiểm thử QR mới đạt; tổng 149/149 E2E | Phải xác minh trên website thật sau deploy |

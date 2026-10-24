@@ -1656,6 +1656,22 @@ export async function publicRoute(request,env,url,ctx){
     },200,{"Cache-Control":"private, no-store"});
   }
 
+  const credentialQrPath=p.match(/^\/api\/public\/credentials\/(.+)\/qr\.svg$/);
+  if(credentialQrPath&&request.method==="GET"){
+    const rl=await rateLimit(env,`credential-qr:${await ipHash(request)}`,120,60);
+    if(!rl.ok)return json({error:"RATE_LIMIT",message:"Quá nhiều yêu cầu tạo mã QR. Vui lòng thử lại sau."},429,{"Cache-Control":"no-store"});
+    const requestedCode=decodeURIComponent(credentialQrPath[1]);
+    const item=await lookupCredential(env,requestedCode);
+    if(!item)return json({error:"NOT_FOUND",message:"Không tìm thấy chứng nhận để tạo mã QR xác thực."},404,{"Cache-Control":"no-store"});
+    const baseUrl=String(env.APP_URL||url.origin).replace(/\/+$/,"");
+    const verifyUrl=`${baseUrl}/gcn/${encodeURIComponent(item.code)}`;
+    const dataUrl=buildLocalQrSvgDataUrl(verifyUrl,"SKY FIRST · XÁC THỰC");
+    const comma=dataUrl.indexOf(",");
+    if(!dataUrl.startsWith("data:image/svg+xml;utf8,")||comma<0)return json({error:"QR_GENERATION_FAILED"},500,{"Cache-Control":"no-store"});
+    const svg=decodeURIComponent(dataUrl.slice(comma+1));
+    return new Response(svg,{status:200,headers:{"content-type":"image/svg+xml; charset=utf-8","cache-control":"private, max-age=300","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; sandbox"}});
+  }
+
   const credentialPath=p.match(/^\/api\/public\/credentials\/(.+)$/);
   if((p==="/api/lookup/certificate"||credentialPath)&&(request.method==="GET"||request.method==="POST")){
     const rl=await rateLimit(env,`credential-lookup:${await ipHash(request)}`,90,60);if(!rl.ok)return json({error:"RATE_LIMIT",message:"Quá nhiều yêu cầu xác thực. Vui lòng thử lại sau."},429,{"Cache-Control":"no-store"});

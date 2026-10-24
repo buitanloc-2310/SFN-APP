@@ -9,7 +9,7 @@ Tất cả các bài kiểm thử tĩnh và động dưới đây đã được 
 | **1** | `node scripts/validate.mjs` | Kiểm tra tệp bắt buộc (gồm migration `0013`), cú pháp JS, nội dung không được phép và token mẫu email | **PASS** | `0` | — |
 | **2** | `node scripts/validate-ui-reference.mjs` | Kiểm tra 10 ánh xạ giao diện, cấu trúc trang chủ sau khi gỡ khối, 6 thẻ chức năng, 5 chỉ số, thương hiệu và cache version | **20 / 20 PASS** | `0` | — |
 | **3** | `node scripts/validate-xanh-integration.mjs` | Kiểm tra HMAC, cửa sổ thời gian, chống phát lại nonce và phân quyền tích hợp Xanh | **6 / 6 PASS** | `0` | — |
-| **4** | `node scripts/test-all.mjs` | Bộ kiểm thử E2E và hồi quy trên SQLite cục bộ và kho lưu trữ tệp giả lập | **147 / 147 PASS** | `0` | — |
+| **4** | `node scripts/test-all.mjs` | Bộ kiểm thử E2E và hồi quy trên SQLite cục bộ và kho lưu trữ tệp giả lập | **149 / 149 PASS** | `0` | — |
 
 ## 2. Chi tiết 29 nhóm kịch bản E2E trong `scripts/test-all.mjs` (147 Assertions)
 
@@ -19,7 +19,7 @@ Tất cả các bài kiểm thử tĩnh và động dưới đây đã được 
 4. **Nhóm 4 — Xác thực & Vector kiểm thử PBKDF2 độc lập (100k & 150k)**: Xác minh thuật toán PBKDF2 khớp chuẩn RFC 8018, chống dò tài khoản (`401 INVALID_CREDENTIALS` đồng nhất), tự động nâng cấp băm 150k sang 100k với salt mới và cookie `HttpOnly; Secure; SameSite=Strict`.
 5. **Nhóm 5 — Kích hoạt tài khoản quản trị & Cưỡng chế `must_change_password=1`**: Chặn truy cập `/api/admin/*` và `/api/me/*` với mã `403 PASSWORD_CHANGE_REQUIRED` cho đến khi đổi mật khẩu hợp lệ; thu hồi phiên cũ ngay sau khi đổi mật khẩu.
 6. **Nhóm 6 — Biểu mẫu, Upload Session (Magic Bytes) & Bảo mật tra cứu hồ sơ**: Kiểm tra tải tệp PNG hợp lệ, nộp biểu mẫu tình nguyện viên, yêu cầu đồng thời Mã hồ sơ + Email khi tra cứu `/api/lookup/submission` và phân quyền Handler theo hồ sơ được giao.
-7. **Nhóm 7 — Vòng đời Chứng nhận (`SFN-GCN-########`)**: Kiểm tra quy trình Tạo đề nghị → Duyệt độc lập hai bước → Phát hành mã 8 chữ số ngẫu nhiên → Tra cứu công khai (`CÓ HIỆU LỰC`) → Thu hồi (`ĐÃ THU HỒI` kèm lý do).
+7. **Nhóm 7 — Vòng đời Chứng nhận (`SFN-GCN-########`)**: Kiểm tra quy trình Tạo đề nghị → Duyệt độc lập hai bước → Phát hành mã 8 chữ số ngẫu nhiên → Tra cứu công khai (`CÓ HIỆU LỰC`) → Sinh ảnh QR SVG xác thực cùng miền, không chứa PII → Thu hồi (`ĐÃ THU HỒI` kèm lý do).
 8. **Nhóm 8 — Minh bạch Tài trợ cơ bản**: Kiểm tra tách biệt tuyệt đối 5 chỉ số (Mục tiêu 50M, Cam kết 20M, Thực nhận 15M, Đã chi 5M, Số dư 10M) và đồng bộ chỉ số thứ 5 trên trang chủ.
 9. **Nhóm 9 — Báo cáo An toàn số (`/an-toan`)**: Kiểm tra gửi báo cáo sự cố công khai (`SFN-SAFE-*`) và danh sách xử lý trong Admin.
 10. **Nhóm 10 — Trung tâm Email & Chống XSS**: Kiểm tra escape biến đầu vào độc hại (`<img src=x onerror=alert(1)>`) trong bản xem trước email.
@@ -53,7 +53,20 @@ Tất cả các bài kiểm thử tĩnh và động dưới đây đã được 
 
 - `node scripts/validate.mjs`: PASS.
 - `node scripts/validate-ui-reference.mjs`: 20/20 PASS; xác nhận các khối đã yêu cầu gỡ không còn trong bộ dựng trang chủ và cache version được đồng bộ.
-- `node scripts/test-all.mjs`: 147/147 PASS, 0 thất bại.
+- `node scripts/test-all.mjs`: 149/149 PASS, 0 thất bại.
 - `node --check` trên các tệp JS/MJS trong `public/`, `src/` và `scripts/`: PASS.
 - Migration `0013_remove_homepage_technical_callout.sql` được thử trên SQLite cục bộ: loại đúng callout VI/EN, giữ các khối CMS khác và chạy lặp không tạo thay đổi ngoài ý muốn.
 - Không chạy migration trên D1 sản xuất và không triển khai website trong tác vụ này.
+
+
+## 4. Kiểm định bổ sung sau phản ánh lỗi thao tác Admin và thiếu QR (24/10/2026)
+
+- `node scripts/validate.mjs`: PASS.
+- `node scripts/validate-ui-reference.mjs`: 20/20 PASS.
+- `node scripts/validate-xanh-integration.mjs`: 6/6 PASS.
+- `node scripts/test-all.mjs`: **149/149 PASS, 0 thất bại**; thêm 2 kiểm thử cho endpoint QR chứng nhận cùng miền và xác nhận không chứa email/SĐT người được cấp.
+- Nhật ký lỗi máy chủ có `request_id`; giao diện Admin nay hiển thị mã tham chiếu trong thông báo để đối chiếu log.
+- Bộ kiểm tra sức khỏe Admin nay kiểm tra các bảng/cột cốt lõi, phát hiện schema lệch có khả năng làm lỗi thao tác ghi; không tự chạy migration hoặc thay đổi D1.
+- Ghi nhật ký thao tác được điều chỉnh để chỉ ghi các cột audit tùy chọn thực sự tồn tại; không âm thầm bỏ qua lỗi nếu bảng/ cột `action` bắt buộc không khả dụng.
+- Endpoint `/api/public/credentials/:code/qr.svg` tạo QR SVG cục bộ cho đường dẫn tra cứu; trang kết quả tra cứu và cửa sổ QR trong Admin hiển thị ảnh QR thực, không chỉ hiển thị đường dẫn.
+- **Giới hạn:** Không có quyền truy cập Cloudflare D1/R2 sản xuất hoặc Cloudflare logs trong môi trường kiểm thử này. Vì vậy không thể xác định chính xác exception đã gây lỗi ở website đang chạy, cũng không thể xác minh migration đã áp dụng trên D1 thật. Cần triển khai bản sửa đã phê duyệt rồi kiểm tra mã tham chiếu và phần kiểm tra schema trên môi trường thật trước khi kết luận đã khắc phục toàn bộ.

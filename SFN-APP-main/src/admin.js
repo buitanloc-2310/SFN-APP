@@ -5,8 +5,24 @@ import {sendTemplatedEmail, renderEmailContent} from "./email.js";
 import {resolveOperationalState} from "./index.js";
 
 async function audit(env,request,user,action,entityType="",entityId="",details={}){
-  await env.DB.prepare("INSERT INTO audit_log(actor_user_id,actor_email,action,entity_type,entity_id,details_json,ip_hash) VALUES(?,?,?,?,?,?,?)")
-    .bind(user?.id||null,user?.email||"",action,entityType,entityId,JSON.stringify(details),await ipHash(request)).run();
+  // Keep audit writes compatible with production databases that may predate optional audit columns.
+  // Never silently skip the audit: the core action column must exist and the insert must succeed.
+  const cols=await adminTableColumns(env,"audit_log");
+  if(!cols.has("action")) throw new Error("AUDIT_LOG_SCHEMA_UNAVAILABLE");
+  const values={
+    actor_user_id:user?.id??null,
+    actor_email:user?.email||"",
+    action:String(action||"Thao tác quản trị"),
+    entity_type:String(entityType||""),
+    entity_id:String(entityId||""),
+    details_json:JSON.stringify(details??{}),
+    ip_hash:await ipHash(request)
+  };
+  const fields=Object.keys(values).filter(key=>cols.has(key));
+  if(!fields.includes("action")) throw new Error("AUDIT_LOG_ACTION_COLUMN_UNAVAILABLE");
+  const placeholders=fields.map(()=>"?").join(",");
+  await env.DB.prepare(`INSERT INTO audit_log(${fields.join(",")}) VALUES(${placeholders})`)
+    .bind(...fields.map(key=>values[key])).run();
 }
 async function setting(env,key,fallback=null){
   const r=await env.DB.prepare("SELECT value_json FROM settings WHERE key=?").bind(key).first();
@@ -20,6 +36,34 @@ async function adminTableColumns(env,table){
 async function adminTableExists(env,table){
   const key=`table:${table}`;if(adminSchemaCache.has(key))return adminSchemaCache.get(key);
   try{const row=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").bind(table).first();const ok=!!row;adminSchemaCache.set(key,ok);return ok}catch{return false}
+}
+
+async function adminSchemaDiagnostics(env){
+  const required={
+    audit_log:["action","details_json"],
+    settings:["key","value_json"],
+    users:["id","email","status"],
+    forms:["id","name","enabled"],
+    certificates:["id","cert_type","full_name","content","status"],
+    certificate_history:["certificate_id","action"],
+    approvals:["id","entity_type","entity_id","status"],
+    files:["id","r2_key","visibility","deleted_at"],
+    documents:["id","code","title","status"],
+    cms_pages:["id","website_id","slug","title","status"],
+    websites:["id","code","domain","status"],
+    term_revisions:["term_code","version","body"],
+    issued_document_codes:["document_id","lookup_code","is_active"],
+    sponsorship_payment_intents:["id","campaign_id","reference_code","expected_amount","payment_state"]
+  };
+  const checks=[];
+  for(const [table,expected] of Object.entries(required)){
+    const exists=await adminTableExists(env,table);
+    if(!exists){checks.push({table,ok:false,missing_table:true,missing_columns:expected});continue;}
+    const cols=await adminTableColumns(env,table);
+    const missing=expected.filter(col=>!cols.has(col));
+    checks.push({table,ok:missing.length===0,missing_table:false,missing_columns:missing});
+  }
+  return {ok:checks.every(x=>x.ok),checked_at:new Date().toISOString(),checks};
 }
 function isOwnerUser(user){return (user?.roles||[]).some(r=>r.role_id==="owner")}
 async function nextCounter(env,key){
@@ -934,15 +978,16 @@ export async function adminRoute(request,env,url,ctx){
     }catch(e){
       services.r2={configured:!!env.FILES,operational:false,error:String(e.message||e)};
     }
-    // 3. Email Provider
+    // 3. Email Provider (telemetry must not break the health endpoint if a table is missing).
     const emailConfigured=Boolean(env.RESEND_API_KEY||env.EMAIL?.send);
-    const emailStats=await env.DB.prepare("SELECT status, COUNT(*) c FROM email_logs GROUP BY status").all();
-    services.email={
-      configured:emailConfigured,
-      operational:emailConfigured,
-      mode:emailConfigured?"live_provider":"logged_pending_fallback",
-      stats:emailStats.results||[]
-    };
+    try{
+      const emailStats=await env.DB.prepare("SELECT status, COUNT(*) c FROM email_logs GROUP BY status").all();
+      services.email={configured:emailConfigured,operational:emailConfigured,mode:emailConfigured?"live_provider":"logged_pending_fallback",stats:emailStats.results||[]};
+    }catch(e){
+      services.email={configured:emailConfigured,operational:false,mode:emailConfigured?"live_provider":"logged_pending_fallback",stats:[],error:String(e.message||e)};
+    }
+    // 3b. Required schema compatibility used by Admin mutation workflows.
+    try{services.schema=await adminSchemaDiagnostics(env)}catch(e){services.schema={ok:false,checks:[],error:String(e.message||e)}}
     // 4. Webhooks & Turnstile
     services.webhooks={
       xanh_intake_configured:String(env.XANH_CTT_SHARED_SECRET||"").length>=32,
@@ -950,13 +995,12 @@ export async function adminRoute(request,env,url,ctx){
       turnstile_configured:Boolean(env.TURNSTILE_SITE_KEY&&env.TURNSTILE_SECRET_KEY)
     };
     // 5. Latest Backup
-    const latestBackup=await env.DB.prepare("SELECT id,r2_key,size,sha256,kind,created_at,verified_at FROM backups ORDER BY created_at DESC LIMIT 1").first();
-    services.backups={
-      latest:latestBackup||null,
-      has_verified_backup:Boolean(latestBackup?.sha256)
-    };
+    try{
+      const latestBackup=await env.DB.prepare("SELECT id,r2_key,size,sha256,kind,created_at,verified_at FROM backups ORDER BY created_at DESC LIMIT 1").first();
+      services.backups={latest:latestBackup||null,has_verified_backup:Boolean(latestBackup?.sha256)};
+    }catch(e){services.backups={latest:null,has_verified_backup:false,error:String(e.message||e)}}
     return json({
-      ok:Boolean(services.d1?.operational && services.r2?.operational),
+      ok:Boolean(services.d1?.operational && services.r2?.operational && services.schema?.ok),
       checked_at:new Date().toISOString(),
       operational_state:await resolveOperationalState(env,"app"),
       services

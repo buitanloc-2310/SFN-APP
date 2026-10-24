@@ -613,7 +613,7 @@ export default {
           if(page.ok)return secure(new Response(page.body,{status:500,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}}));
         }catch{}
       }
-      return secure(json({error:"INTERNAL_ERROR",message:"Hệ thống đang gặp sự cố khi xử lý yêu cầu. Vui lòng thử lại sau hoặc liên hệ bộ phận hỗ trợ.",request_id:requestId},500,{"Cache-Control":"no-store"}));
+      return secure(json({error:"INTERNAL_ERROR",message:"Hệ thống đang gặp sự cố khi xử lý yêu cầu. Vui lòng thử lại sau hoặc liên hệ bộ phận hỗ trợ.",request_id:requestId},500,{"Cache-Control":"no-store","X-SFN-Request-ID":requestId}));
     }
   },
 

@@ -24,7 +24,7 @@ async function api(path,options={}){
   const r=await fetch(path,o);
   const ct=r.headers.get("content-type")||"";
   const data=ct.includes("application/json")?await r.json():await r.text();
-  if(!r.ok){const err=new Error(data?.error||data?.message||`HTTP ${r.status}`);err.data=data;err.status=r.status;throw err}
+  if(!r.ok){const err=new Error(data?.error||data?.message||`HTTP ${r.status}`);err.data=data;err.status=r.status;err.requestId=data?.request_id||r.headers.get("x-sfn-request-id")||"";throw err}
   return data;
 }
 
@@ -1147,7 +1147,12 @@ async function renderAdmin(){
 }
 
 async function adminDashboard(main){
-  const health=await api("/api/health").catch(()=>({ok:false,database:false,storage:false}));
+  const [health,schemaHealth]=await Promise.all([
+    api("/api/health").catch(()=>({ok:false,database:false,storage:false})),
+    api("/api/admin/system/health").catch(()=>null)
+  ]);
+  const schemaReport=schemaHealth?.services?.schema||null;
+  const schemaProblems=(schemaReport?.checks||[]).filter(x=>!x.ok);
   let c={submissions:0,pending:0,approved_submissions:0,rejected_submissions:0,forms:0,people:0,certificates:0,revoked_certificates:0,superseded_certificates:0,documents:0,published_documents:0,cms_pages:0,published_pages:0,approvals:0,tickets:0,tasks:0,safety_open:0};
   let emailBreakdown={sent:0,pending:0,failed:0,provider_configured:false};
   let recentAudit=[],warnings=[],timeSeries=[];
@@ -1170,6 +1175,7 @@ async function adminDashboard(main){
     <div class="status-card"><span>Dịch vụ Email</span><b>${emailBreakdown.provider_configured?"Đã cấu hình":"Chờ cấu hình khóa"}</b></div>
   </div>
   ${warnings.length?`<div style="display:grid;gap:8px;margin:14px 0;">${warnings.map(w=>`<div class="notice ${w.level==='bad'?'bad':w.level==='warn'?'warn':''}"><b>Cảnh báo hệ thống (${E(w.code)}):</b> ${E(w.message)}</div>`).join("")}</div>`:""}
+  ${schemaReport&&!schemaReport.ok?`<section class="notice bad" style="margin:14px 0;"><b>Phát hiện sai lệch cấu trúc D1 có thể làm thao tác quản trị thất bại.</b><p>Không tự động chạy SQL hoặc thay đổi dữ liệu. Hãy kiểm tra migration và schema thực tế với kỹ thuật trước khi triển khai.</p><ul>${schemaProblems.map(x=>`<li><b>${E(x.table)}</b>: ${x.missing_table?"Thiếu bảng":`Thiếu cột ${E((x.missing_columns||[]).join(", "))}`}</li>`).join("")}</ul></section>`:""}
   <div class="kpis">
     <div class="kpi"><b>${E(c.submissions)}</b>Tổng số hồ sơ (${E(c.forms)} biểu mẫu)</div>
     <div class="kpi"><b>${E(c.pending)}</b>Hồ sơ mới & đang xử lý</div>
@@ -2169,9 +2175,17 @@ window.issueCert=idc=>api(
   adminCertificates(document.getElementById("adminMain"));
 }).catch(e=>toast(errorText(e),"bad"));
 
-window.showCertQR=code=>{
-  const text=`${location.origin}/gcn/${encodeURIComponent(code)}`;
-  modal(`<div class="admin-modal-head"><div><span class="eyebrow">MÃ XÁC THỰC CHỨNG NHẬN</span><h2>QR xác thực — ${E(code)}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div><p class="muted">Liên kết xác thực công khai chỉ chứa mã định danh công khai, tuyệt đối không gửi dữ liệu cá nhân ra dịch vụ bên ngoài.</p><div class="card" style="text-align:center;padding:20px;"><code>${E(text)}</code></div><div class="actions" style="margin-top:12px;"><a class="primary" href="/gcn/${encodeURIComponent(code)}" onclick="closeModal()">Mở trang xác thực công khai ↗</a><button type="button" class="secondary" onclick="navigator.clipboard?.writeText('${E(text)}').then(()=>toast('Đã sao chép liên kết xác thực.'))">Sao chép liên kết</button></div>`);
+window.showCertQR=async code=>{
+  const cleanCode=String(code||"").trim();
+  if(!cleanCode){toast("Thiếu mã chứng nhận để tạo QR.","bad");return;}
+  const text=`${location.origin}/gcn/${encodeURIComponent(cleanCode)}`;
+  const qrPath=`/api/public/credentials/${encodeURIComponent(cleanCode)}/qr.svg`;
+  try{
+    // Verify that the public credential exists before showing a QR for it.
+    await api(`/api/public/credentials/${encodeURIComponent(cleanCode)}`);
+    modal(`<div class="admin-modal-head"><div><span class="eyebrow">MÃ XÁC THỰC CHỨNG NHẬN</span><h2>QR xác thực — ${E(cleanCode)}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div><p class="muted">Mã QR dẫn trực tiếp đến trang xác thực công khai và chỉ chứa đường dẫn cùng mã chứng nhận, không chứa thông tin cá nhân.</p><div class="card" style="text-align:center;padding:20px;"><img src="${E(qrPath)}" alt="Mã QR xác thực ${E(cleanCode)}" width="280" height="280" style="display:block;width:min(280px,100%);height:auto;margin:0 auto;background:#fff;border:1px solid #dbe4f0;border-radius:12px;padding:10px;image-rendering:pixelated;"><p><code>${E(text)}</code></p></div><div class="actions" style="margin-top:12px;"><a class="primary" href="/gcn/${encodeURIComponent(cleanCode)}" onclick="closeModal()">Mở trang xác thực công khai ↗</a><button type="button" class="secondary" id="copyCertVerifyLink">Sao chép liên kết</button><a class="secondary" href="${E(qrPath)}" target="_blank" rel="noopener">Mở ảnh QR</a></div>`);
+    document.getElementById("copyCertVerifyLink")?.addEventListener("click",async()=>{try{await navigator.clipboard.writeText(text);toast("Đã sao chép liên kết xác thực.")}catch{toast("Trình duyệt không cho phép sao chép tự động. Hãy sao chép đường dẫn hiển thị trong cửa sổ QR.","bad")}});
+  }catch(err){toast(errorText(err),"bad")}
 };
 
 window.revokeCert=async idc=>{
@@ -3883,7 +3897,9 @@ function errorText(err){
     SELF_APPROVAL_FORBIDDEN:"Nguyên tắc tách biệt nhiệm vụ: Người khởi tạo không được tự phê duyệt giao dịch do chính mình tạo."
   };
 
-  return map[code]||code;
+  const friendly=map[code]||err?.data?.message||code;
+  const requestId=err?.data?.request_id||err?.requestId||"";
+  return requestId?`${friendly} · Mã tham chiếu: ${requestId}`:friendly;
 }
 
 async function handleQueryActions(){

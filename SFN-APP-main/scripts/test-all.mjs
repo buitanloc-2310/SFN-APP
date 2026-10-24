@@ -475,6 +475,9 @@ let submittedCode = '';
 
   const pubCert = await callWorker(`/api/public/credentials/${encodeURIComponent(certCode)}`);
   assert(pubCert.status === 200 && pubCert.data.verified === true && pubCert.data.item.status === 'issued', 'Valid certificate lookup returns CÓ HIỆU LỰC');
+  const pubQr = await callWorker(`/api/public/credentials/${encodeURIComponent(certCode)}/qr.svg`);
+  assert(pubQr.status === 200 && String(pubQr.data).startsWith('<svg ') && String(pubQr.headers.get('content-type')).includes('image/svg+xml'), 'Issued credential QR endpoint returns a same-origin standards-based SVG QR image');
+  assert(!String(pubQr.data).includes('certowner@skyfirst.io.vn') && !String(pubQr.data).includes('0912345678'), 'Credential QR contains no recipient email or phone');
 
   const rev = await callWorker(`/api/admin/certificates/${encodeURIComponent(certReq.data.id)}`, {
     method: 'PATCH', cookie: superAdminCookie, body: {action: 'revoke', note: 'Thu hồi để kiểm tra'}
