@@ -6,16 +6,16 @@ Tất cả các bài kiểm thử tĩnh và động dưới đây đã được 
 
 | STT | Lệnh thực thi | Mục đích kiểm định | Kết quả | Exit Code | Thời gian chạy |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **1** | `node scripts/validate.mjs` | Kiểm tra sự tồn tại của toàn bộ tệp bắt buộc (gồm cả migrations `0001..0011`), kiểm tra cú pháp JS (`node --check`), quét cụm từ cấm và kiểm tra 14 token mẫu email `email_universal_auto.html` | **OK (100% Pass)** | `0` | `0,42s` |
-| **2** | `node scripts/validate-ui-reference.mjs` | Kiểm tra ánh xạ 10 giao diện chuẩn, 6 thẻ chức năng trang chủ, 5 chỉ số D1, chuẩn hóa thương hiệu, đồng bộ phiên bản cache (`20261023-v8`) và cấm nhúng ảnh base64 rác | **17 / 17 PASS (0 Failed)** | `0` | `0,18s` |
-| **3** | `node scripts/validate-xanh-integration.mjs` | Kiểm tra xác thực chữ ký HMAC-SHA256, cửa sổ thời gian 5 phút, chống phát lại nonce (`integration_nonces`) và phân quyền của cổng tích hợp Xanh | **6 / 6 PASS (0 Failed)** | `0` | `0,15s` |
-| **4** | `node scripts/test-all.mjs` | Bộ kiểm thử tích hợp End-to-End (E2E) và hồi quy toàn diện trên cơ sở dữ liệu SQLite/D1 thực tế và kho lưu trữ R2 giả lập (29 nhóm kịch bản nghiệp vụ & bảo mật) | **134 / 134 PASS (0 Failed)** | `0` | `8,71s` |
+| **1** | `node scripts/validate.mjs` | Kiểm tra tệp bắt buộc (gồm migration `0013`), cú pháp JS, nội dung không được phép và token mẫu email | **PASS** | `0` | — |
+| **2** | `node scripts/validate-ui-reference.mjs` | Kiểm tra 10 ánh xạ giao diện, cấu trúc trang chủ sau khi gỡ khối, 6 thẻ chức năng, 5 chỉ số, thương hiệu và cache version | **20 / 20 PASS** | `0` | — |
+| **3** | `node scripts/validate-xanh-integration.mjs` | Kiểm tra HMAC, cửa sổ thời gian, chống phát lại nonce và phân quyền tích hợp Xanh | **6 / 6 PASS** | `0` | — |
+| **4** | `node scripts/test-all.mjs` | Bộ kiểm thử E2E và hồi quy trên SQLite cục bộ và kho lưu trữ tệp giả lập | **147 / 147 PASS** | `0` | — |
 
-## 2. Chi tiết 29 nhóm kịch bản E2E trong `scripts/test-all.mjs` (134 Assertions)
+## 2. Chi tiết 29 nhóm kịch bản E2E trong `scripts/test-all.mjs` (147 Assertions)
 
 1. **Nhóm 1 — Health & Identity**: Kiểm tra `/api/health`, định danh `Hệ thống Thông tin Số Sky First` (`app.skyfirst.io.vn`) và header bảo mật `X-Frame-Options: SAMEORIGIN`.
 2. **Nhóm 2 — Public SPA Routes & 404**: Kiểm tra toàn bộ route SPA trả về mã `200` và route không tồn tại trả về trang lỗi `404` chuẩn.
-3. **Nhóm 3 — Config & 5 chỉ số trang chủ**: Đối chiếu 3 địa chỉ email chuẩn và 5 chỉ số thống kê tự động từ D1.
+3. **Nhóm 3 — Config & 5 chỉ số trang chủ**: Đối chiếu 3 địa chỉ email chuẩn và 5 chỉ số thống kê tự động từ cấu hình hệ thống.
 4. **Nhóm 4 — Xác thực & Vector kiểm thử PBKDF2 độc lập (100k & 150k)**: Xác minh thuật toán PBKDF2 khớp chuẩn RFC 8018, chống dò tài khoản (`401 INVALID_CREDENTIALS` đồng nhất), tự động nâng cấp băm 150k sang 100k với salt mới và cookie `HttpOnly; Secure; SameSite=Strict`.
 5. **Nhóm 5 — Kích hoạt tài khoản quản trị & Cưỡng chế `must_change_password=1`**: Chặn truy cập `/api/admin/*` và `/api/me/*` với mã `403 PASSWORD_CHANGE_REQUIRED` cho đến khi đổi mật khẩu hợp lệ; thu hồi phiên cũ ngay sau khi đổi mật khẩu.
 6. **Nhóm 6 — Biểu mẫu, Upload Session (Magic Bytes) & Bảo mật tra cứu hồ sơ**: Kiểm tra tải tệp PNG hợp lệ, nộp biểu mẫu tình nguyện viên, yêu cầu đồng thời Mã hồ sơ + Email khi tra cứu `/api/lookup/submission` và phân quyền Handler theo hồ sơ được giao.
@@ -47,3 +47,13 @@ Tất cả các bài kiểm thử tĩnh và động dưới đây đã được 
 
 - **Gửi thư thực tế qua Resend API / Cloudflare Email Routing**: Trong sandbox không có kết nối Internet ra ngoài và không gắn khóa `RESEND_API_KEY` thật, nên luồng gửi email được kiểm thử ở chế độ kết xuất HTML đầy đủ và ghi nhật ký an toàn (`status='pending'`) trong bảng `email_logs`.
 - **Google OAuth & Cloudflare Turnstile thực tế**: Cần khóa `GOOGLE_CLIENT_ID`/`SECRET` và `TURNSTILE_SITE_KEY`/`SECRET_KEY` trên môi trường Cloudflare thực tế.
+
+
+## 3. Kiểm định bổ sung sau chỉnh sửa trang chủ (24/10/2026)
+
+- `node scripts/validate.mjs`: PASS.
+- `node scripts/validate-ui-reference.mjs`: 20/20 PASS; xác nhận các khối đã yêu cầu gỡ không còn trong bộ dựng trang chủ và cache version được đồng bộ.
+- `node scripts/test-all.mjs`: 147/147 PASS, 0 thất bại.
+- `node --check` trên các tệp JS/MJS trong `public/`, `src/` và `scripts/`: PASS.
+- Migration `0013_remove_homepage_technical_callout.sql` được thử trên SQLite cục bộ: loại đúng callout VI/EN, giữ các khối CMS khác và chạy lặp không tạo thay đổi ngoài ý muốn.
+- Không chạy migration trên D1 sản xuất và không triển khai website trong tác vụ này.

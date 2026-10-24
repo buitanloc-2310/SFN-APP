@@ -34,9 +34,16 @@ for (const [label, ok] of refs) check(ok, `Ảnh ${label}: đã ánh xạ tới 
 
 check(['fcard-blue','fcard-purple','fcard-teal','fcard-amber','fcard-navy','fcard-green'].every(c => portal.includes(c)), 'Trang chủ có đủ 6 thẻ chức năng theo màu riêng');
 check(['programs','members','certificates','partners','sponsorship'].every(k => portal.includes(`data-stat="${k}"`)), 'Trang chủ có đủ 5 chỉ số lấy từ API');
+const homeStart = portal.indexOf('async function home(app){');
+const homeEnd = portal.indexOf('\nasync function aboutCenter', homeStart);
+const homeSource = portal.slice(homeStart, homeEnd);
+const homeTemplate = homeSource.slice(homeSource.indexOf('app.innerHTML=`'), homeSource.indexOf('`;\n\n  const statConfig'));
+check(homeStart >= 0 && homeEnd > homeStart && !['home-operational-grid','home-lower-grid','home-programs-panel','home-events-panel','home-resources-panel','home-news-panel','home-about-panel','renderSystemPageCmsZone('/')'].some(s => homeSource.includes(s)), 'Trang chủ không còn các khối giao diện đã yêu cầu gỡ');
+check(homeTemplate.length > 0 && !/\bD1\b|\bR2\b|Cổng dịch vụ công và dữ liệu xác thực trực tuyến|Mọi số liệu thống kê, danh mục chương trình/i.test(homeTemplate), 'Trang chủ không hiển thị nhãn hạ tầng hoặc callout kỹ thuật đã yêu cầu xóa');
+check((homeSource.match(/api\('/g) || []).length === 1 && homeSource.includes("api('/api/config')"), 'Trang chủ chỉ tải API cấu hình cần cho phần giao diện còn giữ lại');
 check(!/id="accountBtn"|header-login-btn/.test(index) && /href="\/admin\/login"/.test(index), 'Không có nút Đăng nhập trên header; có liên kết quản trị nhỏ tại footer');
 check(/@media\s*\(max-width:\s*1180px\)/.test(css) && /@media\s*\(max-width:\s*760px\)/.test(css) && /@media\s*\(max-width:\s*420px\)/.test(css), 'CSS có breakpoint desktop/tablet/mobile');
-check(boot.includes('/app.js?v=20261023-v8') && boot.includes('/sw.js?v=20261023-v8') && sw.includes('20261023-v8'), 'Cache version của bootstrap/service worker đồng bộ');
+check(boot.includes('/app.js?v=20261024-home-clean-v1') && boot.includes('/sw.js?v=20261024-home-clean-v1') && sw.includes('20261024-home-clean-v1') && index.includes('20261024-home-clean-v1'), 'Cache version của giao diện và service worker đồng bộ');
 check(/normalizeBrandString/.test(portal) && portal.includes('text.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi,protect);') && portal.includes('text.replace(/(?:[a-z0-9-]+\\.)*skyfirst\\.io\\.vn/gi,protect);') && /Sky First/.test(index), 'Có cơ chế chuẩn hóa thương hiệu, giữ nguyên email/miền kỹ thuật');
 
 // Prevent accidental screenshot embedding: no reference screenshot names, data-URI full-page

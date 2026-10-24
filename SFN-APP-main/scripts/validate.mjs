@@ -19,7 +19,7 @@ const required=[
   'public/email-templates/fundraising-update.html',
   'migrations/0001_schema.sql','migrations/0002_seed.sql','migrations/0005_digital_information_infrastructure.sql',
   'migrations/0008_sky_first_digital_information_system.sql','migrations/0009_super_website_universal_email_and_cms.sql',
-  'migrations/0010_forensic_security_and_financial_reconciliation.sql','migrations/0011_v10_admin_cms_i18n_governance.sql','migrations/0012_audit_schema_sync_and_governance.sql','public/assets/icon-192.png','public/assets/icon-512.png','public/assets/apple-touch-icon.png','public/assets/favicon-32.png','wrangler.jsonc'
+  'migrations/0010_forensic_security_and_financial_reconciliation.sql','migrations/0011_v10_admin_cms_i18n_governance.sql','migrations/0012_audit_schema_sync_and_governance.sql','migrations/0013_remove_homepage_technical_callout.sql','public/assets/icon-192.png','public/assets/icon-512.png','public/assets/apple-touch-icon.png','public/assets/favicon-32.png','wrangler.jsonc'
 ];
 let ok=true;
 for(const f of required){

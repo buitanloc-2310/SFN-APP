@@ -19,6 +19,8 @@
 
 ## 2. Quy trình triển khai từng bước (Step-by-Step Deployment)
 
+**Lưu ý:** bản ZIP chỉnh sửa này chưa triển khai và chưa chạy migration trên D1 sản xuất. Bắt buộc có phê duyệt triển khai riêng.
+
 ```bash
 # Bước 1: Chạy toàn bộ bộ kiểm định trước khi triển khai
 node scripts/validate.mjs
@@ -29,9 +31,10 @@ node scripts/test-all.mjs
 # Bước 2: Sao lưu D1 hiện tại
 npx wrangler d1 export sfn-app-db --remote --output=backup_pre_deploy.sql
 
-# Bước 3: Áp dụng các bản di trú 0010 và 0011 lên D1
-npx wrangler d1 execute sfn-app-db --remote --file=migrations/0010_forensic_security_and_financial_reconciliation.sql
-npx wrangler d1 execute sfn-app-db --remote --file=migrations/0011_v10_admin_cms_i18n_governance.sql
+# Bước 3: Đối chiếu lịch sử migration, chạy thử trên staging và chỉ áp dụng khi có phê duyệt riêng
+npx wrangler d1 migrations list sfn-app-db --remote
+# Khi được phê duyệt và sau khi sao lưu/kiểm thử staging: npm run db:migrate
+# Không dùng wrangler d1 execute --file để chạy migration trong môi trường đã có dữ liệu.
 
 # Bước 4: Triển khai Worker và Assets lên Cloudflare
 npx wrangler deploy

@@ -1162,11 +1162,11 @@ async function adminDashboard(main){
     dataOk=true;
   }catch(err){console.error("ADMIN_DASHBOARD_DATA",err)}
 
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">TRUNG TÂM ĐIỀU HÀNH & QUẢN TRỊ HỆ THỐNG</span><h1>Tổng quan Hệ thống Thông tin Số Sky First</h1><p class="muted">Số liệu thời gian thực từ cơ sở dữ liệu D1, tình trạng tài liệu, chứng nhận, email tự động và nhật ký hoạt động gần đây.</p></div><span class="system-pill ${health.ok?"ok":"warn"}">${health.ok?"● Hệ thống đang hoạt động":"● Cần kiểm tra hệ thống"}</span></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">TRUNG TÂM ĐIỀU HÀNH & QUẢN TRỊ HỆ THỐNG</span><h1>Tổng quan Hệ thống Thông tin Số Sky First</h1><p class="muted">Số liệu vận hành từ cơ sở dữ liệu hệ thống, tình trạng tài liệu, chứng nhận, email tự động và nhật ký hoạt động gần đây.</p></div><span class="system-pill ${health.ok?"ok":"warn"}">${health.ok?"● Hệ thống đang hoạt động":"● Cần kiểm tra hệ thống"}</span></div>
   <div class="system-status-grid">
     <div class="status-card"><span>Ứng dụng Worker</span><b>${health.ok?"Hoạt động":"Gián đoạn"}</b></div>
-    <div class="status-card"><span>Cơ sở dữ liệu D1</span><b>${health.database?"Đã kết nối":"Không khả dụng"}</b></div>
-    <div class="status-card"><span>Lưu trữ R2</span><b>${health.storage?"Đã kết nối":"Không khả dụng"}</b></div>
+    <div class="status-card"><span>Cơ sở dữ liệu</span><b>${health.database?"Đã kết nối":"Không khả dụng"}</b></div>
+    <div class="status-card"><span>Kho lưu trữ tệp</span><b>${health.storage?"Đã kết nối":"Không khả dụng"}</b></div>
     <div class="status-card"><span>Dịch vụ Email</span><b>${emailBreakdown.provider_configured?"Đã cấu hình":"Chờ cấu hình khóa"}</b></div>
   </div>
   ${warnings.length?`<div style="display:grid;gap:8px;margin:14px 0;">${warnings.map(w=>`<div class="notice ${w.level==='bad'?'bad':w.level==='warn'?'warn':''}"><b>Cảnh báo hệ thống (${E(w.code)}):</b> ${E(w.message)}</div>`).join("")}</div>`:""}
@@ -2226,7 +2226,7 @@ async function adminFiles(main){
   state.admin.filesQuery="";
   state.admin.filesVis="all";
 
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">KHO TỆP & MINH CHỨNG HỆ THỐNG</span><h1>Quản lý Tệp & Minh chứng (/admin/files)</h1><p class="muted">Quản lý toàn bộ tệp đính kèm hồ sơ, tài liệu PDF và minh chứng lưu trữ trên R2/D1. Hỗ trợ tìm kiếm tức thời, lọc theo phạm vi truy cập, phân trang và kiểm tra an toàn tham chiếu trước khi xóa.</p></div><button type="button" class="primary" onclick="uploadAdminFile()">+ Tải tệp mới lên</button></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">KHO TỆP & MINH CHỨNG HỆ THỐNG</span><h1>Quản lý Tệp & Minh chứng</h1><p class="muted">Quản lý toàn bộ tệp đính kèm hồ sơ, tài liệu PDF và minh chứng lưu trữ của hệ thống. Hỗ trợ tìm kiếm tức thời, lọc theo phạm vi truy cập, phân trang và kiểm tra an toàn tham chiếu trước khi xóa.</p></div><button type="button" class="primary" onclick="uploadAdminFile()">+ Tải tệp mới lên</button></div>
   <section class="card admin-card-premium">
     <div class="toolbar">
       <label class="admin-searchbox" style="flex:1;min-width:240px;"><span>⌕</span><input id="adminFilesSearch" type="search" placeholder="Tìm theo tên tệp, mã hồ sơ, loại MIME hoặc mã tệp…" aria-label="Tìm kiếm tệp"></label>
@@ -2790,7 +2790,7 @@ window.editWebsiteModal=id=>{
     <div class="row2"><div class="field"><label>Mã định danh nội bộ (id) *</label><input name="id" value="${E(x.id)}" ${w?"readonly":""} required placeholder="vd: sfec"></div><div class="field"><label>Mã hiển thị (code) *</label><input name="code" value="${E(x.code)}" required placeholder="SF-SFEC"></div></div>
     <div class="row2"><div class="field"><label>Tên hiển thị Website *</label><input name="name" value="${E(x.name)}" required></div><div class="field"><label>Tên miền chính thức *</label><input name="domain" value="${E(x.domain)}" required placeholder="app.skyfirst.io.vn"></div></div>
     <div class="field"><label>Mô tả phạm vi hoạt động</label><textarea name="description" rows="2">${E(x.description||"")}</textarea></div>
-    <div class="row2"><div class="field"><label>Màu chủ đạo (Primary)</label><input name="primary_color" value="${E(x.primary_color||"#0759b8")}"></div><div class="field"><label>Trạng thái vận hành</label><select name="status"><option value="active" ${x.status==="active"?"selected":""}>Đang hoạt động (Active)</option><option value="maintenance" ${x.status==="maintenance"?"selected":""}>Đang bảo trì (Maintenance)</option><option value="paused" ${x.status==="paused"?"selected":""}>Tạm ngừng xuất bản</option></select></div></div>
+    <div class="row2"><div class="field"><label>Màu nhận diện</label><input name="primary_color" value="${E(x.primary_color||"#0759b8")}"></div><div class="field"><label>Trạng thái vận hành</label><select name="status"><option value="active" ${x.status==="active"?"selected":""}>Đang hoạt động (Active)</option><option value="maintenance" ${x.status==="maintenance"?"selected":""}>Đang bảo trì (Maintenance)</option><option value="paused" ${x.status==="paused"?"selected":""}>Tạm ngừng xuất bản</option></select></div></div>
     <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button type="submit" class="primary">Lưu cấu hình Website</button></div>
   </form>`);
   document.getElementById("siteConfigForm").onsubmit=async e=>{
@@ -3423,11 +3423,11 @@ window.deleteCmsTemplateItem=async id=>{
 };
 
 window.openWordPressImportModal=async()=>{
-  const v=await adminDialog({title:"Đồng bộ & Nhập trang từ Headless WordPress / Gutenberg",description:"Chuyển đổi an toàn bài viết/trang WordPress REST API (hoặc HTML chú thích khối <!-- wp:... -->) sang cấu trúc khối JSON của D1 mà không cho phép thực thi mã tùy ý.",confirmText:"Nhập vào CMS (Bản nháp)",fields:[
+  const v=await adminDialog({title:"Đồng bộ & Nhập trang từ Headless WordPress / Gutenberg",description:"Chuyển đổi an toàn bài viết/trang WordPress REST API (hoặc HTML chú thích khối <!-- wp:... -->) sang cấu trúc khối dữ liệu của hệ thống mà không cho phép thực thi mã tùy ý.",confirmText:"Nhập vào CMS (Bản nháp)",fields:[
     {name:"website_id",label:"Website đích",type:"select",value:"app",options:pbState.websites.map(w=>({value:w.id,label:`${w.name} (${w.domain})`}))},
     {name:"title",label:"Tiêu đề trang *",required:true,placeholder:"Tiêu đề bài viết / trang WordPress"},
     {name:"slug",label:"Slug đường dẫn *",required:true,placeholder:"trang-nhap-tu-wordpress"},
-    {name:"content",label:"Nội dung Gutenberg Block Markup hoặc WordPress Content *",type:"textarea",rows:6,required:true,value:`<!-- wp:heading -->\n<h2>Giới thiệu chương trình từ WordPress</h2>\n<!-- /wp:heading -->\n<!-- wp:paragraph -->\n<p>Nội dung được chuyển đổi tự động sang khối dữ liệu cấu trúc an toàn trên Cloudflare D1.</p>\n<!-- /wp:paragraph -->`}
+    {name:"content",label:"Nội dung Gutenberg Block Markup hoặc WordPress Content *",type:"textarea",rows:6,required:true,value:`<!-- wp:heading -->\n<h2>Giới thiệu chương trình từ WordPress</h2>\n<!-- /wp:heading -->\n<!-- wp:paragraph -->\n<p>Nội dung được chuyển đổi tự động sang khối dữ liệu có cấu trúc an toàn của hệ thống.</p>\n<!-- /wp:paragraph -->`}
   ]});
   if(!v)return;
   try{
@@ -3489,7 +3489,7 @@ async function adminSite(main){
     <div class="admin-card-heading"><div><span class="eyebrow">03 / THÔNG SỐ HỆ THỐNG THIẾT KẾ</span><h2>Bảng màu, Kiểu chữ, Bo góc & Mật độ giao diện</h2></div></div>
     <form id="designSystemForm">
       <div class="row2">
-        <div class="field"><label>Màu chủ đạo (Primary Color)</label><input name="primary_color" value="${E(ds.primary_color||"#0759b8")}"></div>
+        <div class="field"><label>Màu nhận diện</label><input name="primary_color" value="${E(ds.primary_color||"#0759b8")}"></div>
         <div class="field"><label>Màu nền đậm (Navy Color)</label><input name="navy_color" value="${E(ds.navy_color||"#071b35")}"></div>
       </div>
       <div class="row2">
@@ -3753,7 +3753,7 @@ async function adminMedia(main){
   state.admin.media=d.items||[];
   const sum=auditRes.summary||{};
   const usageMap=Object.fromEntries((auditRes.items||[]).map(x=>[x.key,x]));
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">THƯ VIỆN ĐA PHƯƠNG TIỆN & KIỂM TOÁN TÀI NGUYÊN</span><h1>Thư viện Hình ảnh, SVG, PDF & Kiểm toán Sử dụng</h1><p class="muted">Quản lý tập trung ảnh JPG, PNG, WEBP, GIF, SVG (đã làm sạch mã thực thi) và PDF trên R2/D1. Tự động đối chiếu các trang CMS, bài viết và cài đặt đang sử dụng từng tệp.</p></div><button class="primary" onclick="uploadSiteImage()">+ Tải tài nguyên lên</button></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">THƯ VIỆN ĐA PHƯƠNG TIỆN & KIỂM TOÁN TÀI NGUYÊN</span><h1>Thư viện Hình ảnh, SVG, PDF & Kiểm toán Sử dụng</h1><p class="muted">Quản lý tập trung ảnh JPG, PNG, WEBP, GIF, SVG (đã làm sạch mã thực thi) và PDF trong thư viện tài nguyên của hệ thống. Tự động đối chiếu các trang CMS, bài viết và cài đặt đang sử dụng từng tệp.</p></div><button class="primary" onclick="uploadSiteImage()">+ Tải tài nguyên lên</button></div>
   <div class="kpis" style="margin-bottom:16px;">
     <div class="kpi"><b>${E(sum.total_files||state.admin.media.length)}</b>Tổng tệp trong thư viện</div>
     <div class="kpi"><b>${E(sum.in_use_count||0)}</b>Tệp đang gắn trên trang</div>
@@ -3837,7 +3837,7 @@ async function adminAudit(main){
 async function adminBackup(main){
   const d=await api("/api/admin/backups");
 
-  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Sao lưu & Phục hồi Dữ liệu (D1 + R2)</h1><button class="primary" onclick="createBackup()">Tạo bản sao lưu ngay</button></div><div class="notice">Mỗi bản sao lưu bao gồm mã băm toàn vẹn SHA-256 và thống kê số bản ghi từng bảng. Hệ thống tự động kiểm tra SHA-256 trước khi khôi phục.</div><div class="card">${(d.items||[]).map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);"><div><b>${E(x.id)}</b> — ${Math.round((x.size||0)/1024)} KB — ${fmt(x.created_at)}<br><small class="muted">SHA-256: <code>${E((x.sha256||"—").slice(0,24))}…</code></small></div><button class="danger" onclick="restoreBackup('${E(x.id)}')">Phục hồi</button></div>`).join("")||"<p>Chưa có bản sao lưu nào.</p>"}</div>`;
+  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Sao lưu & Phục hồi Dữ liệu</h1><button class="primary" onclick="createBackup()">Tạo bản sao lưu ngay</button></div><div class="notice">Mỗi bản sao lưu bao gồm mã băm toàn vẹn SHA-256 và thống kê số bản ghi từng bảng. Hệ thống tự động kiểm tra SHA-256 trước khi khôi phục.</div><div class="card">${(d.items||[]).map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);"><div><b>${E(x.id)}</b> — ${Math.round((x.size||0)/1024)} KB — ${fmt(x.created_at)}<br><small class="muted">SHA-256: <code>${E((x.sha256||"—").slice(0,24))}…</code></small></div><button class="danger" onclick="restoreBackup('${E(x.id)}')">Phục hồi</button></div>`).join("")||"<p>Chưa có bản sao lưu nào.</p>"}</div>`;
 }
 
 window.restoreBackup=async idb=>{

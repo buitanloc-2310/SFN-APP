@@ -884,19 +884,19 @@ export async function adminRoute(request,env,url,ctx){
     const checks=[];
     try{
       const c=await env.DB.prepare("SELECT (SELECT COUNT(*) FROM users WHERE status='active') AS u, (SELECT COUNT(*) FROM forms WHERE enabled=1) AS f, (SELECT COUNT(*) FROM websites WHERE status='active') AS w").first();
-      checks.push({key:"d1_database",label:"Kết nối cơ sở dữ liệu D1 & bảng cốt lõi",ok:Number(c?.u||0)>0 && Number(c?.f||0)>0,detail:`Users: ${c?.u||0}, Active Forms: ${c?.f||0}, Active Websites: ${c?.w||0}`});
+      checks.push({key:"d1_database",label:"Kết nối cơ sở dữ liệu & bảng cốt lõi",ok:Number(c?.u||0)>0 && Number(c?.f||0)>0,detail:`Users: ${c?.u||0}, Active Forms: ${c?.f||0}, Active Websites: ${c?.w||0}`});
     }catch(e){
-      checks.push({key:"d1_database",label:"Kết nối cơ sở dữ liệu D1",ok:false,detail:String(e.message||e)});
+      checks.push({key:"d1_database",label:"Kết nối cơ sở dữ liệu",ok:false,detail:String(e.message||e)});
     }
     try{
       if(env.FILES){
         await env.FILES.list({limit:1});
-        checks.push({key:"r2_storage",label:"Kết nối lưu trữ R2 (FILES bucket)",ok:true,detail:"Đọc danh sách đối tượng R2 thành công"});
+        checks.push({key:"r2_storage",label:"Kết nối kho lưu trữ tệp",ok:true,detail:"Đọc danh sách tệp thành công"});
       }else{
-        checks.push({key:"r2_storage",label:"Kết nối lưu trữ R2",ok:false,detail:"Thiếu FILES binding"});
+        checks.push({key:"r2_storage",label:"Kết nối kho lưu trữ tệp",ok:false,detail:"Thiếu FILES binding"});
       }
     }catch(e){
-      checks.push({key:"r2_storage",label:"Kết nối lưu trữ R2",ok:false,detail:String(e.message||e)});
+      checks.push({key:"r2_storage",label:"Kết nối kho lưu trữ tệp",ok:false,detail:String(e.message||e)});
     }
     const bk=await env.DB.prepare("SELECT id,sha256,created_at FROM backups ORDER BY created_at DESC LIMIT 1").first();
     checks.push({key:"recent_backup",label:"Bản sao lưu dữ liệu SHA-256",ok:Boolean(bk?.id),detail:bk?`Bản sao lưu gần nhất: ${bk.id} (${bk.created_at})`:"Chưa có bản sao lưu nào"});
