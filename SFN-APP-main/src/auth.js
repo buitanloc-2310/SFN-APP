@@ -339,6 +339,17 @@ export async function authRoute(request, env, url) {
 
   if (
     p === "/api/auth/login" &&
+    request.method === "GET"
+  ) {
+    const accept = request.headers.get("accept") || "";
+    if (accept.includes("text/html")) {
+      return Response.redirect(`${env.APP_URL || url.origin}/admin/login`, 302);
+    }
+    return json({error:"METHOD_NOT_ALLOWED", message:"Endpoint này chỉ nhận phương thức POST từ trang /admin/login."}, 405, {"Allow":"POST"});
+  }
+
+  if (
+    p === "/api/auth/login" &&
     request.method === "POST"
   ) {
     const ipKey = await ipHash(request);
@@ -467,6 +478,9 @@ export async function authRoute(request, env, url) {
       env,
       u.id
     );
+    try {
+      await env.DB.prepare("DELETE FROM rate_limits WHERE k IN (?, ?)").bind(`login:${ipKey}`, `login-acct:${await sha256(email)}`).run();
+    } catch {}
 
     await auditAuth(env, request, full, "Đăng nhập quản trị thành công", "user", String(u.id), {portal, roles:roleIds});
 

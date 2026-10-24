@@ -182,3 +182,12 @@ npx wrangler deploy
 - [x] **Đối soát tài chính & tài trợ:** Tách biệt 5 chỉ số tài chính, không ép số dư âm về `0`, hỗ trợ QR tham chiếu + webhook HMAC chống replay/idempotent, tách biệt nhiệm vụ tạo và duyệt giao dịch, và lưu vết kiểm toán bất biến.
 - [x] **Sao lưu & phục hồi:** Bao phủ toàn bộ 51 bảng, ẩn thông tin mật khẩu nhạy cảm trong R2, kiểm tra SHA-256 trước khi phục hồi và thực thi trong `env.DB.batch()` nguyên tử.
 - [x] **Kiểm thử tự động:** 137/137 kiểm thử tự động vượt qua (0 lỗi).
+
+---
+
+## 8. ĐỐI CHIẾU MÃ BĂM SHA-256 CỦA GÓI ĐẦU VÀO VÀ GÓI ĐẦU RA
+
+| Gói Tệp Nén | Tên Tệp | Kích thước (Bytes) | Mã băm SHA-256 |
+|---|---|---:|---|
+| **Gói đầu vào gốc (Giữ nguyên 100%)** | `SFN-APP-V9-SKY-FIRST-SUPER-WEBSITE.zip` | `5,739,998` | `9188953e28e6c4a01386798a610a9a590d109e2641b2ed6072ca9af8685e7dbb` |
+| **Gói đầu ra sau kiểm toán & khắc phục** | `SFN-APP-V9-SKY-FIRST-SUPER-WEBSITE-REMEDIATED.zip` | `5,762,826` | `cb8c2e5726899a0f4bacd7b0664d33e3553e8109e2d7b60af08fd7c6f5ab1e30` |
