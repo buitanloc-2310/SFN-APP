@@ -252,7 +252,7 @@ function fieldHtml(f){
   if(f.type==="select")return `<div class="field"><label>${E(f.label)}${req}</label><select ${attrs}><option value="">-- Chọn --</option>${(f.options||[]).map(x=>`<option>${E(x)}</option>`).join("")}</select></div>`;
   if(f.type==="checkbox")return `<div class="check"><input type="checkbox" ${attrs}><label>${E(f.label)}${req}</label></div>`;
 if(f.type==="file")return `<div class="field upload-field"><label>${E(f.label)}${req}</label><input type="file" ${attrs} ${f.accept?`accept="${E(f.accept.join(","))}"`:""}><div class="file-preview" data-file-preview="${E(f.key)}"><span>Chưa chọn tệp</span></div>`
-  if(f.type==="signature")return `<div class="field signature-field"><label>${E(f.label)}${req}</label><div class="signature-pad"><canvas data-signature-canvas="${E(f.key)}" width="900" height="280" aria-label="Vùng vẽ chữ ký"></canvas><div class="signature-actions"><button type="button" class="secondary" data-signature-clear="${E(f.key)}">Xóa / ký lại</button><label class="secondary signature-upload-label">Upload chữ ký<input type="file" data-signature-upload="${E(f.key)}" accept="image/png,image/jpeg,image/webp" hidden></label></div><div class="small muted">Chữ ký hình ảnh (vẽ trực tiếp hoặc tải ảnh chữ ký) dùng để xác nhận biểu mẫu; không phải chữ ký số được chứng thực pháp lý.</div></div></div>`;
+  if(f.type==="signature")return `<div class="field signature-field"><label>${E(f.label)}${req}</label><div class="signature-pad"><canvas data-signature-canvas="${E(f.key)}" width="900" height="280" aria-label="Vùng vẽ chữ ký"></canvas><div class="signature-actions"><button type="button" class="secondary" data-signature-clear="${E(f.key)}">Xóa / ký lại</button><label class="secondary signature-upload-label">Upload chữ ký<input type="file" data-signature-upload="${E(f.key)}" accept="image/png,image/jpeg,image/webp" hidden></label></div><div class="signature-preview-slot" data-signature-preview="${E(f.key)}" style="margin-top:8px;"></div></div></div>`;
   return `<div class="field"><label>${E(f.label)}${req}</label><input type="${E(f.type||"text")}" ${attrs}></div>`;
 }
 function sectionActive(section,answers){
@@ -296,7 +296,7 @@ function initFilePreviews(form){
   form.querySelectorAll('input[type="file"][data-key]').forEach(input=>input.addEventListener('change',()=>{const box=form.querySelector(`[data-file-preview="${CSS.escape(input.dataset.key)}"]`),file=input.files?.[0];if(!box)return;if(!file){box.innerHTML='<span>Chưa chọn tệp</span>';return}const size=(file.size/1024/1024).toFixed(2);box.innerHTML=`<b>${E(file.name)}</b><span>${size} MB · ${E(file.type||'file')}</span>`;}));
 }
 function initSignaturePads(form){
-  form.querySelectorAll('[data-signature-canvas]').forEach(canvas=>{const key=canvas.dataset.signatureCanvas,ctx=canvas.getContext('2d');ctx.lineWidth=3;ctx.lineCap='round';ctx.strokeStyle=getComputedStyle(document.body).getPropertyValue('--ink')||'#10233e';let drawing=false,last=null;const pos=e=>{const r=canvas.getBoundingClientRect(),p=e.touches?.[0]||e;return {x:(p.clientX-r.left)*(canvas.width/r.width),y:(p.clientY-r.top)*(canvas.height/r.height)}};const start=e=>{e.preventDefault();drawing=true;last=pos(e)};const move=e=>{if(!drawing)return;e.preventDefault();const p=pos(e);ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;canvas.dataset.signed='1'};const end=()=>{drawing=false;last=null};canvas.addEventListener('pointerdown',start);canvas.addEventListener('pointermove',move);window.addEventListener('pointerup',end);form.querySelector(`[data-signature-clear="${CSS.escape(key)}"]`)?.addEventListener('click',()=>{ctx.clearRect(0,0,canvas.width,canvas.height);canvas.dataset.signed='0';const up=form.querySelector(`[data-signature-upload="${CSS.escape(key)}"]`);if(up)up.value=''});form.querySelector(`[data-signature-upload="${CSS.escape(key)}"]`)?.addEventListener('change',e=>{if(e.target.files?.[0])canvas.dataset.signed='0'});});
+  form.querySelectorAll('[data-signature-canvas]').forEach(canvas=>{const key=canvas.dataset.signatureCanvas,ctx=canvas.getContext('2d'),prevSlot=form.querySelector(`[data-signature-preview="${CSS.escape(key)}"]`);ctx.lineWidth=3;ctx.lineCap='round';ctx.strokeStyle=getComputedStyle(document.body).getPropertyValue('--ink')||'#10233e';let drawing=false,last=null;const pos=e=>{const r=canvas.getBoundingClientRect(),p=e.touches?.[0]||e;return {x:(p.clientX-r.left)*(canvas.width/r.width),y:(p.clientY-r.top)*(canvas.height/r.height)}};const start=e=>{e.preventDefault();drawing=true;last=pos(e)};const move=e=>{if(!drawing)return;e.preventDefault();const p=pos(e);ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;canvas.dataset.signed='1';if(prevSlot)prevSlot.innerHTML='<span class="small muted">✓ Đã ghi nhận chữ ký vẽ tay</span>'};const end=()=>{drawing=false;last=null};canvas.addEventListener('pointerdown',start);canvas.addEventListener('pointermove',move);window.addEventListener('pointerup',end);form.querySelector(`[data-signature-clear="${CSS.escape(key)}"]`)?.addEventListener('click',()=>{ctx.clearRect(0,0,canvas.width,canvas.height);canvas.dataset.signed='0';const up=form.querySelector(`[data-signature-upload="${CSS.escape(key)}"]`);if(up)up.value='';if(prevSlot)prevSlot.innerHTML=''});form.querySelector(`[data-signature-upload="${CSS.escape(key)}"]`)?.addEventListener('change',e=>{const file=e.target.files?.[0];if(file){ctx.clearRect(0,0,canvas.width,canvas.height);canvas.dataset.signed='0';if(prevSlot){const objUrl=URL.createObjectURL(file);prevSlot.innerHTML=`<div class="small muted">✓ Đã chọn ảnh chữ ký: <b>${E(file.name)}</b></div><img src="${E(objUrl)}" alt="Xem trước chữ ký tải lên" style="max-height:90px;margin-top:6px;border:1px solid #dbe4f0;border-radius:8px;background:#fff;padding:4px;">`;}}});});
 }
 function signatureBlob(canvas){return new Promise(resolve=>canvas.toBlob(resolve,'image/png',.95))}
 async function clientSha256(file){const buf=await file.arrayBuffer(),hash=await crypto.subtle.digest('SHA-256',buf);return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('')}
@@ -338,9 +338,22 @@ async function renderForm(idForm){
       }
       if(c.review_before_submit!==false&&form.dataset.reviewConfirmed!=='1'){
         form.querySelector('#formReviewPanel')?.remove();
-        const labels={};for(const sec of c.sections||[])for(const f of sec.fields||[])labels[f.key]=f.label||f.key;
-        const rows=Object.entries(answers).filter(([,v])=>v!==''&&v!==false&&v!=null).map(([k,v])=>`<div><dt>${E(labels[k]||k)}</dt><dd>${E(v===true?'Đã xác nhận':String(v))}</dd></div>`).join('');
-        const panel=document.createElement('section');panel.id='formReviewPanel';panel.className='form-review-panel';panel.setAttribute('aria-labelledby','reviewTitle');panel.innerHTML=`<span class="hero-eyebrow">REVIEW BEFORE SUBMIT</span><h2 id="reviewTitle">Kiểm tra lần cuối</h2><p>Xem lại thông tin trước khi hồ sơ được tiếp nhận. Tệp và chữ ký đã chọn sẽ được tải lên sau khi bạn xác nhận.</p><dl>${rows||'<div><dt>Thông tin</dt><dd>Đã sẵn sàng</dd></div>'}</dl><div class="actions"><button type="button" class="primary" id="confirmFinalSubmit">Xác nhận & gửi hồ sơ →</button><button type="button" class="secondary" id="editBeforeSubmit">Quay lại chỉnh sửa</button></div>`;
+        const labels={},fieldTypes={};for(const sec of c.sections||[])for(const f of sec.fields||[]){labels[f.key]=f.label||f.key;fieldTypes[f.key]=f.type;}
+        const sigPreviews={};
+        for(const [k,v] of Object.entries(answers)){
+          if(fieldTypes[k]==='signature'){
+            if(v==='uploaded'&&files[k]) sigPreviews[k]=URL.createObjectURL(files[k]);
+            else if(v==='drawn'){
+              const cv=form.querySelector(`[data-signature-canvas="${CSS.escape(k)}"]`);
+              if(cv){const b=await signatureBlob(cv);if(b)sigPreviews[k]=URL.createObjectURL(b);}
+            }
+          }
+        }
+        const rows=Object.entries(answers).filter(([,v])=>v!==''&&v!==false&&v!=null).map(([k,v])=>{
+          if(sigPreviews[k]) return `<div><dt>${E(labels[k]||k)}</dt><dd><img src="${E(sigPreviews[k])}" alt="Xem lại chữ ký" style="max-height:96px;border:1px solid #dbe4f0;border-radius:8px;background:#fff;padding:4px;"></dd></div>`;
+          return `<div><dt>${E(labels[k]||k)}</dt><dd>${E(v===true?'Đã xác nhận':String(v))}</dd></div>`;
+        }).join('');
+        const panel=document.createElement('section');panel.id='formReviewPanel';panel.className='form-review-panel';panel.setAttribute('aria-labelledby','reviewTitle');panel.innerHTML=`<span class="hero-eyebrow">REVIEW BEFORE SUBMIT</span><h2 id="reviewTitle">Kiểm tra lần cuối</h2><p>Xem lại thông tin và ảnh chữ ký trước khi hồ sơ được tiếp nhận. Tệp và chữ ký đã chọn sẽ được tải lên và xác thực lưu trữ trước khi hoàn tất.</p><dl>${rows||'<div><dt>Thông tin</dt><dd>Đã sẵn sàng</dd></div>'}</dl><div class="actions"><button type="button" class="primary" id="confirmFinalSubmit">Xác nhận & gửi hồ sơ →</button><button type="button" class="secondary" id="editBeforeSubmit">Quay lại chỉnh sửa</button></div>`;
         form.querySelector('.form-navigation')?.before(panel);panel.scrollIntoView({behavior:'smooth',block:'center'});
         panel.querySelector('#confirmFinalSubmit').onclick=()=>{form.dataset.reviewConfirmed='1';form.requestSubmit()};panel.querySelector('#editBeforeSubmit').onclick=()=>{panel.remove();delete form.dataset.reviewConfirmed};return
       }
@@ -1445,6 +1458,7 @@ window.saveTerm=encoded=>{
     toast("Đã cập nhật điều khoản.");
     adminTerms(document.getElementById("adminMain"));
   }).catch(e=>toast(errorText(e),"bad"));
+};
 
 window.viewEmailTemplateVersions=async key=>{
   try{
@@ -1456,7 +1470,6 @@ window.viewEmailTemplateVersions=async key=>{
     </tbody></table></div>
     <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Đóng</button></div>`);
   }catch(e){toast(errorText(e),"bad")}
-};
 };
 
 async function adminTeaching(main){
@@ -1542,7 +1555,8 @@ function renderFormBuilder(){
    <div class="row2"><div class="field"><label>Loại biểu mẫu</label><select id="fbType"><option value="general" ${c.form_type!=="class"&&c.form_type!=="student"?"selected":""}>Đăng ký chung</option><option value="class" ${c.form_type==="class"?"selected":""}>Lớp học</option><option value="student" ${c.form_type==="student"?"selected":""}>Học viên mới</option></select></div><div class="field"><label>Trình bày</label><select id="fbPresentation"><option value="classic" ${(c.presentation||"classic")==="classic"?"selected":""}>Classic Form</option><option value="multi-step" ${c.presentation==="multi-step"?"selected":""}>Multi-step Form</option><option value="guided" ${c.presentation==="guided"?"selected":""}>Guided Form</option></select></div></div>
    <div class="row2"><div class="field"><label>Trạng thái</label><select id="fbEnabled"><option value="1" ${f.enabled?"selected":""}>Đang mở</option><option value="0" ${!f.enabled?"selected":""}>Đóng / Draft</option></select></div><div class="field"><label>Chính sách review</label><select id="fbReview"><option value="1" ${c.review_before_submit!==false?"selected":""}>Review trước khi gửi</option><option value="0" ${c.review_before_submit===false?"selected":""}>Gửi trực tiếp</option></select></div></div>
    <div class="check"><input id="fbMinorMode" type="checkbox" ${c.minor_mode?"checked":""}><label>MINOR PARTICIPANT MODE — tự hiển thị phần người giám hộ khi dưới 18 tuổi</label></div>
-   <div class="check"><input id="fbPhotoRequired" type="checkbox" ${c.profile_photo_required===true?"checked":""}><label>Yêu cầu ảnh cá nhân (chỉ bật khi thật sự cần)</label></div><p class="small muted">Data minimization: ảnh, giấy tờ định danh và tệp nhạy cảm không được bật mặc định.</p>
+   <div class="check"><input id="fbPhotoRequired" type="checkbox" ${c.profile_photo_required===true?"checked":""}><label>Yêu cầu ảnh cá nhân (chỉ bật khi thật sự cần)</label></div>
+   <div class="check"><input id="fbSignatureRequired" type="checkbox" ${c.signature_required===true?"checked":""}><label>Bắt buộc phải có chữ ký xác nhận (vẽ trực tiếp hoặc tải ảnh chữ ký)</label></div><p class="small muted">Data minimization: ảnh, giấy tờ định danh và tệp nhạy cảm không được bật mặc định.</p>
    <div id="builderSections">${(c.sections||[]).map((sec,si)=>`<div class="builder-section"><div class="toolbar"><b>${E(sec.title)}</b><button class="secondary" onclick="addBuilderField(${si})">+ Câu hỏi</button><button class="danger" onclick="deleteBuilderSection(${si})">Xóa phần</button></div>${(sec.fields||[]).map((x,fi)=>`<div class="builder-field" draggable="true" data-builder-pos="${si}:${fi}"><span><b>${E(x.label)}</b><br><span class="small muted">${E(x.key)}</span></span><span>${E(x.type)}</span><span>${x.required?"Bắt buộc":"Không bắt buộc"}</span><span><button class="ghost" onclick="moveField(${si},${fi},-1)">↑</button><button class="ghost" onclick="moveField(${si},${fi},1)">↓</button><button class="secondary" onclick="editBuilderField(${si},${fi})">Sửa</button><button class="danger" onclick="deleteBuilderField(${si},${fi})">×</button></span></div>`).join("")}</div>`).join("")}</div>
    <div class="actions"><button class="secondary" onclick="addBuilderSection()">+ Thêm phần</button><button class="secondary" onclick="previewFormBuilder()">Xem trước</button><button class="primary" onclick="saveFormBuilder()">Lưu phiên bản mới</button></div>`);
   document.getElementById("fbType").onchange=e=>{
@@ -1614,6 +1628,7 @@ window.saveFormBuilder=async()=>{
   state.formBuilder.config.review_before_submit=document.getElementById("fbReview").value==="1";
   state.formBuilder.config.minor_mode=document.getElementById("fbMinorMode").checked;
   state.formBuilder.config.profile_photo_required=document.getElementById("fbPhotoRequired").checked;
+  state.formBuilder.config.signature_required=!!document.getElementById("fbSignatureRequired")?.checked;
   try{
     await api(`/api/admin/forms/${encodeURIComponent(state.formBuilder.id)}`,{method:"PUT",body:{name:state.formBuilder.name,prefix:state.formBuilder.prefix,description:state.formBuilder.description,audience:state.formBuilder.audience,min_age:state.formBuilder.min_age,enabled:!!state.formBuilder.enabled,recipient_email:state.formBuilder.recipient_email,config:state.formBuilder.config}});
     closeModal();toast("Đã lưu phiên bản biểu mẫu.");adminForms(document.getElementById("adminMain"));
@@ -2252,7 +2267,7 @@ window.createSponsorshipTx=()=>{
   modal(`<div class="admin-modal-head"><div><span class="eyebrow">ĐỐI SOÁT TÀI CHÍNH</span><h2>Ghi nhận giao dịch tài trợ</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
   <form id="spTxForm">
     <div class="row2"><div class="field"><label>Chương trình *</label><select name="campaign_id" required>${camps.map(c=>`<option value="${E(c.id)}">${E(c.code)} — ${E(c.title)}</option>`).join("")}</select></div><div class="field"><label>Loại chỉ tiêu *</label><select name="tx_type"><option value="pledge">Khoản cam kết (Pledge)</option><option value="receipt">Khoản thực nhận (Receipt)</option><option value="disbursement">Khoản giải ngân / đã chi (Disbursement)</option><option value="adjustment">Điều chỉnh tăng/giảm</option><option value="refund">Hoàn trả</option></select></div></div>
-    <div class="row2"><div class="field"><label>Số tiền (VND) *</label><input name="amount" type="number" min="1" step="1000" required></div><div class="field"><label>Tên hiển thị công khai (ẩn thông tin nhạy cảm) *</label><input name="public_party_label" required placeholder="VD: Nhà tài trợ đồng hành / Chi học liệu đợt 1"></div></div>
+    <div class="row2"><div class="field"><label>Số tiền (VND, cho phép âm khi điều chỉnh giảm) *</label><input name="amount" type="number" step="1000" required></div><div class="field"><label>Tên hiển thị công khai (ẩn thông tin nhạy cảm) *</label><input name="public_party_label" required placeholder="VD: Nhà tài trợ đồng hành / Chi học liệu đợt 1"></div></div>
     <div class="field"><label>Nội dung / Mục đích chi tiết</label><textarea name="purpose" rows="3"></textarea></div>
     <div class="check"><input type="checkbox" id="spTxVerify" checked><label for="spTxVerify">Xác minh đối soát và cho phép hiển thị công khai</label></div>
     <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button type="submit" class="primary">Lưu giao dịch</button></div>

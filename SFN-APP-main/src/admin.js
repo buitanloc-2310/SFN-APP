@@ -1,6 +1,5 @@
-
-import {json, readJson, uid, sha256, ipHash, escapeHtml, pbkdf2, newSalt} from "./utils.js";
-import {getAuthUser, requirePermission, createInvitedAccount} from "./auth.js";
+import {json, readJson, uid, sha256, sha256Hex, ipHash, escapeHtml, pbkdf2, newSalt, magicBytesOk} from "./utils.js";
+import {getAuthUser, requireAuth, requirePermission, createInvitedAccount} from "./auth.js";
 import {hasPermission, hasAnyPermission, highestRoleLevel, roleLevel, canAccessScope} from "./permissions.js";
 import {sendTemplatedEmail, renderEmailContent} from "./email.js";
 
@@ -128,10 +127,99 @@ function makeUpdate(table,idField,idValue,fields,data){
   return {sql:`UPDATE ${table} SET ${sets.join(",")}${["news","classes","events","units","documents","tasks"].includes(table)?",updated_at=CURRENT_TIMESTAMP":""} WHERE ${idField}=?`,vals};
 }
 
+// Danh sách bảng theo thứ tự phụ thuộc cha -> con (Topological Order) phục vụ sao lưu và phục hồi nguyên tử
+export const BACKUP_TABLES=[
+  "roles","users","user_roles","settings","modules","terms","forms","form_revisions","counters",
+  "units","unit_members","people","people_history","teaching_scopes",
+  "submissions","files","case_events","internal_requests",
+  "classes","class_enrollments","attendance","events","event_registrations",
+  "news","documents","document_versions","certificates","certificate_history","issued_document_codes",
+  "approvals","interviews","evaluations","tickets","ticket_messages","notifications",
+  "email_templates","email_template_versions","tasks","data_requests",
+  "sponsorship_campaigns","sponsorship_payment_intents","sponsorship_transactions","sponsorship_reports","sponsorship_audit_trail",
+  "safety_reports","websites","cms_pages","cms_page_revisions","cms_shared_blocks","cms_templates","xanh_external_submissions"
+];
+
+export async function buildBackupSnapshot(env,kind="manual",actorId=null){
+  const snapshot={
+    schema_version:"v9.2-forensic",
+    kind,
+    created_at:new Date().toISOString(),
+    table_counts:{},
+    tables:{}
+  };
+  for(const t of BACKUP_TABLES){
+    if(!(await adminTableExists(env,t))) continue;
+    const rs=await env.DB.prepare(`SELECT * FROM ${t}`).all();
+    let rows=rs.results||[];
+    if(t==="users"){
+      rows=rows.map(u=>({...u,password_hash:"[REDACTED_SECRET]",password_salt:"[REDACTED_SECRET]",totp_secret:null}));
+    }
+    snapshot.tables[t]=rows;
+    snapshot.table_counts[t]=rows.length;
+  }
+  const raw=JSON.stringify(snapshot);
+  const checksum=await sha256Hex(raw);
+  const size=new TextEncoder().encode(raw).length;
+  const idB=uid("backup");
+  const prefix=kind==="cron"?"backups/cron":kind==="pre_restore"?"backups/pre-restore":"backups";
+  const key=`${prefix}/${new Date().toISOString().slice(0,10)}/${idB}.json`;
+  if(env.FILES){
+    await env.FILES.put(key,raw,{httpMetadata:{contentType:"application/json"},customMetadata:{sha256:checksum,kind}});
+  }
+  const bCols=await adminTableColumns(env,"backups");
+  if(bCols.has("sha256")&&bCols.has("table_counts_json")){
+    await env.DB.prepare("INSERT INTO backups(id,r2_key,size,sha256,table_counts_json,kind,created_by,verified_at) VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP)")
+      .bind(idB,key,size,checksum,JSON.stringify(snapshot.table_counts),kind,actorId).run();
+  }else{
+    await env.DB.prepare("INSERT INTO backups(id,r2_key,size,created_by) VALUES(?,?,?,?)")
+      .bind(idB,key,size,actorId).run();
+  }
+  return {id:idB,r2_key:key,size,sha256:checksum,table_counts:snapshot.table_counts};
+}
+
+export async function recalculateCampaignTotals(env,campaignId){
+  const [verRows,pendRows]=await env.DB.batch([
+    env.DB.prepare("SELECT tx_type, COALESCE(SUM(amount),0) AS total FROM sponsorship_transactions WHERE campaign_id=? AND verification_status='verified' GROUP BY tx_type").bind(campaignId),
+    env.DB.prepare("SELECT COALESCE(SUM(amount),0) AS total FROM sponsorship_transactions WHERE campaign_id=? AND verification_status='pending' AND tx_type IN ('receipt','pledge')").bind(campaignId)
+  ]);
+  let pledged=0,receipts=0,disbursed=0,refunded=0,adjusted=0;
+  for(const r of verRows.results||[]){
+    const amt=Number(r.total||0);
+    if(r.tx_type==="pledge") pledged+=amt;
+    else if(r.tx_type==="receipt") receipts+=amt;
+    else if(r.tx_type==="disbursement") disbursed+=amt;
+    else if(r.tx_type==="refund") refunded+=amt;
+    else if(r.tx_type==="adjustment") adjusted+=amt;
+  }
+  // Không bao giờ ép số dư âm về 0 — phản ánh trung thực thực nhận và số dư thực tế
+  const received=receipts-refunded+adjusted;
+  const remaining=received-disbursed;
+  const pending=Number(pendRows.results?.[0]?.total||0);
+  const campCols=await adminTableColumns(env,"sponsorship_campaigns");
+  if(campCols.has("pending_amount")&&campCols.has("refunded_amount")&&campCols.has("adjusted_amount")){
+    await env.DB.prepare("UPDATE sponsorship_campaigns SET pledged_amount=?,received_amount=?,disbursed_amount=?,pending_amount=?,refunded_amount=?,adjusted_amount=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(pledged,received,disbursed,pending,refunded,adjusted,campaignId).run();
+  }else{
+    await env.DB.prepare("UPDATE sponsorship_campaigns SET pledged_amount=?,received_amount=?,disbursed_amount=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(pledged,received,disbursed,campaignId).run();
+  }
+  return {pledged,received,disbursed,pending,refunded,adjusted,remaining,is_overspent:remaining<0};
+}
+
+async function recordSponsorshipAudit(env,{campaign_id=null,transaction_id=null,action,reason="",previous_state=null,new_state=null,actor_user_id=null,actor_email=""}){
+  if(!(await adminTableExists(env,"sponsorship_audit_trail"))) return;
+  try{
+    await env.DB.prepare("INSERT INTO sponsorship_audit_trail(campaign_id,transaction_id,action,previous_state_json,new_state_json,reason,actor_user_id,actor_email) VALUES(?,?,?,?,?,?,?,?)")
+      .bind(campaign_id,transaction_id,action,previous_state?JSON.stringify(previous_state):"{}",new_state?JSON.stringify(new_state):"{}",String(reason||""),actor_user_id,actor_email||"").run();
+  }catch{}
+}
+
 export async function adminRoute(request,env,url,ctx){
   if(!url.pathname.startsWith("/api/admin/")) return null;
   const user=await getAuthUser(request,env);
-  if(!user) return json({error:"AUTH_REQUIRED"},401);
+  const authDeny=requireAuth(user);
+  if(authDeny) return authDeny;
   const p=url.pathname;
 
   if(p==="/api/admin/dashboard"&&request.method==="GET"){
@@ -248,7 +336,7 @@ export async function adminRoute(request,env,url,ctx){
     if(!hasPermission(user,"submission.manage")&&!hasPermission(user,"approval.decide")&&hasPermission(user,"submission.manage_assigned")&&Number(row.assigned_to)!==Number(user.id)){
       return json({error:"FORBIDDEN",message:"Bạn chỉ được xem hồ sơ được phân công xử lý."},403);
     }
-    const files=await env.DB.prepare("SELECT id,field_key,filename,mime,size,created_at FROM files WHERE submission_code=?").bind(row.code).all();
+    const files=await env.DB.prepare("SELECT id,field_key,filename,mime,size,created_at FROM files WHERE submission_code=? AND (deleted_at IS NULL)").bind(row.code).all();
     return json({item:{...row,answers:parseBodyJson(row,"answers_json"),terms:JSON.parse(row.terms_snapshot_json||"[]")},files:files.results||[]});
   }
 
@@ -360,7 +448,6 @@ export async function adminRoute(request,env,url,ctx){
     return json({ok:true,roles:await listUserRoles(env,targetId)});
   }
 
-
   const userResetMatch=p.match(/^\/api\/admin\/users\/(\d+)\/reset-password$/);
   if(userResetMatch&&request.method==="POST"){
     const deny=requirePermission(user,"user.manage");if(deny)return deny;
@@ -437,13 +524,8 @@ export async function adminRoute(request,env,url,ctx){
     if(file.size>15*1024*1024)return json({error:"FILE_TOO_LARGE",max_mb:15},400);
     const allowed=new Set(["image/jpeg","image/png","image/webp","image/gif"]);
     if(!allowed.has(file.type))return json({error:"IMAGE_TYPE_NOT_ALLOWED",message:"Chỉ hỗ trợ JPG, PNG, WEBP hoặc GIF."},400);
-    const bytes=await file.arrayBuffer(),head=new Uint8Array(bytes.slice(0,16));
-    const ascii=(start,end)=>String.fromCharCode(...head.slice(start,end));
-    const signatureOk=file.type==="image/jpeg"?(head[0]===0xff&&head[1]===0xd8&&head[2]===0xff)
-      :file.type==="image/png"?(head[0]===0x89&&ascii(1,4)==="PNG")
-      :file.type==="image/webp"?(ascii(0,4)==="RIFF"&&ascii(8,12)==="WEBP")
-      :file.type==="image/gif"?(ascii(0,4)==="GIF8"):false;
-    if(!signatureOk)return json({error:"IMAGE_SIGNATURE_MISMATCH",message:"Nội dung file không khớp định dạng ảnh đã chọn."},400);
+    const bytes=await file.arrayBuffer();
+    if(!magicBytesOk(file.type,bytes.slice(0,16)))return json({error:"IMAGE_SIGNATURE_MISMATCH",message:"Nội dung file không khớp định dạng ảnh đã chọn."},400);
     const safe=String(file.name||"image").normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,120)||"image";
     const key=`${new Date().toISOString().slice(0,10)}/${crypto.randomUUID()}-${safe}`;
     await env.FILES.put(`public-media/${key}`,bytes,{httpMetadata:{contentType:file.type}});
@@ -497,6 +579,7 @@ export async function adminRoute(request,env,url,ctx){
     const cfg={...body.config};
     cfg.form_type=cfg.form_type||body.form_type||"general";
     if(typeof cfg.profile_photo_required!=="boolean") cfg.profile_photo_required=false;
+    if(typeof cfg.signature_required!=="boolean") cfg.signature_required=false;
     const cfgJson=JSON.stringify(cfg);
     await env.DB.prepare("INSERT INTO forms(id,name,prefix,description,audience,min_age,enabled,recipient_email,version,config_json,updated_by) VALUES(?,?,?,?,?,?,1,?,1,?,?)")
       .bind(idForm,body.name,body.prefix,body.description||"",body.audience||"public",body.min_age??null,body.recipient_email||"app@skyfirst.io.vn",cfgJson,user.id).run();
@@ -568,7 +651,6 @@ export async function adminRoute(request,env,url,ctx){
     await env.DB.prepare(`DELETE FROM ${g.table} WHERE ${g.id}=?`).bind(idValue).run();
     await audit(env,request,user,`Xóa ${type}`,type,idValue,{});invalidatePublicCache(url,[PUBLIC_CACHE_PATH[type]],ctx);return json({ok:true});
   }
-
 
   if(p==="/api/admin/teaching-scopes"&&request.method==="GET"){
     const deny=requirePermission(user,"people.view");if(deny)return deny;
@@ -950,20 +1032,31 @@ export async function adminRoute(request,env,url,ctx){
 
   if(p==="/api/admin/backup"&&request.method==="POST"){
     const deny=requirePermission(user,"backup.create");if(deny)return deny;
-    const tables=["settings","modules","terms","forms","form_revisions","units","submissions","case_events","people","people_history","teaching_scopes","internal_requests","unit_members","classes","class_enrollments","attendance","events","event_registrations","news","documents","certificates","certificate_history","approvals","interviews","evaluations","tickets","ticket_messages","notifications","email_templates","tasks","data_requests"];
-    const snapshot={created_at:new Date().toISOString(),tables:{}};
-    for(const t of tables){
-      if(!(await adminTableExists(env,t))) continue;
-      const rs=await env.DB.prepare(`SELECT * FROM ${t}`).all();snapshot.tables[t]=rs.results||[];
-    }
-    const raw=JSON.stringify(snapshot),idB=uid("backup"),key=`backups/${new Date().toISOString().slice(0,10)}/${idB}.json`;
-    await env.FILES.put(key,raw,{httpMetadata:{contentType:"application/json"}});
-    await env.DB.prepare("INSERT INTO backups(id,r2_key,size,created_by) VALUES(?,?,?,?)").bind(idB,key,new TextEncoder().encode(raw).length,user.id).run();
-    await audit(env,request,user,"Tạo bản sao dữ liệu","backup",idB,{key});return json({ok:true,id:idB});
+    const res=await buildBackupSnapshot(env,"manual",user.id);
+    await audit(env,request,user,"Tạo bản sao dữ liệu","backup",res.id,{key:res.r2_key,sha256:res.sha256,size:res.size});
+    return json({ok:true,id:res.id,r2_key:res.r2_key,sha256:res.sha256,size:res.size,table_counts:res.table_counts});
   }
   if(p==="/api/admin/backups"&&request.method==="GET"){
     const deny=requirePermission(user,"backup.create");if(deny)return deny;
     const rs=await env.DB.prepare("SELECT * FROM backups ORDER BY created_at DESC LIMIT 100").all();return json({items:rs.results||[]});
+  }
+  const verifyBackupMatch=p.match(/^\/api\/admin\/backups\/([^/]+)\/verify$/);
+  if(verifyBackupMatch&&request.method==="GET"){
+    const deny=requirePermission(user,"backup.create");if(deny)return deny;
+    const idB=decodeURIComponent(verifyBackupMatch[1]);
+    const b=await env.DB.prepare("SELECT * FROM backups WHERE id=?").bind(idB).first();
+    if(!b) return json({error:"NOT_FOUND"},404);
+    const obj=await env.FILES?.get(b.r2_key);
+    if(!obj) return json({ok:false,error:"BACKUP_OBJECT_NOT_FOUND"},404);
+    const raw=await obj.text();
+    const actualSha=await sha256Hex(raw);
+    if(b.sha256 && b.sha256!==actualSha){
+      return json({ok:false,error:"BACKUP_CHECKSUM_MISMATCH",expected:b.sha256,actual:actualSha},409);
+    }
+    let parsed=null;
+    try{parsed=JSON.parse(raw)}catch{return json({ok:false,error:"BACKUP_CORRUPTED_JSON"},409)}
+    if(!parsed||typeof parsed.tables!=="object") return json({ok:false,error:"BACKUP_INVALID_STRUCTURE"},409);
+    return json({ok:true,id:idB,sha256:actualSha,table_counts:parsed.table_counts||{},tables:Object.keys(parsed.tables)});
   }
 
   if(p==="/api/admin/export/submissions.csv"&&request.method==="GET"){
@@ -983,16 +1076,17 @@ export async function adminRoute(request,env,url,ctx){
     return new Response("\ufeff"+rows.join("\n"),{headers:{"content-type":"text/csv; charset=utf-8","content-disposition":"attachment; filename=SFN_submissions.csv"}});
   }
 
-
   if(p==="/api/admin/upload"&&request.method==="POST"){
     const deny=requirePermission(user,"file.manage");if(deny)return deny;
     const fd=await request.formData(),file=fd.get("file");
-    if(!file||typeof file!=="object"||!("size" in file))return json({error:"FILE_REQUIRED"},400);
+    if(!file||typeof file!=="object"||!("size" in file)||!file.size)return json({error:"FILE_REQUIRED"},400);
     const maxMb=Number(await setting(env,"max_upload_mb",10));if(file.size>maxMb*1024*1024)return json({error:"FILE_TOO_LARGE"},400);
     const allowed=new Set(["image/jpeg","image/png","application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]);
-    if(file.type&&!allowed.has(file.type))return json({error:"FILE_TYPE_NOT_ALLOWED"},400);
+    if(!file.type||!allowed.has(file.type))return json({error:"FILE_TYPE_NOT_ALLOWED"},400);
+    const bytes=await file.arrayBuffer();
+    if(!magicBytesOk(file.type,bytes.slice(0,16)))return json({error:"FILE_SIGNATURE_MISMATCH",message:"Nội dung tệp không khớp với định dạng khai báo."},400);
     const idF=uid("file"),safe=String(file.name||"file").replace(/[^\p{L}\p{N}._-]+/gu,"_").slice(0,120),key=`private/admin/${new Date().getUTCFullYear()}/${idF}/${safe}`;
-    const bytes=await file.arrayBuffer(),hash=await sha256(bytes);
+    const hash=await sha256(bytes);
     await env.FILES.put(key,bytes,{httpMetadata:{contentType:file.type||"application/octet-stream"},customMetadata:{sha256:hash}});
     const fileCols=await adminTableColumns(env,"files");
     if(fileCols.has("sha256")){
@@ -1008,7 +1102,7 @@ export async function adminRoute(request,env,url,ctx){
 
   if(p==="/api/admin/files"&&request.method==="GET"){
     const deny=requirePermission(user,"file.manage");if(deny)return deny;
-    const rs=await env.DB.prepare("SELECT id,submission_code,field_key,filename,mime,size,visibility,created_at FROM files ORDER BY created_at DESC LIMIT 1000").all();
+    const rs=await env.DB.prepare("SELECT id,submission_code,field_key,filename,mime,size,visibility,created_at FROM files WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 1000").all();
     return json({items:rs.results||[]});
   }
 
@@ -1017,13 +1111,18 @@ export async function adminRoute(request,env,url,ctx){
     const deny=requirePermission(user,"file.manage");if(deny)return deny;
     const idF=decodeURIComponent(fileMatch[1]),f=await env.DB.prepare("SELECT r2_key FROM files WHERE id=?").bind(idF).first();
     if(!f)return json({error:"NOT_FOUND"},404);
-    const [docUse,certUse,subUse]=await env.DB.batch([
+    const refQueries=[
       env.DB.prepare("SELECT COUNT(*) c FROM documents WHERE file_id=?").bind(idF),
       env.DB.prepare("SELECT COUNT(*) c FROM certificates WHERE file_id=?").bind(idF),
       env.DB.prepare("SELECT COUNT(*) c FROM submissions WHERE answers_json LIKE ?").bind(`%${idF}%`)
-    ]);
-    const refs=Number(docUse.results?.[0]?.c||0)+Number(certUse.results?.[0]?.c||0)+Number(subUse.results?.[0]?.c||0);
-    if(refs>0)return json({error:"ASSET_IN_USE",message:"File đang được dùng bởi hồ sơ, tài liệu hoặc credential. Không thể xóa an toàn.",references:refs},409);
+    ];
+    if(await adminTableExists(env,"document_versions")) refQueries.push(env.DB.prepare("SELECT COUNT(*) c FROM document_versions WHERE file_id=?").bind(idF));
+    if(await adminTableExists(env,"sponsorship_transactions")) refQueries.push(env.DB.prepare("SELECT COUNT(*) c FROM sponsorship_transactions WHERE voucher_file_id=?").bind(idF));
+    if(await adminTableExists(env,"sponsorship_reports")) refQueries.push(env.DB.prepare("SELECT COUNT(*) c FROM sponsorship_reports WHERE file_id=?").bind(idF));
+    if(await adminTableExists(env,"cms_pages")) refQueries.push(env.DB.prepare("SELECT COUNT(*) c FROM cms_pages WHERE cover_file_id=? OR blocks_json LIKE ?").bind(idF,`%${idF}%`));
+    const refResults=await env.DB.batch(refQueries);
+    const refs=refResults.reduce((acc,r)=>acc+Number(r.results?.[0]?.c||0),0);
+    if(refs>0)return json({error:"ASSET_IN_USE",message:"File đang được dùng bởi hồ sơ, tài liệu, báo cáo tài trợ, trang CMS hoặc credential. Không thể xóa an toàn.",references:refs},409);
     await env.FILES.delete(f.r2_key);await env.DB.prepare("DELETE FROM files WHERE id=?").bind(idF).run();
     await audit(env,request,user,"Xóa file","file",idF,{});return json({ok:true});
   }
@@ -1064,65 +1163,88 @@ export async function adminRoute(request,env,url,ctx){
     await audit(env,request,user,"Check-in sự kiện","event_registration",String(r.id),{});return json({ok:true});
   }
 
-
   const restoreMatch=p.match(/^\/api\/admin\/backups\/([^/]+)\/restore$/);
   if(restoreMatch&&request.method==="POST"){
     if(!(user.roles||[]).some(r=>["owner","super_admin"].includes(r.role_id)))return json({error:"SUPER_ADMIN_REQUIRED"},403);
     const idB=decodeURIComponent(restoreMatch[1]);
     const b=await env.DB.prepare("SELECT * FROM backups WHERE id=?").bind(idB).first();if(!b)return json({error:"NOT_FOUND"},404);
     const obj=await env.FILES.get(b.r2_key);if(!obj)return json({error:"BACKUP_OBJECT_NOT_FOUND"},404);
-    const snap=JSON.parse(await obj.text());
-    const insertOrder=[
-      "settings","modules","terms","forms","form_revisions","units","submissions","case_events","people","people_history","teaching_scopes","internal_requests","unit_members",
-      "classes","class_enrollments","attendance","events","event_registrations","news","documents","certificates","certificate_history",
-      "approvals","interviews","evaluations","tickets","ticket_messages","notifications","email_templates","tasks","data_requests"
-    ];
+    const raw=await obj.text();
+    const actualSha=await sha256Hex(raw);
+    if(b.sha256 && b.sha256!==actualSha){
+      return json({error:"BACKUP_CHECKSUM_MISMATCH",message:"Mã kiểm tra toàn vẹn SHA-256 của bản sao lưu không khớp. Từ chối phục hồi để bảo vệ dữ liệu.",expected:b.sha256,actual:actualSha},409);
+    }
+    let snap=null;
+    try{snap=JSON.parse(raw)}catch{return json({error:"BACKUP_CORRUPTED_JSON"},409)}
+    if(!snap||typeof snap.tables!=="object") return json({error:"BACKUP_INVALID_STRUCTURE"},409);
+
+    // Tạo bản sao lưu an toàn trước khi phục hồi (pre-restore snapshot)
+    const preRestore=await buildBackupSnapshot(env,"pre_restore",user.id);
+
+    // Bảo toàn thông tin xác thực mật khẩu của người dùng hiện có nếu bản sao lưu đã ẩn password_hash
+    const existingUsersRs=await env.DB.prepare("SELECT id,password_hash,password_salt,password_iterations,totp_secret FROM users").all();
+    const userSecretMap=new Map((existingUsersRs.results||[]).map(u=>[Number(u.id),u]));
+
+    const insertOrder=BACKUP_TABLES;
     const allowed=new Set(insertOrder);
-    // Xóa bảng con trước bảng cha để không vướng FOREIGN KEY.
+    const stmts=[];
+    // Xóa bảng con trước bảng cha trong cùng một batch nguyên tử
     for(const table of [...insertOrder].reverse()){
       if(!(table in (snap.tables||{}))||!(await adminTableExists(env,table)))continue;
-      await env.DB.prepare(`DELETE FROM ${table}`).run();
+      stmts.push(env.DB.prepare(`DELETE FROM ${table}`));
     }
-    // Khôi phục bảng cha trước bảng con.
+    // Khôi phục bảng cha trước bảng con trong cùng một batch nguyên tử
     for(const table of insertOrder){
       if(!allowed.has(table)||!(table in (snap.tables||{}))||!(await adminTableExists(env,table)))continue;
       const liveCols=await adminTableColumns(env,table);
-      for(const row of snap.tables[table]||[]){
+      for(const rawRow of snap.tables[table]||[]){
+        const row={...rawRow};
+        if(table==="users"){
+          const prev=userSecretMap.get(Number(row.id));
+          if(row.password_hash==="[REDACTED_SECRET]"&&prev){
+            row.password_hash=prev.password_hash;
+            row.password_salt=prev.password_salt;
+            row.password_iterations=prev.password_iterations;
+            if(!row.totp_secret) row.totp_secret=prev.totp_secret;
+          }
+        }
         const cols=Object.keys(row).filter(c=>liveCols.has(c)); if(!cols.length)continue;
         const sql=`INSERT INTO ${table}(${cols.join(",")}) VALUES(${cols.map(()=>"?").join(",")})`;
-        await env.DB.prepare(sql).bind(...cols.map(c=>row[c])).run();
+        stmts.push(env.DB.prepare(sql).bind(...cols.map(c=>row[c])));
       }
     }
-    await audit(env,request,user,"Phục hồi dữ liệu từ backup","backup",idB,{tables:Object.keys(snap.tables||{})});return json({ok:true});
+    if(stmts.length){
+      await env.DB.batch(stmts);
+    }
+    await audit(env,request,user,"Phục hồi dữ liệu từ backup","backup",idB,{pre_restore_backup_id:preRestore.id,sha256:actualSha,tables:Object.keys(snap.tables||{})});
+    return json({ok:true,restored_backup_id:idB,pre_restore_backup_id:preRestore.id,sha256:actualSha});
   }
-
 
   // ================= MODULE TÀI TRỢ & MINH BẠCH TÀI CHÍNH (/api/admin/sponsorship) =================
   if(p==="/api/admin/sponsorship"&&request.method==="GET"){
     if(!hasAnyPermission(user,["sponsorship.view","sponsorship.manage","sponsorship.approve"])) return json({error:"FORBIDDEN",permission:"sponsorship.view"},403);
-    if(!(await adminTableExists(env,"sponsorship_campaigns"))) return json({campaigns:[],transactions:[],reports:[]});
-    const [camps,txs,reps]=await env.DB.batch([
+    if(!(await adminTableExists(env,"sponsorship_campaigns"))) return json({campaigns:[],transactions:[],reports:[],payment_intents:[],audit_trail:[]});
+    const queries=[
       env.DB.prepare("SELECT * FROM sponsorship_campaigns ORDER BY created_at DESC LIMIT 200"),
       env.DB.prepare("SELECT t.*,c.code AS campaign_code,c.title AS campaign_title FROM sponsorship_transactions t JOIN sponsorship_campaigns c ON c.id=t.campaign_id ORDER BY t.occurred_at DESC,t.created_at DESC LIMIT 500"),
       env.DB.prepare("SELECT r.*,c.code AS campaign_code,c.title AS campaign_title FROM sponsorship_reports r JOIN sponsorship_campaigns c ON c.id=r.campaign_id ORDER BY r.created_at DESC LIMIT 200")
-    ]);
-    return json({campaigns:camps.results||[],transactions:txs.results||[],reports:reps.results||[]});
-  }
-
-  async function recalculateCampaignTotals(env,campaignId){
-    const rows=await env.DB.prepare("SELECT tx_type, COALESCE(SUM(amount),0) AS total FROM sponsorship_transactions WHERE campaign_id=? AND verification_status='verified' GROUP BY tx_type").bind(campaignId).all();
-    let pledged=0,received=0,disbursed=0;
-    for(const r of rows.results||[]){
-      const amt=Number(r.total||0);
-      if(r.tx_type==="pledge") pledged+=amt;
-      else if(r.tx_type==="receipt") received+=amt;
-      else if(r.tx_type==="disbursement") disbursed+=amt;
-      else if(r.tx_type==="refund") received=Math.max(0,received-amt);
-      else if(r.tx_type==="adjustment") received=Math.max(0,received+amt);
-    }
-    await env.DB.prepare("UPDATE sponsorship_campaigns SET pledged_amount=?,received_amount=?,disbursed_amount=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-      .bind(pledged,received,disbursed,campaignId).run();
-    return {pledged,received,disbursed};
+    ];
+    const hasIntents=await adminTableExists(env,"sponsorship_payment_intents");
+    const hasAudit=await adminTableExists(env,"sponsorship_audit_trail");
+    if(hasIntents) queries.push(env.DB.prepare("SELECT * FROM sponsorship_payment_intents ORDER BY created_at DESC LIMIT 200"));
+    if(hasAudit) queries.push(env.DB.prepare("SELECT * FROM sponsorship_audit_trail ORDER BY created_at DESC LIMIT 200"));
+    const batchRes=await env.DB.batch(queries);
+    const campaigns=(batchRes[0].results||[]).map(c=>{
+      const rec=Number(c.received_amount||0),dis=Number(c.disbursed_amount||0),rem=rec-dis;
+      return {...c,remaining_amount:rem,is_overspent:rem<0};
+    });
+    return json({
+      campaigns,
+      transactions:batchRes[1].results||[],
+      reports:batchRes[2].results||[],
+      payment_intents:hasIntents?(batchRes[3]?.results||[]):[],
+      audit_trail:hasAudit?(batchRes[hasIntents?4:3]?.results||[]):[]
+    });
   }
 
   if(p==="/api/admin/sponsorship/campaigns"&&request.method==="POST"){
@@ -1134,8 +1256,15 @@ export async function adminRoute(request,env,url,ctx){
     const wantPublic=body.visibility==="public";
     if(wantPublic && !hasPermission(user,"sponsorship.approve")) return json({error:"FORBIDDEN",message:"Cần quyền phê duyệt tài trợ (sponsorship.approve) để công khai chương trình."},403);
     const id=uid("spcamp");
-    await env.DB.prepare("INSERT INTO sponsorship_campaigns(id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,visibility,approved_by,approved_at,created_by) VALUES(?,?,?,?,?,?,?,0,0,0,'VND',?,?,?,?,?,?,?)")
-      .bind(id,code,String(body.website_id||"app"),title,String(body.summary||""),String(body.purpose||""),target,body.start_at||null,body.end_at||null,body.status||"active",wantPublic?"public":"draft",wantPublic?user.id:null,wantPublic?new Date().toISOString():null,user.id).run();
+    const campCols=await adminTableColumns(env,"sponsorship_campaigns");
+    if(campCols.has("bank_account_no")){
+      await env.DB.prepare("INSERT INTO sponsorship_campaigns(id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,visibility,bank_name,bank_bin,bank_account_no,bank_account_name,approved_by,approved_at,created_by) VALUES(?,?,?,?,?,?,?,0,0,0,'VND',?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(id,code,String(body.website_id||"app"),title,String(body.summary||""),String(body.purpose||""),target,body.start_at||null,body.end_at||null,body.status||"active",wantPublic?"public":"draft",String(body.bank_name||""),String(body.bank_bin||"970422"),String(body.bank_account_no||""),String(body.bank_account_name||"SKY FIRST NETWORK"),wantPublic?user.id:null,wantPublic?new Date().toISOString():null,user.id).run();
+    }else{
+      await env.DB.prepare("INSERT INTO sponsorship_campaigns(id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,visibility,approved_by,approved_at,created_by) VALUES(?,?,?,?,?,?,?,0,0,0,'VND',?,?,?,?,?,?,?)")
+        .bind(id,code,String(body.website_id||"app"),title,String(body.summary||""),String(body.purpose||""),target,body.start_at||null,body.end_at||null,body.status||"active",wantPublic?"public":"draft",wantPublic?user.id:null,wantPublic?new Date().toISOString():null,user.id).run();
+    }
+    await recordSponsorshipAudit(env,{campaign_id:id,action:"create_campaign",reason:body.purpose||title,new_state:{code,title,target_amount:target,visibility:wantPublic?"public":"draft"},actor_user_id:user.id,actor_email:user.email});
     await audit(env,request,user,"Tạo chương trình tài trợ","sponsorship_campaign",id,{code,title,target_amount:target,visibility:wantPublic?"public":"draft"});
     invalidatePublicCache(url,["/api/public/sponsorship","/api/config"],ctx);
     return json({ok:true,id,code},201);
@@ -1152,8 +1281,15 @@ export async function adminRoute(request,env,url,ctx){
       return json({error:"FORBIDDEN",message:"Chỉ người có quyền phê duyệt tài trợ mới được công khai chương trình."},403);
     }
     const target=body.target_amount!==undefined?Math.max(0,Math.round(Number(body.target_amount||0))):current.target_amount;
-    await env.DB.prepare("UPDATE sponsorship_campaigns SET title=?,summary=?,purpose=?,target_amount=?,start_at=?,end_at=?,status=?,visibility=?,approved_by=CASE WHEN ?='public' THEN ? ELSE approved_by END,approved_at=CASE WHEN ?='public' THEN CURRENT_TIMESTAMP ELSE approved_at END,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-      .bind(body.title||current.title,body.summary??current.summary,body.purpose??current.purpose,target,body.start_at??current.start_at,body.end_at??current.end_at,body.status||current.status,nextVis,nextVis,user.id,nextVis,id).run();
+    const campCols=await adminTableColumns(env,"sponsorship_campaigns");
+    if(campCols.has("bank_account_no")){
+      await env.DB.prepare("UPDATE sponsorship_campaigns SET title=?,summary=?,purpose=?,target_amount=?,start_at=?,end_at=?,status=?,visibility=?,bank_name=?,bank_bin=?,bank_account_no=?,bank_account_name=?,approved_by=CASE WHEN ?='public' THEN ? ELSE approved_by END,approved_at=CASE WHEN ?='public' THEN CURRENT_TIMESTAMP ELSE approved_at END,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(body.title||current.title,body.summary??current.summary,body.purpose??current.purpose,target,body.start_at??current.start_at,body.end_at??current.end_at,body.status||current.status,nextVis,body.bank_name??current.bank_name??"",body.bank_bin??current.bank_bin??"970422",body.bank_account_no??current.bank_account_no??"",body.bank_account_name??current.bank_account_name??"SKY FIRST NETWORK",nextVis,user.id,nextVis,id).run();
+    }else{
+      await env.DB.prepare("UPDATE sponsorship_campaigns SET title=?,summary=?,purpose=?,target_amount=?,start_at=?,end_at=?,status=?,visibility=?,approved_by=CASE WHEN ?='public' THEN ? ELSE approved_by END,approved_at=CASE WHEN ?='public' THEN CURRENT_TIMESTAMP ELSE approved_at END,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(body.title||current.title,body.summary??current.summary,body.purpose??current.purpose,target,body.start_at??current.start_at,body.end_at??current.end_at,body.status||current.status,nextVis,nextVis,user.id,nextVis,id).run();
+    }
+    await recordSponsorshipAudit(env,{campaign_id:id,action:"update_campaign",reason:body.reason||"Cập nhật chương trình tài trợ",previous_state:{status:current.status,visibility:current.visibility,target_amount:current.target_amount},new_state:{status:body.status||current.status,visibility:nextVis,target_amount:target},actor_user_id:user.id,actor_email:user.email});
     await audit(env,request,user,"Cập nhật chương trình tài trợ","sponsorship_campaign",id,{status:body.status||current.status,visibility:nextVis,target_amount:target});
     invalidatePublicCache(url,["/api/public/sponsorship","/api/config"],ctx);
     return json({ok:true});
@@ -1165,16 +1301,36 @@ export async function adminRoute(request,env,url,ctx){
     const campaignId=String(body.campaign_id||"").trim();
     const txType=String(body.tx_type||"receipt").trim();
     const amount=Math.round(Number(body.amount||0));
-    if(!campaignId||!["pledge","receipt","disbursement","adjustment","refund"].includes(txType)||!Number.isFinite(amount)||amount<=0){
-      return json({error:"INVALID_INPUT",message:"Vui lòng chọn chương trình, loại giao dịch hợp lệ và số tiền lớn hơn 0."},400);
+    const validType=["pledge","receipt","disbursement","adjustment","refund"].includes(txType);
+    const validAmount=txType==="adjustment"?(Number.isFinite(amount)&&amount!==0):(Number.isFinite(amount)&&amount>0);
+    if(!campaignId||!validType||!validAmount){
+      return json({error:"INVALID_INPUT",message:"Vui lòng chọn chương trình, loại giao dịch hợp lệ và số tiền hợp lệ (khác 0 với điều chỉnh, lớn hơn 0 với các loại giao dịch khác)."},400);
+    }
+    const purpose=String(body.purpose||body.reason||"").trim().slice(0,500);
+    if(["adjustment","refund","disbursement"].includes(txType)&&!purpose){
+      return json({error:"REASON_REQUIRED",message:"Giao dịch giải ngân, hoàn tiền hoặc điều chỉnh đối soát bắt buộc phải ghi rõ mục đích / lý do."},400);
     }
     const camp=await env.DB.prepare("SELECT id,code FROM sponsorship_campaigns WHERE id=?").bind(campaignId).first();
     if(!camp) return json({error:"CAMPAIGN_NOT_FOUND"},404);
     const id=uid("sptx"),txCode=body.tx_code?String(body.tx_code).trim().toUpperCase():`TX-${camp.code}-${await nextCounter(env,`sptx:${camp.code}`)}`;
+    const dupCode=await env.DB.prepare("SELECT id FROM sponsorship_transactions WHERE tx_code=?").bind(txCode).first();
+    if(dupCode) return json({error:"DUPLICATE_TX_CODE",message:"Mã giao dịch đã tồn tại."},409);
+    const isRoot=(user.roles||[]).some(r=>["owner","super_admin"].includes(r.role_id));
+    if(body.verification_status==="verified"&&!hasPermission(user,"sponsorship.approve")){
+      return json({error:"FORBIDDEN",permission:"sponsorship.approve",message:"Bạn không có quyền tự xác nhận đối soát giao dịch."},403);
+    }
     const autoVerify=body.verification_status==="verified"&&hasPermission(user,"sponsorship.approve");
-    await env.DB.prepare("INSERT INTO sponsorship_transactions(id,campaign_id,tx_code,tx_type,amount,currency,public_party_label,purpose,voucher_file_id,occurred_at,verification_status,is_public,verified_by,verified_at,created_by) VALUES(?,?,?,?,?,'VND',?,?,?,?,?,?,?,?,?)")
-      .bind(id,campaignId,txCode,txType,amount,String(body.public_party_label||"Nhà tài trợ / Đơn vị thụ hưởng").slice(0,160),String(body.purpose||"").slice(0,500),body.voucher_file_id||null,body.occurred_at||new Date().toISOString(),autoVerify?"verified":"pending",body.is_public?1:0,autoVerify?user.id:null,autoVerify?new Date().toISOString():null,user.id).run();
+    const paymentState=autoVerify?(txType==="refund"?"refunded":txType==="adjustment"?"adjusted":"verified"):"pending";
+    const txCols=await adminTableColumns(env,"sponsorship_transactions");
+    if(txCols.has("payment_state")){
+      await env.DB.prepare("INSERT INTO sponsorship_transactions(id,campaign_id,tx_code,tx_type,amount,expected_amount,currency,public_party_label,purpose,voucher_file_id,occurred_at,verification_status,payment_state,reference_code,provider_tx_id,reconciliation_note,is_public,verified_by,verified_at,created_by) VALUES(?,?,?,?,?,?,'VND',?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(id,campaignId,txCode,txType,amount,body.expected_amount??amount,String(body.public_party_label||"Nhà tài trợ / Đơn vị thụ hưởng").slice(0,160),purpose,body.voucher_file_id||null,body.occurred_at||new Date().toISOString(),autoVerify?"verified":"pending",paymentState,String(body.reference_code||""),body.provider_tx_id||null,String(body.reconciliation_note||""),body.is_public?1:0,autoVerify?user.id:null,autoVerify?new Date().toISOString():null,user.id).run();
+    }else{
+      await env.DB.prepare("INSERT INTO sponsorship_transactions(id,campaign_id,tx_code,tx_type,amount,currency,public_party_label,purpose,voucher_file_id,occurred_at,verification_status,is_public,verified_by,verified_at,created_by) VALUES(?,?,?,?,?,'VND',?,?,?,?,?,?,?,?,?)")
+        .bind(id,campaignId,txCode,txType,amount,String(body.public_party_label||"Nhà tài trợ / Đơn vị thụ hưởng").slice(0,160),purpose,body.voucher_file_id||null,body.occurred_at||new Date().toISOString(),autoVerify?"verified":"pending",body.is_public?1:0,autoVerify?user.id:null,autoVerify?new Date().toISOString():null,user.id).run();
+    }
     const totals=await recalculateCampaignTotals(env,campaignId);
+    await recordSponsorshipAudit(env,{campaign_id:campaignId,transaction_id:id,action:"create_transaction",reason:purpose,new_state:{tx_code:txCode,tx_type:txType,amount,verification_status:autoVerify?"verified":"pending",is_root_auto_verify:autoVerify&&isRoot,totals},actor_user_id:user.id,actor_email:user.email});
     await audit(env,request,user,"Ghi nhận giao dịch tài trợ","sponsorship_transaction",id,{tx_code:txCode,tx_type:txType,amount,verified:autoVerify,totals});
     invalidatePublicCache(url,["/api/public/sponsorship","/api/config"],ctx);
     return json({ok:true,id,tx_code:txCode,totals},201);
@@ -1186,12 +1342,25 @@ export async function adminRoute(request,env,url,ctx){
     const id=decodeURIComponent(spTxMatch[1]),body=await readJson(request)||{};
     const tx=await env.DB.prepare("SELECT * FROM sponsorship_transactions WHERE id=?").bind(id).first();
     if(!tx) return json({error:"NOT_FOUND"},404);
+    const isRoot=(user.roles||[]).some(r=>["owner","super_admin"].includes(r.role_id));
+    if(body.verification_status==="verified" && tx.created_by && Number(tx.created_by)===Number(user.id) && !isRoot){
+      return json({error:"SELF_APPROVAL_FORBIDDEN",message:"Nguyên tắc tách biệt nhiệm vụ tài chính: Người tạo giao dịch không được tự xác nhận đối soát giao dịch do chính mình khởi tạo."},403);
+    }
     const vStatus=["pending","verified","rejected"].includes(body.verification_status)?body.verification_status:tx.verification_status;
     const isPub=body.is_public!==undefined?(body.is_public?1:0):tx.is_public;
-    await env.DB.prepare("UPDATE sponsorship_transactions SET verification_status=?,is_public=?,verified_by=?,verified_at=CURRENT_TIMESTAMP WHERE id=?")
-      .bind(vStatus,isPub,user.id,id).run();
+    const note=String(body.reconciliation_note||body.reason||tx.reconciliation_note||"").trim();
+    const txCols=await adminTableColumns(env,"sponsorship_transactions");
+    if(txCols.has("payment_state")){
+      const pState=body.payment_state||(vStatus==="verified"?(tx.tx_type==="refund"?"refunded":tx.tx_type==="adjustment"?"adjusted":"verified"):vStatus==="rejected"?"rejected":"pending");
+      await env.DB.prepare("UPDATE sponsorship_transactions SET verification_status=?,payment_state=?,reconciliation_note=?,is_public=?,verified_by=?,verified_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(vStatus,pState,note,isPub,user.id,id).run();
+    }else{
+      await env.DB.prepare("UPDATE sponsorship_transactions SET verification_status=?,is_public=?,verified_by=?,verified_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(vStatus,isPub,user.id,id).run();
+    }
     const totals=await recalculateCampaignTotals(env,tx.campaign_id);
-    await audit(env,request,user,"Xác nhận đối soát giao dịch tài trợ","sponsorship_transaction",id,{verification_status:vStatus,is_public:isPub,totals});
+    await recordSponsorshipAudit(env,{campaign_id:tx.campaign_id,transaction_id:id,action:"verify_transaction",reason:note||`Cập nhật trạng thái đối soát: ${vStatus}`,previous_state:{verification_status:tx.verification_status,is_public:tx.is_public},new_state:{verification_status:vStatus,is_public:isPub,totals},actor_user_id:user.id,actor_email:user.email});
+    await audit(env,request,user,"Xác nhận đối soát giao dịch tài trợ","sponsorship_transaction",id,{verification_status:vStatus,is_public:isPub,reason:note,totals});
     invalidatePublicCache(url,["/api/public/sponsorship","/api/config"],ctx);
     return json({ok:true,totals});
   }
@@ -1204,6 +1373,7 @@ export async function adminRoute(request,env,url,ctx){
     const id=uid("sprep");
     await env.DB.prepare("INSERT INTO sponsorship_reports(id,campaign_id,title,report_period,file_id,summary,status,approved_by,published_at) VALUES(?,?,?,?,?,?,?,?,?)")
       .bind(id,body.campaign_id,String(body.title).trim(),String(body.report_period||""),body.file_id||null,String(body.summary||""),publish?"published":"draft",publish?user.id:null,publish?new Date().toISOString():null).run();
+    await recordSponsorshipAudit(env,{campaign_id:body.campaign_id,action:"create_report",reason:body.title,new_state:{id,title:body.title,status:publish?"published":"draft"},actor_user_id:user.id,actor_email:user.email});
     await audit(env,request,user,"Tạo báo cáo minh bạch tài trợ","sponsorship_report",id,{title:body.title,status:publish?"published":"draft"});
     invalidatePublicCache(url,["/api/public/sponsorship"],ctx);
     return json({ok:true,id},201);
@@ -1431,7 +1601,6 @@ export async function adminRoute(request,env,url,ctx){
     const blocksJson=body.blocks!==undefined?JSON.stringify(body.blocks):curr.blocks_json;
     const seoJson=body.seo!==undefined?JSON.stringify(body.seo):curr.seo_json;
     const tagsJson=body.tags!==undefined?JSON.stringify(body.tags):curr.tags_json;
-    // If content was already approved/published and edited by regular editor, require re-approval unless user has cms.publish
     const nextStatus=(["approved","published"].includes(curr.status)&&!hasPermission(user,"cms.publish"))?"draft":curr.status;
     await env.DB.batch([
       env.DB.prepare("UPDATE cms_pages SET slug=?,title=?,summary=?,cover_file_id=?,category=?,tags_json=?,seo_json=?,blocks_json=?,status=?,version=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
@@ -1515,7 +1684,7 @@ export async function adminRoute(request,env,url,ctx){
     await env.DB.batch([
       env.DB.prepare("UPDATE cms_pages SET title=?,blocks_json=?,seo_json=?,status='draft',version=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
         .bind(rev.title,rev.blocks_json,rev.seo_json,nextVer,id),
-      env.DB.prepare("INSERT INTO cms_page_revisions(page_id,version,title,blocks_json,seo_json,status,note,created_by) VALUES(?,?,?,?,'draft',?,?)")
+      env.DB.prepare("INSERT INTO cms_page_revisions(page_id,version,title,blocks_json,seo_json,status,note,created_by) VALUES(?,?,?,?,?,'draft',?,?)")
         .bind(id,nextVer,rev.title,rev.blocks_json,rev.seo_json,`Khôi phục từ phiên bản v${rev.version}`,user.id)
     ]);
     await audit(env,request,user,"Khôi phục phiên bản trang CMS","cms_page",id,{from_version:rev.version,new_version:nextVer});

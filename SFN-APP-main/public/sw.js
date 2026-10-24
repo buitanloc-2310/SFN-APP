@@ -1,9 +1,11 @@
-/* Hệ thống Thông tin Số Sky First — service worker v8 */
+/* Hệ thống Thông tin Số Sky First — service worker v8/v9 */
 const CACHE='sfn-digital-shell-2026-10-23-v8';
 const SHELL=[
   '/','/index.html',
   '/styles.css?v=20261023-v8','/digital.css?v=20261023-v8',
   '/digital-portal.js?v=20261023-v8','/bootstrap.js?v=20261023-v8',
+  '/styles.css?v=20261023-v9','/digital.css?v=20261023-v9',
+  '/digital-portal.js?v=20261023-v9','/bootstrap.js?v=20261023-v9',
   '/manifest.webmanifest','/assets/sfn-logo-tight.png','/assets/sfn-logo.png'
 ];
 self.addEventListener('install',event=>{

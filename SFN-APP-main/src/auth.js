@@ -7,6 +7,7 @@ import {sendTemplatedEmail} from "./email.js";
 
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
 const PASSWORD_ITERATIONS = 100000;
+const MAX_2FA_ATTEMPTS = 5;
 
 async function auditAuth(env, request, user, action, entityType = "auth", entityId = "", details = {}) {
   try {
@@ -53,8 +54,6 @@ export async function getUserById(env, id) {
   if (!u) return null;
 
   u.roles = await loadRoles(env, u.id);
-  // Read-only effective permission list for rendering the correct admin navigation.
-  // Every API continues to enforce permissions independently on the server.
   u.permissions = [...permissionsForRoles(u.roles)];
   return u;
 }
@@ -80,13 +79,20 @@ export async function getAuthUser(request, env) {
   return getUserById(env, row.user_id);
 }
 
-export function requireAuth(user) {
+export function requireAuth(user, {allowPasswordChangeRequired = false} = {}) {
   if (!user) return json({error:"AUTH_REQUIRED"}, 401);
+  if (!allowPasswordChangeRequired && Number(user.must_change_password || 0) === 1) {
+    return json({
+      error:"PASSWORD_CHANGE_REQUIRED",
+      message:"Tài khoản đang sử dụng mật khẩu khởi tạo hoặc tạm thời. Vui lòng đổi mật khẩu trước khi thực hiện thao tác quản trị."
+    }, 403);
+  }
   return null;
 }
 
 export function requirePermission(user, p) {
-  if (!user) return json({error:"AUTH_REQUIRED"}, 401);
+  const authDeny = requireAuth(user);
+  if (authDeny) return authDeny;
   if (!hasPermission(user, p)) return json({error:"FORBIDDEN", permission:p}, 403);
   return null;
 }
@@ -134,11 +140,23 @@ async function verifyPassword(env, email, password) {
     iterations
   );
 
-  return safeEq(got, u.password_hash) ? u : null;
-}
+  if (!safeEq(got, u.password_hash)) return null;
 
-function parseTotpSecret(secret) {
-  return secret || "";
+  // Transparently migrate legacy >100k PBKDF2 hash to 100k WebCrypto-native iterations AFTER verified match
+  if (iterations !== PASSWORD_ITERATIONS) {
+    try {
+      const upgradedSalt = newSalt();
+      const upgradedHash = await pbkdf2(password, upgradedSalt, PASSWORD_ITERATIONS);
+      await env.DB.prepare(
+        "UPDATE users SET password_salt=?, password_hash=?, password_iterations=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+      ).bind(upgradedSalt, upgradedHash, PASSWORD_ITERATIONS, u.id).run();
+      u.password_salt = upgradedSalt;
+      u.password_hash = upgradedHash;
+      u.password_iterations = PASSWORD_ITERATIONS;
+    } catch {}
+  }
+
+  return u;
 }
 
 const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -237,14 +255,15 @@ async function hotp(secret, counter, digits = 6) {
 }
 
 async function verifyTotp(secret, code) {
+  const cleanCode = String(code || "").trim();
+  if (!/^\d{6}$/.test(cleanCode)) return false;
   const step = Math.floor(
     Date.now() / 1000 / 30
   );
 
   for (let d = -1; d <= 1; d++) {
     if (
-      await hotp(secret, step + d) ===
-      String(code || "").trim()
+      safeEq(await hotp(secret, step + d), cleanCode)
     ) {
       return true;
     }
@@ -275,24 +294,29 @@ export async function authRoute(request, env, url) {
     p === "/api/auth/verify-email" &&
     request.method === "POST"
   ) {
+    const rl = await rateLimit(env, `verify-email:${await ipHash(request)}`, 10, 300);
+    if (!rl.ok) return json({error:"RATE_LIMIT"}, 429);
+
     const body = await readJson(request);
 
     const token = String(
       body?.token || ""
     );
+    if (!token) return json({error:"INVALID_OR_EXPIRED_TOKEN"}, 400);
 
     const hash = await sha256(token);
 
     const row = await env.DB.prepare(`
-      SELECT id,user_id
-      FROM auth_tokens
-      WHERE token_type='verify_email'
-        AND token_hash=?
-        AND used_at IS NULL
-        AND expires_at>CURRENT_TIMESTAMP
+      SELECT t.id,t.user_id,u.status
+      FROM auth_tokens t
+      JOIN users u ON u.id=t.user_id
+      WHERE t.token_type='verify_email'
+        AND t.token_hash=?
+        AND t.used_at IS NULL
+        AND t.expires_at>CURRENT_TIMESTAMP
     `).bind(hash).first();
 
-    if (!row) {
+    if (!row || !["active","invited"].includes(row.status)) {
       return json(
         {error:"INVALID_OR_EXPIRED_TOKEN"},
         400
@@ -317,9 +341,10 @@ export async function authRoute(request, env, url) {
     p === "/api/auth/login" &&
     request.method === "POST"
   ) {
+    const ipKey = await ipHash(request);
     const rl = await rateLimit(
       env,
-      `login:${await ipHash(request)}`,
+      `login:${ipKey}`,
       12,
       300
     );
@@ -349,25 +374,34 @@ export async function authRoute(request, env, url) {
     );
     if(portal!=="admin") return json({error:"PUBLIC_ACCOUNT_LOGIN_DISABLED"},403);
 
+    // Per-account rate limit to prevent distributed brute-force on a single account
+    if (email) {
+      const rlAcct = await rateLimit(env, `login-acct:${await sha256(email)}`, 10, 300);
+      if (!rlAcct.ok) {
+        await auditAuth(env, request, null, "Giới hạn đăng nhập theo tài khoản", "auth", email, {reason:"ACCOUNT_RATE_LIMIT"});
+        return json(
+          {error:"RATE_LIMIT", message:"Tài khoản này đang bị tạm khóa đăng nhập do thử sai nhiều lần. Vui lòng đợi 5 phút."},
+          429
+        );
+      }
+    }
+
     const u = await verifyPassword(
       env,
       email,
       password
     );
 
-    if (!u) {
-      await auditAuth(env, request, null, "Đăng nhập thất bại", "auth", email, {email, portal, reason:"INVALID_CREDENTIALS"});
+    if (!u || !u.email_verified) {
+      // Uniform 401 INVALID_CREDENTIALS prevents account enumeration
+      await auditAuth(env, request, u || null, "Đăng nhập thất bại", "auth", email, {
+        email,
+        portal,
+        reason: !u ? "INVALID_CREDENTIALS" : "EMAIL_NOT_VERIFIED"
+      });
       return json(
         {error:"INVALID_CREDENTIALS"},
         401
-      );
-    }
-
-    if (!u.email_verified) {
-      await auditAuth(env, request, u, "Đăng nhập bị từ chối (chưa xác minh email)", "user", String(u.id), {email});
-      return json(
-        {error:"EMAIL_NOT_VERIFIED"},
-        403
       );
     }
 
@@ -394,7 +428,8 @@ export async function authRoute(request, env, url) {
     }
 
     if (u.totp_enabled) {
-      const challenge = uid("2fa");
+      const challenge = randomToken(32);
+      const challengeId = uid("2fa");
 
       await env.DB.prepare(`
         INSERT INTO auth_tokens(
@@ -413,7 +448,7 @@ export async function authRoute(request, env, url) {
         )
       `)
         .bind(
-          challenge,
+          challengeId,
           u.id,
           await sha256(challenge),
           portal
@@ -454,6 +489,19 @@ export async function authRoute(request, env, url) {
     p === "/api/auth/login-2fa" &&
     request.method === "POST"
   ) {
+    const rl = await rateLimit(
+      env,
+      `login-2fa:${await ipHash(request)}`,
+      8,
+      300
+    );
+    if (!rl.ok) {
+      return json(
+        {error:"RATE_LIMIT", message:"Bạn đã nhập sai mã xác thực 2 bước quá nhiều lần. Vui lòng thử lại sau."},
+        429
+      );
+    }
+
     const body = await readJson(request);
 
     const challenge = String(
@@ -464,11 +512,19 @@ export async function authRoute(request, env, url) {
       body?.code || ""
     );
 
+    if (!challenge || !code) {
+      return json({error:"INVALID_2FA"}, 401);
+    }
+
+    const challengeHash = await sha256(challenge);
+
     const row = await env.DB.prepare(`
       SELECT
         t.id,
         t.user_id,
         u.totp_secret,
+        u.totp_enabled,
+        u.status,
         u.must_change_password
       FROM auth_tokens t
       JOIN users u
@@ -479,19 +535,27 @@ export async function authRoute(request, env, url) {
         AND t.used_at IS NULL
         AND t.expires_at>CURRENT_TIMESTAMP
     `)
-      .bind(
-        await sha256(challenge)
-      )
+      .bind(challengeHash)
       .first();
 
-    if (
-      !row ||
-      !(await verifyTotp(
-        row.totp_secret,
-        code
-      ))
-    ) {
-      await auditAuth(env, request, row ? {id: row.user_id} : null, "Xác thực 2FA thất bại", "auth", row ? String(row.user_id) : "", {});
+    if (!row || row.status !== "active" || !row.totp_enabled || !row.totp_secret) {
+      await auditAuth(env, request, row ? {id: row.user_id} : null, "Xác thực 2FA thất bại (phiên không hợp lệ)", "auth", row ? String(row.user_id) : "", {});
+      return json({error:"INVALID_2FA"}, 401);
+    }
+
+    // Track per-challenge attempts to prevent 6-digit OTP brute-force
+    const rlChallenge = await rateLimit(env, `2fa-chal:${row.id}`, MAX_2FA_ATTEMPTS, 600);
+    if (!rlChallenge.ok) {
+      await env.DB.prepare("UPDATE auth_tokens SET used_at=CURRENT_TIMESTAMP WHERE id=?").bind(row.id).run();
+      await auditAuth(env, request, {id: row.user_id}, "Khóa phiên 2FA do vượt số lần thử", "auth", String(row.user_id), {});
+      return json({error:"RATE_LIMIT", message:"Phiên xác thực 2FA đã bị hủy do nhập sai quá số lần cho phép. Vui lòng đăng nhập lại."}, 429);
+    }
+
+    if (!(await verifyTotp(row.totp_secret, code))) {
+      try {
+        await env.DB.prepare("UPDATE auth_tokens SET attempt_count=COALESCE(attempt_count,0)+1 WHERE id=?").bind(row.id).run();
+      } catch {}
+      await auditAuth(env, request, {id: row.user_id}, "Xác thực 2FA thất bại", "auth", String(row.user_id), {});
       return json(
         {error:"INVALID_2FA"},
         401
@@ -571,8 +635,11 @@ export async function authRoute(request, env, url) {
       env
     );
 
-    const auth = requireAuth(user);
+    const auth = requireAuth(user, {allowPasswordChangeRequired: true});
     if (auth) return auth;
+
+    const rl = await rateLimit(env, `change-pw:${user.id}`, 8, 300);
+    if (!rl.ok) return json({error:"RATE_LIMIT"}, 429);
 
     const body = await readJson(request);
 
@@ -587,6 +654,13 @@ export async function authRoute(request, env, url) {
     if (next.length < 10) {
       return json(
         {error:"PASSWORD_TOO_SHORT"},
+        400
+      );
+    }
+
+    if (current === next) {
+      return json(
+        {error:"PASSWORD_UNCHANGED", message:"Mật khẩu mới phải khác mật khẩu hiện tại."},
         400
       );
     }
@@ -644,10 +718,11 @@ export async function authRoute(request, env, url) {
       user.id
     );
 
-    await auditAuth(env, request, user, "Đổi mật khẩu tài khoản", "user", String(user.id), {});
+    const updatedUser = await getUserById(env, user.id);
+    await auditAuth(env, request, updatedUser, "Đổi mật khẩu tài khoản", "user", String(user.id), {});
 
     return json(
-      {ok:true},
+      {ok:true, user:updatedUser, must_change_password:false},
       200,
       {
         "set-cookie":
@@ -703,7 +778,6 @@ export async function authRoute(request, env, url) {
         AND status='active'
     `).bind(email).first();
 
-    // Ghi nhận yêu cầu hỗ trợ đặt lại mật khẩu vào nhật ký và hệ thống hỗ trợ quản trị
     await auditAuth(env, request, u || null, "Yêu cầu hỗ trợ đặt lại mật khẩu", "user", u ? String(u.id) : email, {
       email,
       matched_active_user: !!u,
@@ -713,7 +787,9 @@ export async function authRoute(request, env, url) {
     if (u) {
       try {
         const ticketId = uid("ticket");
-        const ticketCode = `SFN-PW-${Date.now().toString().slice(-6)}`;
+        const rnd = new Uint32Array(1);
+        crypto.getRandomValues(rnd);
+        const ticketCode = `SFN-PW-${String(100000 + (rnd[0] % 900000))}`;
         await env.DB.prepare(
           "INSERT INTO tickets(id,code,submitter_user_id,submitter_name,email,ticket_type,priority,status,subject) VALUES(?,?,?,?,?,'Đặt lại mật khẩu','Cao','Mới',?)"
         )
@@ -737,14 +813,15 @@ export async function authRoute(request, env, url) {
           .run();
       } catch {}
 
-      // Chỉ tạo token & gửi email đặt lại tự động khi hệ thống bật cấu hình allow_auto_password_reset hoặc có cấu hình provider
+      // SECURITY HARDENING: Never trust client-supplied body.issue_token!
+      // Only issue automated reset token when system setting allow_auto_password_reset is explicitly enabled by Super Admin.
       let autoResetEnabled = false;
       try {
         const st = await env.DB.prepare("SELECT value_json FROM settings WHERE key='allow_auto_password_reset'").first();
         if (st) autoResetEnabled = JSON.parse(st.value_json) === true;
       } catch {}
 
-      if (autoResetEnabled || body?.issue_token === true) {
+      if (autoResetEnabled) {
         const token = randomToken(32);
         const hash = await sha256(token);
         const tid = uid("reset");
@@ -801,6 +878,16 @@ export async function authRoute(request, env, url) {
     p === "/api/auth/reset" &&
     request.method === "POST"
   ) {
+    const rl = await rateLimit(
+      env,
+      `reset-pw:${await ipHash(request)}`,
+      8,
+      300
+    );
+    if (!rl.ok) {
+      return json({error:"RATE_LIMIT"}, 429);
+    }
+
     const body = await readJson(request);
 
     const token = String(
@@ -810,6 +897,10 @@ export async function authRoute(request, env, url) {
     const next = String(
       body?.new_password || ""
     );
+
+    if (!token) {
+      return json({error:"INVALID_OR_EXPIRED_TOKEN"}, 400);
+    }
 
     if (next.length < 10) {
       return json(
@@ -822,18 +913,19 @@ export async function authRoute(request, env, url) {
       await sha256(token);
 
     const row = await env.DB.prepare(`
-      SELECT id,user_id
-      FROM auth_tokens
+      SELECT t.id,t.user_id,u.status
+      FROM auth_tokens t
+      JOIN users u ON u.id=t.user_id
       WHERE
-        token_type='password_reset'
-        AND token_hash=?
-        AND used_at IS NULL
-        AND expires_at>CURRENT_TIMESTAMP
+        t.token_type='password_reset'
+        AND t.token_hash=?
+        AND t.used_at IS NULL
+        AND t.expires_at>CURRENT_TIMESTAMP
     `)
       .bind(hashTok)
       .first();
 
-    if (!row) {
+    if (!row || !["active", "invited"].includes(row.status)) {
       return json(
         {error:"INVALID_OR_EXPIRED_TOKEN"},
         400
@@ -855,7 +947,7 @@ export async function authRoute(request, env, url) {
           password_salt=?,
           password_hash=?,
           password_iterations=?,
-          status=CASE WHEN status='invited' THEN 'active' ELSE status END,
+          status='active',
           email_verified=1,
           must_change_password=0,
           updated_at=CURRENT_TIMESTAMP
@@ -870,6 +962,10 @@ export async function authRoute(request, env, url) {
       env.DB.prepare(
         "UPDATE auth_tokens SET used_at=CURRENT_TIMESTAMP WHERE id=?"
       ).bind(row.id),
+
+      env.DB.prepare(
+        "DELETE FROM auth_tokens WHERE user_id=? AND token_type='password_reset' AND used_at IS NULL"
+      ).bind(row.user_id),
 
       env.DB.prepare(
         "DELETE FROM sessions WHERE user_id=?"
@@ -1044,32 +1140,36 @@ export async function authRoute(request, env, url) {
     }
 
     const profile = await pr.json();
+    if (!profile.email_verified) {
+      return Response.redirect(`${env.APP_URL}/?auth_error=EMAIL_NOT_VERIFIED`, 302);
+    }
 
     const email = String(
       profile.email || ""
     ).toLowerCase();
 
-    let u = await env.DB.prepare(
-      "SELECT id FROM users WHERE email=? COLLATE NOCASE"
+    const u = await env.DB.prepare(
+      "SELECT id,status,totp_enabled,must_change_password FROM users WHERE email=? COLLATE NOCASE"
     ).bind(email).first();
 
-    if (!u) {
+    if (!u || u.status !== "active") {
+      await auditAuth(env, request, u || null, "Từ chối Google OAuth (tài khoản không tồn tại hoặc đã khóa)", "auth", email, {});
       return Response.redirect(`${env.APP_URL}/?auth_error=ADMIN_ACCOUNT_NOT_FOUND`,302);
-    } else {
-      await env.DB.prepare(`
-        UPDATE users
-        SET
-          email_verified=1,
-          full_name=COALESCE(full_name,?),
-          updated_at=CURRENT_TIMESTAMP
-        WHERE id=?
-      `)
-        .bind(
-          profile.name || email,
-          u.id
-        )
-        .run();
     }
+
+    await env.DB.prepare(`
+      UPDATE users
+      SET
+        email_verified=1,
+        full_name=COALESCE(full_name,?),
+        updated_at=CURRENT_TIMESTAMP
+      WHERE id=?
+    `)
+      .bind(
+        profile.name || email,
+        u.id
+      )
+      .run();
 
     const full = await getUserById(
       env,
@@ -1090,6 +1190,17 @@ export async function authRoute(request, env, url) {
         `${env.APP_URL}/?auth_error=ADMIN_ACCESS_NOT_GRANTED`,
         302
       );
+    }
+
+    if (u.totp_enabled) {
+      const challenge = randomToken(32);
+      const challengeId = uid("2fa");
+      await env.DB.prepare(`
+        INSERT INTO auth_tokens(id,user_id,token_type,token_hash,portal,expires_at)
+        VALUES(?,?,'login_2fa',?,?,datetime('now','+10 minutes'))
+      `).bind(challengeId, u.id, await sha256(challenge), st.portal).run();
+      await auditAuth(env, request, full, "Yêu cầu 2FA sau Google OAuth", "user", String(u.id), {portal: st.portal});
+      return Response.redirect(`${env.APP_URL}/admin/login?challenge=${encodeURIComponent(challenge)}`, 302);
     }
 
     const s = await createSession(
@@ -1291,7 +1402,7 @@ export async function authRoute(request, env, url) {
       env
     );
 
-    const auth = requireAuth(user);
+    const auth = requireAuth(user, {allowPasswordChangeRequired: true});
     if (auth) return auth;
 
     await env.DB.prepare(
@@ -1321,17 +1432,8 @@ export async function createInvitedAccount(
   actor,
   body
 ) {
-  if (
-    !hasPermission(
-      actor,
-      "user.manage"
-    )
-  ) {
-    return json(
-      {error:"FORBIDDEN"},
-      403
-    );
-  }
+  const deny = requirePermission(actor, "user.manage");
+  if (deny) return deny;
 
   const email = String(
     body?.email || ""
@@ -1359,6 +1461,7 @@ export async function createInvitedAccount(
       : [];
 
   const activationMode = body?.activation_mode === "self" ? "self" : "email";
+  const mustChangePassword = body?.must_change_password === false ? 0 : 1;
 
   const actorLevel =
     highestRoleLevel(actor);
@@ -1451,7 +1554,7 @@ export async function createInvitedAccount(
       ?,?,?,?,?,
       ?,
       ?,
-      1
+      ?
     )
   `)
     .bind(
@@ -1461,7 +1564,8 @@ export async function createInvitedAccount(
       hash,
       PASSWORD_ITERATIONS,
       activationMode === "self" ? "active" : "invited",
-      activationMode === "self" ? 1 : 0
+      activationMode === "self" ? 1 : 0,
+      mustChangePassword
     )
     .run();
 
@@ -1498,7 +1602,8 @@ export async function createInvitedAccount(
   await auditAuth(env, request, actor, "Khởi tạo tài khoản quản trị", "user", String(uidUser), {
     email,
     roles,
-    activation_mode: activationMode
+    activation_mode: activationMode,
+    must_change_password: !!mustChangePassword
   });
 
   if (activationMode === "email") {
@@ -1513,5 +1618,5 @@ export async function createInvitedAccount(
     return json({ok:true,user_id:uidUser,activation_sent:true,status:"invited"});
   }
 
-  return json({ok:true,user_id:uidUser,temp_password:temp,activation_sent:false,status:"active"});
+  return json({ok:true,user_id:uidUser,temp_password:temp,activation_sent:false,status:"active",must_change_password:!!mustChangePassword});
 }

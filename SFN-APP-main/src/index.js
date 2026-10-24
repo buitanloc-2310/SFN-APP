@@ -2,7 +2,7 @@ import {json, sameOrigin, isStateChanging} from "./utils.js";
 import {authRoute, getAuthUser} from "./auth.js";
 import {publicRoute} from "./public.js";
 import {meRoute} from "./me.js";
-import {adminRoute} from "./admin.js";
+import {adminRoute, buildBackupSnapshot} from "./admin.js";
 import {hasPermission} from "./permissions.js";
 
 async function getSetting(env,key,fallback=null){
@@ -31,7 +31,7 @@ function secure(resp){
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://quickchart.io",
+    "img-src 'self' data: blob: https://quickchart.io https://img.vietqr.io",
     "font-src 'self' data:",
     "connect-src 'self' https://challenges.cloudflare.com",
     "frame-src 'self' https://challenges.cloudflare.com",
@@ -114,7 +114,7 @@ async function servePublicMedia(request,env,url){
   if(request.method!=="GET" || !url.pathname.startsWith("/media/")) return null;
   if(!env.FILES) return json({error:"STORAGE_UNAVAILABLE",message:"Dịch vụ lưu trữ tệp hiện tạm thời chưa khả dụng."},503);
   const key=decodeURIComponent(url.pathname.slice("/media/".length));
-  if(!key || key.includes("..")) return json({error:"INVALID_PATH",message:"Đường dẫn tài nguyên không hợp lệ."},400);
+  if(!key || key.includes("..") || key.startsWith("/") || key.includes("\\")) return json({error:"INVALID_PATH",message:"Đường dẫn tài nguyên không hợp lệ."},400);
   const obj=await env.FILES.get(`public-media/${key}`);
   if(!obj) return json({error:"MEDIA_NOT_FOUND",message:"Không tìm thấy hình ảnh yêu cầu."},404);
   const h=new Headers();
@@ -130,7 +130,7 @@ async function serveEmailFile(request,env,url){
   const id=decodeURIComponent(m[1]);
   const token=String(url.searchParams.get("token")||"");
   if(!token) return json({error:"FORBIDDEN",message:"Bạn không có quyền truy cập tệp này."},403);
-  const meta=await env.DB.prepare("SELECT * FROM files WHERE id=? AND email_token=?").bind(id,token).first();
+  const meta=await env.DB.prepare("SELECT * FROM files WHERE id=? AND email_token=? AND deleted_at IS NULL").bind(id,token).first();
   if(!meta) return json({error:"FILE_NOT_FOUND",message:"Không tìm thấy tệp hoặc liên kết đã hết hạn."},404);
   const obj=await env.FILES.get(meta.r2_key);
   if(!obj) return json({error:"OBJECT_NOT_FOUND",message:"Không tìm thấy nội dung tệp."},404);
@@ -147,14 +147,23 @@ async function serveFile(request,env,url){
   const id=decodeURIComponent(m[1]),meta=await env.DB.prepare("SELECT * FROM files WHERE id=? AND deleted_at IS NULL").bind(id).first();
   if(!meta) return json({error:"FILE_NOT_FOUND",message:"Không tìm thấy tài liệu hoặc tệp yêu cầu."},404);
   const user=await getAuthUser(request,env);
-  const own=user && meta.owner_user_id && Number(meta.owner_user_id)===Number(user.id);
-  const admin=user && (hasPermission(user,"file.manage") || hasPermission(user,"document.view") || hasPermission(user,"document.manage"));
-  // Also allow if linked to a public document with active status
+  const validUser=user && Number(user.must_change_password||0)===0;
+  const own=validUser && meta.owner_user_id && Number(meta.owner_user_id)===Number(user.id);
+  const admin=validUser && (hasPermission(user,"file.manage") || hasPermission(user,"document.view") || hasPermission(user,"document.manage"));
+  // Also allow if linked to a public document with active status or public sponsorship voucher/report
   let isPublicDoc=false;
   if(meta.visibility!=="public" && !own && !admin){
     try{
       const doc=await env.DB.prepare("SELECT id FROM documents WHERE file_id=? AND visibility='public' AND status='Có hiệu lực' LIMIT 1").bind(id).first();
       if(doc) isPublicDoc=true;
+      if(!isPublicDoc){
+        const spRep=await env.DB.prepare("SELECT r.id FROM sponsorship_reports r JOIN sponsorship_campaigns c ON c.id=r.campaign_id WHERE r.file_id=? AND r.status='published' AND c.visibility='public' LIMIT 1").bind(id).first();
+        if(spRep) isPublicDoc=true;
+      }
+      if(!isPublicDoc){
+        const spTx=await env.DB.prepare("SELECT t.id FROM sponsorship_transactions t JOIN sponsorship_campaigns c ON c.id=t.campaign_id WHERE t.voucher_file_id=? AND t.verification_status='verified' AND t.is_public=1 AND c.visibility='public' LIMIT 1").bind(id).first();
+        if(spTx) isPublicDoc=true;
+      }
     }catch{}
   }
   if(meta.visibility!=="public"&&!isPublicDoc&&!own&&!admin) return json({error:"FORBIDDEN",message:"Bạn không có quyền truy cập tài liệu này."},403);
@@ -191,16 +200,7 @@ async function cleanup(env){
 }
 
 async function scheduledBackup(env){
-  const tables=["settings","modules","forms","form_revisions","terms","people","units","classes","events","news","documents","document_versions","certificates","certificate_history","case_events","approvals","tasks","sponsorship_campaigns","sponsorship_transactions","sponsorship_reports","safety_reports","websites","cms_pages","cms_page_revisions","cms_shared_blocks","cms_templates"];
-  const snapshot={created_at:new Date().toISOString(),kind:"automatic",tables:{}};
-  for(const t of tables){
-    try{const rs=await env.DB.prepare(`SELECT * FROM ${t}`).all();snapshot.tables[t]=rs.results||[]}catch(err){console.warn("AUTO_BACKUP_SKIP",t,String(err?.message||err))}
-  }
-  const raw=JSON.stringify(snapshot),id=`backup_auto_${crypto.randomUUID().replaceAll("-","")}`;
-  const key=`backups/automatic/${new Date().toISOString().slice(0,10)}/${id}.json`;
-  await env.FILES.put(key,raw,{httpMetadata:{contentType:"application/json"}});
-  await env.DB.prepare("INSERT INTO backups(id,r2_key,size,created_by) VALUES(?,?,?,NULL)")
-    .bind(id,key,new TextEncoder().encode(raw).length).run();
+  await buildBackupSnapshot(env,"cron",null);
 }
 
 const PORTAL_PATH_PREFIXES = [
@@ -216,7 +216,7 @@ function isSpaRoute(pathname){
 async function handle(request,env,ctx){
   const url=new URL(request.url);
 
-  if(isStateChanging(request) && url.pathname.startsWith("/api/") && url.pathname!=="/api/integrations/xanh/submissions"){
+  if(isStateChanging(request) && url.pathname.startsWith("/api/") && url.pathname!=="/api/integrations/xanh/submissions" && url.pathname!=="/api/webhooks/sponsorship/payment"){
     const appUrl=env.APP_URL||url.origin;
     if(!sameOrigin(request,appUrl)) return json({error:"BAD_ORIGIN",message:"Yêu cầu không hợp lệ từ nguồn bên ngoài."},403);
   }

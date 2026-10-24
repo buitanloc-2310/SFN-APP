@@ -475,7 +475,6 @@ async function formCenter(app){
   app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>BIỂU MẪU ĐIỆN TỬ</h1><p>Gửi đăng ký chương trình, hồ sơ tham gia và yêu cầu trực tuyến. Sau khi gửi thành công, hệ thống cấp mã hồ sơ để bạn tra cứu tiến trình xử lý tại mục <b>Hồ sơ (/ho-so)</b>.</p></section>
   <section class="dip-section tight">
     <div class="capability-strip"><span>Biểu mẫu nhiều bước</span><span>Điều kiện hiển thị linh hoạt</span><span>Tải tệp kiểm tra chữ ký byte</span><span>Hỗ trợ vẽ/tải ảnh chữ ký</span><span>Bảo vệ người dưới 18 tuổi</span><span>Xem lại trước khi gửi</span></div>
-    <div class="notice" style="margin-bottom:24px;"><b>Lưu ý pháp lý về chữ ký trong biểu mẫu:</b> Trường chữ ký trên biểu mẫu thu nhận <i>chữ ký hình ảnh</i> do người dùng trực tiếp vẽ trên màn hình hoặc tải ảnh lên nhằm xác nhận thao tác gửi biểu mẫu. Đây <b>không phải</b> chữ ký số được chứng thực bởi tổ chức cung cấp dịch vụ chứng thực chữ ký số.</div>
     ${sectionHead('DANH MỤC BIỂU MẪU','Biểu mẫu đang mở tiếp nhận','Chọn biểu mẫu phù hợp với nhu cầu của bạn.')}
     <div class="form-center-grid">${forms.map(f=>`<article class="form-center-card"><div><span class="content-tag">${esc(f.prefix)}</span><h3>${esc(f.name)}</h3><p>${esc(f.description||'')}</p></div><div><small>${f.min_age?`Điều kiện tuổi: từ đủ ${esc(f.min_age)} tuổi`:'Theo điều kiện của chương trình'}</small><a class="portal-button" href="#form/${encodeURIComponent(f.id)}">Mở biểu mẫu <span>→</span></a></div></article>`).join('')||empty('Hiện chưa có biểu mẫu công khai đang mở.')}</div>
   </section>`;
@@ -587,18 +586,55 @@ async function sponsorshipCenter(app,detailCode=''){
           <article class="sp-metric-card"><small>02 · SỐ TIỀN ĐÃ CAM KẾT</small><strong>${esc(fmtVnd(c.pledged_amount))}</strong><span>Khoản cam kết (chưa tính vào thực nhận)</span></article>
           <article class="sp-metric-card is-highlight"><small>03 · SỐ TIỀN THỰC NHẬN</small><strong>${esc(fmtVnd(c.received_amount))}</strong><span>Khoản đã thực tế tiếp nhận và xác minh</span></article>
           <article class="sp-metric-card"><small>04 · SỐ TIỀN ĐÃ CHI</small><strong>${esc(fmtVnd(c.disbursed_amount))}</strong><span>Khoản đã giải ngân theo mục đích</span></article>
-          <article class="sp-metric-card"><small>05 · SỐ DƯ CÒN LẠI</small><strong>${esc(fmtVnd(c.remaining_amount))}</strong><span>Tính theo: Thực nhận trừ Đã chi</span></article>
+          <article class="sp-metric-card ${Number(c.remaining_amount)<0?'is-overspent':''}"><small>05 · SỐ DƯ CÒN LẠI</small><strong style="${Number(c.remaining_amount)<0?'color:var(--dip-danger,#c62828)':''}">${esc(fmtVnd(c.remaining_amount))}</strong><span>${Number(c.remaining_amount)<0?'Cảnh báo: Chi vượt thực nhận':'Tính theo: Thực nhận trừ Đã chi'}</span></article>
         </div>
+        ${Number(c.remaining_amount)<0?`<div class="notice bad" role="alert" style="margin-top:16px;"><b>Cảnh báo đối soát tài chính:</b> Tổng số tiền đã giải ngân đang vượt quá số tiền thực nhận đã xác minh (${esc(fmtVnd(c.remaining_amount))}). Hệ thống giữ nguyên số dư âm thực tế để phục vụ kiểm toán, tuyệt đối không tự ép về 0.</div>`:''}
         <div class="card" style="margin-top:20px;">
           <h3>Thông tin chương trình & nguyên tắc đối soát</h3>
           <p><b>Mục đích sử dụng:</b> ${esc(c.purpose||c.summary||'Theo kế hoạch chương trình đã phê duyệt.')}</p>
           <p><b>Thời gian thực hiện:</b> ${esc(c.start_at?fmt(c.start_at):'Đang cập nhật')} — ${esc(c.end_at?fmt(c.end_at):'Đang cập nhật')} · <b>Cập nhật lần cuối:</b> ${esc(fmt(c.updated_at))}</p>
+          ${(Number(c.pending_amount||0)>0||Number(c.refunded_amount||0)>0||Number(c.adjusted_amount||0)!==0)?`<p class="small muted"><b>Chỉ số đối soát mở rộng:</b> Chờ xác minh: ${esc(fmtVnd(c.pending_amount||0))} · Hoàn trả: ${esc(fmtVnd(c.refunded_amount||0))} · Điều chỉnh: ${esc(fmtVnd(c.adjusted_amount||0))}</p>`:''}
         </div>
+        ${c.status==='active'?`<div class="card" style="margin-top:20px;">
+          <h3>Tạo mã QR tham chiếu chuyển khoản ủng hộ</h3>
+          <p class="small muted">Mỗi phiên ủng hộ được cấp một mã tham chiếu duy nhất để đối soát tự động hoặc xác minh chứng từ. Việc tạo mã QR hoặc nhấn báo đã chuyển khoản <b>không</b> tự động cộng vào Số tiền thực nhận cho đến khi giao dịch được xác thực đối soát.</p>
+          <form id="spQrIntentForm" class="row2" style="margin-top:12px;align-items:end;">
+            <div class="field"><label for="spDonorName">Tên hiển thị công khai (hoặc ẩn danh)</label><input id="spDonorName" placeholder="Nhà hảo tâm ẩn danh"></div>
+            <div class="field"><label for="spExpectedAmount">Số tiền dự kiến ủng hộ (VND) *</label><input id="spExpectedAmount" type="number" min="1000" step="1000" value="100000" required></div>
+            <div><button type="submit" class="portal-button">▦ Tạo mã QR & Mã tham chiếu</button></div>
+          </form>
+          <div id="spQrIntentOut" style="margin-top:14px;" aria-live="polite"></div>
+        </div>`:''}
         <h2 style="margin:32px 0 14px;">Nhật ký giao dịch thu / chi công khai đã xác minh</h2>
         ${txs.length?`<div class="card table-scroll"><table><thead><tr><th>Mã GD</th><th>Loại chỉ tiêu</th><th>Nội dung / Đơn vị (đã ẩn dữ liệu nhạy cảm)</th><th>Số tiền</th><th>Thời gian</th><th>Chứng từ</th></tr></thead><tbody>${txs.map(tx=>`<tr><td><b>${esc(tx.tx_code)}</b></td><td><span class="status">${esc(tx.tx_type==='pledge'?'Cam kết':tx.tx_type==='receipt'?'Thực nhận (Thu)':tx.tx_type==='disbursement'?'Giải ngân (Chi)':tx.tx_type)}</span></td><td><b>${esc(tx.public_party_label)}</b><br><span class="small muted">${esc(tx.purpose||'')}</span></td><td><b>${esc(fmtVnd(tx.amount))}</b></td><td>${esc(fmt(tx.occurred_at))}</td><td>${tx.voucher_file_id?`<a href="/api/files/${encodeURIComponent(tx.voucher_file_id)}" target="_blank" rel="noopener">Xem chứng từ ↗</a>`:'—'}</td></tr>`).join('')}</tbody></table></div>`:empty('Chưa có giao dịch công khai nào được công bố cho chương trình này.')}
         <h2 style="margin:32px 0 14px;">Báo cáo & chứng từ tổng hợp</h2>
         ${reps.length?`<div class="resource-list">${reps.map(r=>`<article><i>▤</i><div><span>KỲ BÁO CÁO: ${esc(r.report_period||'Tổng hợp')}</span><h3>${esc(r.title)}</h3><p class="small muted">${esc(r.summary||'')}</p></div>${r.file_id?`<a class="portal-button" href="/api/files/${encodeURIComponent(r.file_id)}" target="_blank" rel="noopener">Mở báo cáo →</a>`:''}</article>`).join('')}</div>`:empty('Chưa có báo cáo định kỳ được xuất bản cho chương trình này.')}
       </section>`;
+      const qrForm=document.getElementById('spQrIntentForm'),qrOut=document.getElementById('spQrIntentOut');
+      if(qrForm&&qrOut){
+        qrForm.onsubmit=async ev=>{
+          ev.preventDefault();
+          const donor=document.getElementById('spDonorName')?.value.trim()||'Nhà hảo tâm ẩn danh';
+          const amt=Number(document.getElementById('spExpectedAmount')?.value||0);
+          qrOut.innerHTML='<div class="loading">Đang khởi tạo mã tham chiếu đối soát…</div>';
+          try{
+            const res=await api(`/api/public/sponsorship/${encodeURIComponent(c.code)}/qr-intent`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({donor_name:donor,expected_amount:amt})});
+            const it=res.intent;
+            qrOut.innerHTML=`<div class="notice">
+              <p><b>Mã tham chiếu đối soát (Nội dung chuyển khoản):</b> <code>${esc(it.reference_code)}</code> · <b>Số tiền:</b> ${esc(fmtVnd(it.expected_amount))}</p>
+              <p class="small muted">${esc(it.notice||'')}</p>
+              ${it.qr_image_url?`<div style="margin:10px 0;"><img src="${esc(it.qr_image_url)}" alt="Mã QR chuyển khoản ${esc(it.reference_code)}" style="max-width:220px;border-radius:12px;border:1px solid #dbe4f0;"></div>`:''}
+              <button type="button" class="secondary" id="spReportTransferBtn">Tôi đã hoàn tất chuyển khoản (Gửi yêu cầu đối soát)</button>
+            </div>`;
+            document.getElementById('spReportTransferBtn')?.addEventListener('click',async()=>{
+              try{
+                const rep=await api(`/api/public/sponsorship/intents/${encodeURIComponent(it.reference_code)}/report-transfer`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({note:'Người ủng hộ xác nhận đã chuyển khoản trên cổng công khai'})});
+                qrOut.innerHTML=`<div class="notice">${esc(rep.message||'Đã ghi nhận thông báo chuyển khoản chờ đối soát.')}</div>`;
+              }catch(e2){toast?.(e2.message||'Không thể gửi xác nhận');}
+            });
+          }catch(e1){qrOut.innerHTML=failCard(e1.message);}
+        };
+      }
       return;
     }catch(err){
       app.innerHTML=lookupShell('MINH BẠCH TÀI TRỢ','Không tìm thấy chương trình tài trợ yêu cầu.')+`<section class="dip-section tight">${failCard(err.message)}<div class="actions" style="margin-top:16px;"><a class="portal-button" href="/tai-tro">Quay lại trang Tài trợ →</a></div></section>`;

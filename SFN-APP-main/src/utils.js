@@ -72,29 +72,179 @@ export async function sha256(input) {
   return b64url(new Uint8Array(hash));
 }
 
+export async function sha256Hex(input) {
+  const data =
+    typeof input === "string"
+      ? new TextEncoder().encode(input)
+      : input;
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+const SHA256_K = new Uint32Array([
+  0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+]);
+const SHA256_H0 = new Uint32Array([
+  0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19
+]);
+
+function sha256Block(state, w) {
+  let a=state[0],b=state[1],c=state[2],d=state[3],e=state[4],f=state[5],g=state[6],h=state[7];
+  for (let i=16;i<64;i++) {
+    const v0=w[i-15], s0=((v0>>>7)|(v0<<25))^((v0>>>18)|(v0<<14))^(v0>>>3);
+    const v1=w[i-2],  s1=((v1>>>17)|(v1<<15))^((v1>>>19)|(v1<<13))^(v1>>>10);
+    w[i]=(w[i-16]+s0+w[i-7]+s1)|0;
+  }
+  for (let i=0;i<64;i++) {
+    const S1=((e>>>6)|(e<<26))^((e>>>11)|(e<<21))^((e>>>25)|(e<<7));
+    const ch=(e&f)^((~e)&g);
+    const t1=(h+S1+ch+SHA256_K[i]+w[i])|0;
+    const S0=((a>>>2)|(a<<30))^((a>>>13)|(a<<19))^((a>>>22)|(a<<10));
+    const maj=(a&b)^(a&c)^(b&c);
+    const t2=(S0+maj)|0;
+    h=g; g=f; f=e; e=(d+t1)|0; d=c; c=b; b=a; a=(t1+t2)|0;
+  }
+  state[0]=(state[0]+a)|0; state[1]=(state[1]+b)|0; state[2]=(state[2]+c)|0; state[3]=(state[3]+d)|0;
+  state[4]=(state[4]+e)|0; state[5]=(state[5]+f)|0; state[6]=(state[6]+g)|0; state[7]=(state[7]+h)|0;
+}
+
+function sha256BytesSync(msg) {
+  const len = msg.length;
+  const bitLenHi = Math.floor((len * 8) / 0x100000000);
+  const bitLenLo = (len * 8) >>> 0;
+  const padLen = ((len + 9 + 63) & ~63);
+  const buf = new Uint8Array(padLen);
+  buf.set(msg);
+  buf[len] = 0x80;
+  const dv = new DataView(buf.buffer);
+  dv.setUint32(padLen - 8, bitLenHi, false);
+  dv.setUint32(padLen - 4, bitLenLo, false);
+  const state = new Uint32Array(SHA256_H0);
+  const w = new Uint32Array(64);
+  for (let off = 0; off < padLen; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4, false);
+    sha256Block(state, w);
+  }
+  const out = new Uint8Array(32);
+  const outDv = new DataView(out.buffer);
+  for (let i = 0; i < 8; i++) outDv.setUint32(i * 4, state[i], false);
+  return out;
+}
+
+/**
+ * RFC 8018 / NIST SP 800-132 compliant PBKDF2-HMAC-SHA256 (dkLen = 32 bytes)
+ * Used when Cloudflare Workers WebCrypto rejects iterations > 100,000.
+ * Never downgrades iteration count; computes exact mathematical digest for targetIterations.
+ */
+export function pbkdf2HmacSha256Sync(passwordBytes, saltBytes, iterations) {
+  let key = passwordBytes;
+  if (key.length > 64) key = sha256BytesSync(key);
+  const ipad = new Uint8Array(64), opad = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) {
+    const kb = i < key.length ? key[i] : 0;
+    ipad[i] = kb ^ 0x36;
+    opad[i] = kb ^ 0x5c;
+  }
+  const w = new Uint32Array(64);
+  const ipadState = new Uint32Array(SHA256_H0);
+  const ipadDv = new DataView(ipad.buffer);
+  for (let i = 0; i < 16; i++) w[i] = ipadDv.getUint32(i * 4, false);
+  sha256Block(ipadState, w);
+
+  const opadState = new Uint32Array(SHA256_H0);
+  const opadDv = new DataView(opad.buffer);
+  for (let i = 0; i < 16; i++) w[i] = opadDv.getUint32(i * 4, false);
+  sha256Block(opadState, w);
+
+  const firstMsg = new Uint8Array(saltBytes.length + 4);
+  firstMsg.set(saltBytes);
+  firstMsg[saltBytes.length] = 0;
+  firstMsg[saltBytes.length + 1] = 0;
+  firstMsg[saltBytes.length + 2] = 0;
+  firstMsg[saltBytes.length + 3] = 1;
+
+  const totalFirstLen = 64 + firstMsg.length;
+  const padLen = ((firstMsg.length + 9 + 63) & ~63);
+  const firstBuf = new Uint8Array(padLen);
+  firstBuf.set(firstMsg);
+  firstBuf[firstMsg.length] = 0x80;
+  const firstDv = new DataView(firstBuf.buffer);
+  firstDv.setUint32(padLen - 4, totalFirstLen * 8, false);
+
+  const innerState = new Uint32Array(ipadState);
+  for (let off = 0; off < padLen; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = firstDv.getUint32(off + i * 4, false);
+    sha256Block(innerState, w);
+  }
+  const outerState = new Uint32Array(opadState);
+  for (let i = 0; i < 8; i++) w[i] = innerState[i];
+  w[8] = 0x80000000;
+  for (let i = 9; i < 15; i++) w[i] = 0;
+  w[15] = (64 + 32) * 8;
+  sha256Block(outerState, w);
+
+  const u = new Uint32Array(outerState);
+  const t = new Uint32Array(outerState);
+
+  for (let iter = 1; iter < iterations; iter++) {
+    innerState.set(ipadState);
+    for (let i = 0; i < 8; i++) w[i] = u[i];
+    w[8] = 0x80000000;
+    for (let i = 9; i < 15; i++) w[i] = 0;
+    w[15] = (64 + 32) * 8;
+    sha256Block(innerState, w);
+
+    outerState.set(opadState);
+    for (let i = 0; i < 8; i++) w[i] = innerState[i];
+    w[8] = 0x80000000;
+    for (let i = 9; i < 15; i++) w[i] = 0;
+    w[15] = (64 + 32) * 8;
+    sha256Block(outerState, w);
+
+    for (let i = 0; i < 8; i++) {
+      u[i] = outerState[i];
+      t[i] ^= outerState[i];
+    }
+  }
+  const out = new Uint8Array(32);
+  const outDv = new DataView(out.buffer);
+  for (let i = 0; i < 8; i++) outDv.setUint32(i * 4, t[i], false);
+  return out;
+}
+
 /*
- * Hỗ trợ tương thích ngược cả tài khoản cũ (150.000 iterations)
- * và giới hạn WebCrypto của Cloudflare Workers runtime (100.000 iterations).
+ * Hỗ trợ xác thực chính xác cả tài khoản cũ (150.000 iterations)
+ * và chuẩn Cloudflare Workers WebCrypto (100.000 iterations) mà tuyệt đối
+ * không hạ số vòng (zero iteration downgrade).
  */
 export async function pbkdf2(
   password,
   saltB64,
   iterations = 100000
 ) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"]
-  );
-
+  const pwdBytes = new TextEncoder().encode(String(password ?? ""));
   const salt = fromB64url(saltB64);
-  const targetIterations = Number.isFinite(Number(iterations)) && Number(iterations) > 0
-    ? Number(iterations)
+  const targetIterations = Number.isFinite(Number(iterations)) && Number(iterations) >= 1
+    ? Math.floor(Number(iterations))
     : 100000;
 
   try {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      pwdBytes,
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    );
     const bits = await crypto.subtle.deriveBits(
       {
         name: "PBKDF2",
@@ -107,18 +257,10 @@ export async function pbkdf2(
     );
     return b64url(new Uint8Array(bits));
   } catch {
-    const fallbackIterations = Math.min(targetIterations, 100000);
-    const bits = await crypto.subtle.deriveBits(
-      {
-        name: "PBKDF2",
-        salt,
-        iterations: fallbackIterations,
-        hash: "SHA-256",
-      },
-      key,
-      256
-    );
-    return b64url(new Uint8Array(bits));
+    // WebCrypto on Cloudflare Workers throws NotSupportedError when iterations > 100000.
+    // Compute exact RFC 8018 PBKDF2-HMAC-SHA256 at targetIterations without downgrading.
+    const derived = pbkdf2HmacSha256Sync(pwdBytes, salt, targetIterations);
+    return b64url(derived);
   }
 }
 
@@ -311,6 +453,18 @@ export function sanitizeFilename(
       .slice(0, 120) ||
     "file"
   );
+}
+
+export function magicBytesOk(mime, bytes) {
+  const b = new Uint8Array(bytes);
+  const ascii = (a, n) => String.fromCharCode(...a.slice(0, n));
+  if (mime === "image/jpeg") return b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+  if (mime === "image/png") return b[0] === 0x89 && ascii(b.slice(1), 3) === "PNG";
+  if (mime === "image/webp") return ascii(b, 4) === "RIFF" && String.fromCharCode(...b.slice(8, 12)) === "WEBP";
+  if (mime === "image/gif") return ascii(b, 4) === "GIF8";
+  if (mime === "application/pdf") return ascii(b, 4) === "%PDF";
+  if (mime && mime.includes("officedocument")) return b[0] === 0x50 && b[1] === 0x4b;
+  return true;
 }
 
 export async function rateLimit(

@@ -1,9 +1,10 @@
 import {
   json, readJson, uid, randomToken, sha256, ageFromDob, flattenFields, sanitizeFilename,
-  requestIp, ipHash, rateLimit, escapeHtml, safeEq
+  requestIp, ipHash, rateLimit, escapeHtml, safeEq, magicBytesOk, conditionOk
 } from "./utils.js";
 import {getAuthUser} from "./auth.js";
 import {sendTemplatedEmail, answersToEmail} from "./email.js";
+import {recalculateCampaignTotals} from "./admin.js";
 
 export const LOOKUP_DATA_POLICY_VI =
   "Hệ thống chỉ cung cấp các thông tin được phép công khai theo chính sách dữ liệu của Sky First Network. Thông tin cá nhân và dữ liệu nội bộ không thuộc phạm vi công khai phải được bảo vệ, không trả về trong phản hồi tra cứu hoặc hiển thị trên giao diện người dùng.";
@@ -52,16 +53,18 @@ function isClassStudentForm(idForm,row,config={}){
   const name=String(row?.name||config.name||"").toLowerCase();
   return kind==="class" || kind==="student" || idForm==="class" || /lớp học|học viên/.test(name);
 }
-function normalizeFormConfig(idForm,row,rawConfig){
+export function normalizeFormConfig(idForm,row,rawConfig){
   const config=JSON.parse(JSON.stringify(rawConfig||{}));
   config.form_type=config.form_type||((idForm==="class")?"class":"general");
   const photoRequired=config.profile_photo_required===true && !isClassStudentForm(idForm,row,config);
   config.profile_photo_required=photoRequired;
   config.sections=Array.isArray(config.sections)?config.sections:[];
   let photoField=null;
+  let sigField=null;
   for(const section of config.sections){
     for(const f of section.fields||[]){
       if(f.key==="profile_photo" || f.key==="photo") photoField=f;
+      if(f.type==="signature" || f.key==="signature" || f.key==="applicant_signature") sigField=f;
     }
   }
   if(photoRequired){
@@ -82,6 +85,26 @@ function normalizeFormConfig(idForm,row,rawConfig){
     photoField.required=false;
     photoField.is_profile_photo=true;
   }
+
+  // Signature support for forms that require signature or have a signature field
+  const sigRequired = config.signature_required === true;
+  if (sigRequired && !sigField) {
+    if (!config.sections.length) config.sections.push({title:"Xác nhận",fields:[]});
+    const lastSec = config.sections[config.sections.length - 1];
+    lastSec.fields = lastSec.fields || [];
+    lastSec.fields.push({
+      key: "signature",
+      label: "Chữ ký xác nhận",
+      type: "signature",
+      required: true,
+      accept: ["image/png", "image/jpeg", "image/webp"]
+    });
+  } else if (sigField) {
+    sigField.type = "signature";
+    sigField.accept = sigField.accept || ["image/png", "image/jpeg", "image/webp"];
+    if (sigRequired) sigField.required = true;
+  }
+
   if(config.minor_mode){
     const hasDob=config.sections.some(s=>(s.fields||[]).some(f=>f.key==="dob"));
     if(!hasDob){
@@ -105,10 +128,7 @@ function normalizeFormConfig(idForm,row,rawConfig){
   return config;
 }
 function formConditionOk(cond,answers){
-  if(!cond)return true;
-  if("equals" in cond)return answers[cond.key]===cond.equals;
-  if("not_equals" in cond)return answers[cond.key]!==cond.not_equals;
-  return true;
+  return conditionOk(cond,answers);
 }
 function activeFields(config,answers){
   const out=[];
@@ -135,26 +155,19 @@ function validateForm(config,answers,fileKeys=new Set()){
   }
   return errors;
 }
-function magicBytesOk(mime,bytes){
-  const b=new Uint8Array(bytes),ascii=(a,n)=>String.fromCharCode(...a.slice(0,n));
-  if(mime==="image/jpeg")return b[0]===0xff&&b[1]===0xd8&&b[2]===0xff;
-  if(mime==="image/png")return b[0]===0x89&&ascii(b.slice(1),3)==="PNG";
-  if(mime==="image/webp")return ascii(b,4)==="RIFF"&&String.fromCharCode(...b.slice(8,12))==="WEBP";
-  if(mime==="application/pdf")return ascii(b,4)==="%PDF";
-  if(mime.includes("officedocument"))return b[0]===0x50&&b[1]===0x4b;
-  return true;
-}
 
-async function storeFile(env,file,{ownerUserId=null,submissionCode=null,fieldKey="",emailVisible=false}={}){
+const SIGNATURE_ALLOWED_MIMES = new Set(["image/png","image/jpeg","image/webp"]);
+
+async function storeFile(env,file,{ownerUserId=null,submissionCode=null,fieldKey="",emailVisible=false,isSignature=false}={}){
   const maxMb=Number(await getSetting(env,"max_upload_mb",10));
-  const max=maxMb*1024*1024;
-  if(file.size>max) throw new Error(`FILE_TOO_LARGE:${maxMb}MB`);
-  const allowed=new Set([
+  const max=(isSignature?Math.min(maxMb,5):maxMb)*1024*1024;
+  if(file.size>max) throw new Error(`FILE_TOO_LARGE:${isSignature?Math.min(maxMb,5):maxMb}MB`);
+  const allowed=isSignature?SIGNATURE_ALLOWED_MIMES:new Set([
     "image/jpeg","image/png","image/webp","application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   ]);
-  if(file.type && !allowed.has(file.type)) throw new Error("FILE_TYPE_NOT_ALLOWED");
+  if(!file.type || !allowed.has(file.type)) throw new Error("FILE_TYPE_NOT_ALLOWED");
   const id=uid("file"),name=sanitizeFilename(file.name),key=`private/${new Date().getUTCFullYear()}/${id}/${name}`;
   const bytes=await file.arrayBuffer();
   if(!magicBytesOk(file.type||"",bytes.slice(0,16))) throw new Error("FILE_SIGNATURE_MISMATCH");
@@ -163,7 +176,7 @@ async function storeFile(env,file,{ownerUserId=null,submissionCode=null,fieldKey
   const emailToken=emailVisible?randomToken(32):null;
   await env.DB.prepare("INSERT INTO files(id,owner_user_id,submission_code,field_key,r2_key,filename,mime,size,visibility,email_token,sha256) VALUES(?,?,?,?,?,?,?,?, 'private',?,?)")
     .bind(id,ownerUserId,submissionCode,fieldKey,key,name,file.type||"",file.size||0,emailToken,hash).run();
-  return {id,email_token:emailToken,sha256:hash};
+  return {id,r2_key:key,email_token:emailToken,sha256:hash};
 }
 async function createUploadSession(request,env,body){
   if(!env.FILES) return {error:"STORAGE_UNAVAILABLE",status:503};
@@ -173,7 +186,7 @@ async function createUploadSession(request,env,body){
   const maxMb=Number(await getSetting(env,"max_upload_mb",10)),max=maxMb*1024*1024;
   const allowed=new Set(["image/jpeg","image/png","image/webp","application/pdf","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]);
   if(!Number.isFinite(size)||size<=0||size>max) return {error:"FILE_TOO_LARGE",status:400};
-  if(mime&&!allowed.has(mime)) return {error:"FILE_TYPE_NOT_ALLOWED",status:400};
+  if(!mime||!allowed.has(mime)) return {error:"FILE_TYPE_NOT_ALLOWED",status:400};
   const id=uid("upload"),token=randomToken(32),tokenHash=await sha256(token),key=`temp/uploads/${new Date().toISOString().slice(0,10)}/${id}/${filename}`;
   await env.DB.prepare("INSERT INTO upload_sessions(id,token_hash,field_key,filename,mime,size,client_sha256,r2_key,state,expires_at) VALUES(?,?,?,?,?,?,?,?,'created',datetime('now','+2 hours'))")
     .bind(id,tokenHash,String(body.field_key||"").slice(0,80),filename,mime,size,String(body.sha256||"").slice(0,160),key).run();
@@ -196,16 +209,21 @@ async function putUploadSession(request,env,id,url){
   return json({ok:true,id,size:head.size});
 }
 
-async function finalizeUploadSession(env,info,{submissionCode,fieldKey,ownerUserId=null,emailVisible=false}={}){
+async function finalizeUploadSession(env,info,{submissionCode,fieldKey,ownerUserId=null,emailVisible=false,isSignature=false,acceptedMimes=null}={}){
   const id=String(info?.id||""),token=String(info?.token||"");if(!id||!token) throw new Error("UPLOAD_SESSION_INVALID");
   const row=await env.DB.prepare("SELECT * FROM upload_sessions WHERE id=?").bind(id).first();
   if(!row||row.state!=="uploaded"||new Date(row.expires_at).getTime()<=Date.now()) throw new Error("UPLOAD_SESSION_EXPIRED");
   if(!safeEq(await sha256(token),row.token_hash)) throw new Error("UPLOAD_SESSION_FORBIDDEN");
+  if(row.field_key && fieldKey && row.field_key !== fieldKey) throw new Error("UPLOAD_FIELD_MISMATCH");
+  if(isSignature && !SIGNATURE_ALLOWED_MIMES.has(row.mime||"")) throw new Error("SIGNATURE_MIME_NOT_ALLOWED");
+  if(Array.isArray(acceptedMimes) && acceptedMimes.length && !acceptedMimes.includes(row.mime||"")) throw new Error("FILE_TYPE_NOT_ALLOWED");
+  const objHead=await env.FILES.head(row.r2_key);
+  if(!objHead || Number(objHead.size)<=0) throw new Error("UPLOAD_OBJECT_MISSING");
   const fileId=uid("file"),emailToken=emailVisible?randomToken(32):null;
   await env.DB.prepare("INSERT INTO files(id,owner_user_id,submission_code,field_key,r2_key,filename,mime,size,visibility,email_token,sha256,upload_state) VALUES(?,?,?,?,?,?,?,?, 'private',?,?,'ready')")
     .bind(fileId,ownerUserId,submissionCode,fieldKey,row.r2_key,row.filename,row.mime||"",row.size||0,emailToken,row.client_sha256||null).run();
   await env.DB.prepare("UPDATE upload_sessions SET state='finalized',submission_code=?,field_key=?,finalized_at=CURRENT_TIMESTAMP WHERE id=?").bind(submissionCode,fieldKey,id).run();
-  return {id:fileId,sha256:row.client_sha256||null,email_token:emailToken};
+  return {id:fileId,r2_key:row.r2_key,sha256:row.client_sha256||null,email_token:emailToken};
 }
 
 async function termsSnapshot(env,codes=[]){
@@ -393,7 +411,6 @@ export async function publicRoute(request,env,url,ctx){
     const digest=Array.from(new Uint8Array(await crypto.subtle.sign("HMAC",key,signed))).map(b=>b.toString(16).padStart(2,"0")).join("");
     const expected=`v1=${digest}`;
     if(sig.length!==expected.length||[...sig].reduce((acc,ch,i)=>acc|(ch.charCodeAt(0)^expected.charCodeAt(i)),0)!==0) return json({error:"INVALID_SIGNATURE"},401,{"Cache-Control":"no-store"});
-    // The signature covers the raw body; reserve nonce only after successful authentication.
     const hashBytes=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(raw));
     const payloadHash=Array.from(new Uint8Array(hashBytes)).map(b=>b.toString(16).padStart(2,"0")).join("");
     let body; try{body=JSON.parse(raw)}catch{return json({error:"INVALID_JSON"},400,{"Cache-Control":"no-store"});}
@@ -415,6 +432,199 @@ export async function publicRoute(request,env,url,ctx){
       await env.DB.prepare("DELETE FROM integration_nonces WHERE created_at < ?").bind(Math.floor(Date.now()/1000)-86400).run();
       return json({ok:true,source,external_code:code,received:true,duplicate_safe:true,received_at:new Date().toISOString()},200,{"Cache-Control":"no-store"});
     }catch(err){console.error("XANH_INTEGRATION_STORE_FAILED",String(err?.message||err));return json({error:"STORE_FAILED"},500,{"Cache-Control":"no-store"});}
+  }
+
+  // Authenticated payment provider webhook for Sponsorship financial reconciliation (Section VII.3)
+  if(p==="/api/webhooks/sponsorship/payment"){
+    if(request.method!=="POST") return json({error:"METHOD_NOT_ALLOWED"},405,{"Allow":"POST","Cache-Control":"no-store"});
+    const secret=String(env.PAYMENT_WEBHOOK_SECRET||env.SPONSORSHIP_WEBHOOK_SECRET||"");
+    if(secret.length<32){
+      return json({
+        error:"PAYMENT_PROVIDER_NOT_CONFIGURED",
+        message:"Chưa cấu hình khóa xác thực cổng thanh toán (PAYMENT_WEBHOOK_SECRET). Mọi khoản chuyển khoản được giữ ở trạng thái chờ đối soát thủ công."
+      },503,{"Cache-Control":"no-store"});
+    }
+    const ts=String(request.headers.get("x-sfn-timestamp")||""),nonce=String(request.headers.get("x-sfn-nonce")||""),rawSig=String(request.headers.get("x-sfn-signature")||"");
+    if(!ts||!nonce||!rawSig){
+      return json({error:"WEBHOOK_SIGNATURE_MISSING"},401,{"Cache-Control":"no-store"});
+    }
+    const sig=rawSig.startsWith("v1=")?rawSig:`v1=${rawSig}`;
+    if(!/^\d{10,13}$/.test(ts)||!/^[A-Za-z0-9_-]{8,100}$/.test(nonce)){
+      return json({error:"INVALID_SIGNATURE_HEADERS"},401,{"Cache-Control":"no-store"});
+    }
+    if(!/^v1=[a-f0-9]{64}$/i.test(sig)){
+      return json({error:"WEBHOOK_SIGNATURE_INVALID"},401,{"Cache-Control":"no-store"});
+    }
+    const tsNum=Number(ts.length===13?Math.floor(Number(ts)/1000):Number(ts));
+    if(!Number.isFinite(tsNum)||Math.abs(Math.floor(Date.now()/1000)-tsNum)>300){
+      return json({error:"WEBHOOK_TIMESTAMP_EXPIRED"},401,{"Cache-Control":"no-store"});
+    }
+    const raw=await request.text();
+    if(raw.length>32768) return json({error:"PAYLOAD_TOO_LARGE"},413,{"Cache-Control":"no-store"});
+    const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+    const signed=new TextEncoder().encode(`${ts}.${nonce}.${raw}`);
+    const digest=Array.from(new Uint8Array(await crypto.subtle.sign("HMAC",key,signed))).map(b=>b.toString(16).padStart(2,"0")).join("");
+    const expected=`v1=${digest}`;
+    if(!safeEq(sig.toLowerCase(),expected)) return json({error:"WEBHOOK_SIGNATURE_INVALID"},401,{"Cache-Control":"no-store"});
+
+    let body; try{body=JSON.parse(raw)}catch{return json({error:"INVALID_JSON"},400,{"Cache-Control":"no-store"});}
+    const providerTxId=String(body.provider_tx_id||"").trim().slice(0,120);
+    const eventType=String(body.event_type||"payment.received").trim();
+    const amount=Math.round(Number(body.amount||0));
+    const recipientAccount=String(body.recipient_account||"").trim();
+    const refCode=String(body.reference_code||"").trim().toUpperCase();
+    const campaignCode=String(body.campaign_code||"").trim().toUpperCase();
+
+    if(!providerTxId||!Number.isFinite(amount)||amount<=0||(!refCode&&!campaignCode)){
+      return json({error:"INVALID_WEBHOOK_PAYLOAD"},400,{"Cache-Control":"no-store"});
+    }
+
+    // Reserve nonce against replay
+    try{
+      await env.DB.prepare("INSERT INTO integration_nonces(nonce,source,created_at) VALUES(?,?,?)").bind(`pay:${nonce}`,"payment-webhook",tsNum).run();
+    }catch{
+      return json({error:"REPLAY_DETECTED"},409,{"Cache-Control":"no-store"});
+    }
+
+    // Check duplicate provider_tx_id (idempotent retry protection)
+    const existingTx=await env.DB.prepare("SELECT id,tx_code,campaign_id,verification_status,payment_state,amount FROM sponsorship_transactions WHERE provider_tx_id=? LIMIT 1").bind(providerTxId).first();
+    if(existingTx){
+      return json({
+        ok:true,
+        duplicate:true,
+        tx_id:existingTx.id,
+        tx_code:existingTx.tx_code,
+        verification_status:existingTx.verification_status,
+        payment_state:existingTx.payment_state
+      },200,{"Cache-Control":"no-store"});
+    }
+
+    // Resolve intent & campaign
+    let intent=null;
+    if(refCode && await tableExists(env,"sponsorship_payment_intents")){
+      intent=await env.DB.prepare("SELECT * FROM sponsorship_payment_intents WHERE reference_code=? LIMIT 1").bind(refCode).first();
+    }
+    let camp=null;
+    if(intent?.campaign_id){
+      camp=await env.DB.prepare("SELECT * FROM sponsorship_campaigns WHERE id=? LIMIT 1").bind(intent.campaign_id).first();
+    }
+    if(!camp && campaignCode){
+      camp=await env.DB.prepare("SELECT * FROM sponsorship_campaigns WHERE code=? OR id=? LIMIT 1").bind(campaignCode,campaignCode).first();
+    }
+    if(!camp && refCode){
+      // Attempt matching campaign prefix in reference code (e.g. SFN-TT-2026-01-XXXX)
+      const allCamps=await env.DB.prepare("SELECT * FROM sponsorship_campaigns").all();
+      camp=(allCamps.results||[]).find(c=>refCode.startsWith(c.code));
+    }
+    if(!camp){
+      return json({error:"CAMPAIGN_NOT_FOUND",message:"Không tìm thấy chiến dịch tài trợ tương ứng với mã tham chiếu."},404,{"Cache-Control":"no-store"});
+    }
+
+    // Verify recipient account matches campaign bank account (if configured on campaign)
+    const expectedAccount=String(camp.bank_account_no||intent?.recipient_account_no||"").trim();
+    if(expectedAccount && recipientAccount && expectedAccount !== recipientAccount){
+      await audit(env,request,null,"Từ chối webhook thanh toán (sai tài khoản nhận)","sponsorship_campaign",camp.id,{provider_tx_id:providerTxId,recipient_account:recipientAccount,expected_account:expectedAccount});
+      return json({error:"WRONG_RECIPIENT_ACCOUNT",message:"Tài khoản nhận tiền trong thông báo không khớp với tài khoản của chương trình."},409,{"Cache-Control":"no-store"});
+    }
+
+    const isRefund = eventType === "payment.refunded" || body.tx_type === "refund";
+    const txType = isRefund ? "refund" : "receipt";
+    const expectedAmt = Number(intent?.expected_amount || body.expected_amount || 0);
+    let paymentState = "reconciled";
+    let verificationStatus = "verified";
+    let isPublic = 1;
+    let note = String(body.note || "Đối soát tự động qua webhook xác thực").slice(0,300);
+
+    if (!isRefund && expectedAmt > 0 && amount !== expectedAmt) {
+      paymentState = amount < expectedAmt ? "underpaid" : "overpaid";
+      verificationStatus = "pending";
+      isPublic = 0;
+      note = `${amount < expectedAmt ? "Chuyển thiếu" : "Chuyển thừa"} so với mức dự kiến (${expectedAmt} VND -> thực nhận ${amount} VND)`;
+    }
+    if (!intent && !campaignCode) {
+      paymentState = "wrong_reference";
+      verificationStatus = "pending";
+      isPublic = 0;
+    }
+
+    const txId = uid("sptx");
+    const txCode = `WH-${camp.code}-${providerTxId.replace(/[^A-Z0-9_-]/gi,"").slice(-12).toUpperCase()}`;
+    const partyLabel = String(body.donor_label || intent?.donor_label || "Nhà tài trợ chuyển khoản QR").slice(0,160);
+    const purposeText = String(body.purpose || intent?.purpose || `Chuyển khoản tham chiếu ${refCode || txCode}`).slice(0,500);
+
+    const txCols = await tableColumns(env, "sponsorship_transactions");
+    const batchStmts = [];
+    if (txCols.has("payment_state")) {
+      batchStmts.push(
+        env.DB.prepare(`
+          INSERT INTO sponsorship_transactions(
+            id,campaign_id,tx_code,tx_type,amount,expected_amount,currency,
+            public_party_label,purpose,occurred_at,verification_status,payment_state,
+            is_public,provider_tx_id,reference_code,recipient_account,reconciliation_note
+          ) VALUES(?,?,?,?,?,?,'VND',?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?,?)
+        `).bind(
+          txId, camp.id, txCode, txType, amount, expectedAmt || amount,
+          partyLabel, purposeText, verificationStatus, paymentState,
+          isPublic, providerTxId, refCode, recipientAccount, note
+        )
+      );
+    } else {
+      batchStmts.push(
+        env.DB.prepare(`
+          INSERT INTO sponsorship_transactions(
+            id,campaign_id,tx_code,tx_type,amount,currency,public_party_label,purpose,occurred_at,verification_status,is_public
+          ) VALUES(?,?,?,?,?,'VND',?,?,CURRENT_TIMESTAMP,?,?)
+        `).bind(txId, camp.id, txCode, txType, amount, partyLabel, purposeText, verificationStatus, isPublic)
+      );
+    }
+
+    if (intent) {
+      if (intent.linked_tx_id) {
+        batchStmts.push(env.DB.prepare("DELETE FROM sponsorship_transactions WHERE id=? AND verification_status='pending'").bind(intent.linked_tx_id));
+      }
+      batchStmts.push(
+        env.DB.prepare(`
+          UPDATE sponsorship_payment_intents
+          SET payment_state=?, webhook_received_at=CURRENT_TIMESTAMP,
+              verified_at=CASE WHEN ?='verified' THEN CURRENT_TIMESTAMP ELSE verified_at END,
+              reconciled_at=CASE WHEN ?='verified' THEN CURRENT_TIMESTAMP ELSE reconciled_at END,
+              linked_tx_id=?, updated_at=CURRENT_TIMESTAMP
+          WHERE id=?
+        `).bind(paymentState, verificationStatus, verificationStatus, txId, intent.id)
+      );
+    }
+
+    if (await tableExists(env, "sponsorship_audit_trail")) {
+      batchStmts.push(
+        env.DB.prepare(`
+          INSERT INTO sponsorship_audit_trail(campaign_id,transaction_id,action,previous_state_json,new_state_json,reason,actor_user_id,actor_email)
+          VALUES(?,?, 'WEBHOOK_RECONCILE', '{}', ?, ?, NULL, 'webhook@skyfirst.io.vn')
+        `).bind(camp.id, txId, JSON.stringify({tx_code:txCode,tx_type:txType,amount,payment_state:paymentState,verification_status:verificationStatus,provider_tx_id:providerTxId}), note)
+      );
+    }
+
+    await env.DB.batch(batchStmts);
+    const totals = await recalculateCampaignTotals(env, camp.id);
+    await audit(env, request, null, "Ghi nhận webhook đối soát tài trợ", "sponsorship_transaction", txId, {
+      campaign_id: camp.id,
+      tx_code: txCode,
+      tx_type: txType,
+      amount,
+      payment_state: paymentState,
+      provider_tx_id: providerTxId
+    });
+
+    return json({
+      ok: true,
+      tx_id: txId,
+      tx_code: txCode,
+      tx_type: txType,
+      amount,
+      expected_amount: expectedAmt || amount,
+      payment_state: paymentState,
+      verification_status: verificationStatus,
+      totals
+    }, 200, {"Cache-Control": "no-store"});
   }
 
   if(p==="/api/config"&&request.method==="GET"){
@@ -593,35 +803,53 @@ export async function publicRoute(request,env,url,ctx){
 
   if(p==="/api/public/sponsorship"&&request.method==="GET"){
     if(!(await tableExists(env,"sponsorship_campaigns"))){
-      return json({summary:{campaigns_count:0,target_amount:0,pledged_amount:0,received_amount:0,disbursed_amount:0,remaining_amount:0,currency:"VND",has_data:false,updated_at:null},campaigns:[],reports:[]},200,publicCacheHeaders(120));
+      return json({summary:{campaigns_count:0,target_amount:0,pledged_amount:0,received_amount:0,disbursed_amount:0,remaining_amount:0,pending_amount:0,currency:"VND",has_data:false,updated_at:null},campaigns:[],reports:[]},200,publicCacheHeaders(120));
     }
+    const spCols=await tableColumns(env,"sponsorship_campaigns");
+    const extraCols=["bank_name","bank_bin","bank_account_no","bank_account_name","pending_amount","refunded_amount","adjusted_amount"].filter(c=>spCols.has(c));
+    const selectSql=`SELECT id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,updated_at${extraCols.length?","+extraCols.join(","):""} FROM sponsorship_campaigns WHERE visibility='public' AND status IN ('active','completed','paused','closed') ORDER BY COALESCE(start_at,created_at) DESC LIMIT 100`;
     const [campRs,repRs]=await env.DB.batch([
-      env.DB.prepare("SELECT id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,updated_at FROM sponsorship_campaigns WHERE visibility='public' AND status IN ('active','completed','paused','closed') ORDER BY COALESCE(start_at,created_at) DESC LIMIT 100"),
+      env.DB.prepare(selectSql),
       env.DB.prepare("SELECT r.id,r.campaign_id,r.title,r.report_period,r.file_id,r.summary,r.published_at,c.code AS campaign_code,c.title AS campaign_title FROM sponsorship_reports r JOIN sponsorship_campaigns c ON c.id=r.campaign_id WHERE r.status='published' AND c.visibility='public' ORDER BY COALESCE(r.published_at,r.created_at) DESC LIMIT 100")
     ]);
-    const campaigns=(campRs.results||[]).map(c=>({
-      ...c,
-      target_amount:Number(c.target_amount||0),
-      pledged_amount:Number(c.pledged_amount||0),
-      received_amount:Number(c.received_amount||0),
-      disbursed_amount:Number(c.disbursed_amount||0),
-      remaining_amount:Math.max(0,Number(c.received_amount||0)-Number(c.disbursed_amount||0))
-    }));
+    // Section VII.4: NEVER clamp negative balance to 0! Remaining = Received - Disbursed (exact formula)
+    const campaigns=(campRs.results||[]).map(c=>{
+      const received=Number(c.received_amount||0);
+      const disbursed=Number(c.disbursed_amount||0);
+      const remaining=received-disbursed;
+      return {
+        ...c,
+        target_amount:Number(c.target_amount||0),
+        pledged_amount:Number(c.pledged_amount||0),
+        received_amount:received,
+        disbursed_amount:disbursed,
+        pending_amount:Number(c.pending_amount||0),
+        refunded_amount:Number(c.refunded_amount||0),
+        adjusted_amount:Number(c.adjusted_amount||0),
+        remaining_amount:remaining,
+        is_overspent:remaining<0
+      };
+    });
     const activeForSum=campaigns.filter(c=>["active","completed"].includes(c.status));
     const target_amount=activeForSum.reduce((s,c)=>s+c.target_amount,0);
     const pledged_amount=activeForSum.reduce((s,c)=>s+c.pledged_amount,0);
     const received_amount=activeForSum.reduce((s,c)=>s+c.received_amount,0);
     const disbursed_amount=activeForSum.reduce((s,c)=>s+c.disbursed_amount,0);
-    const remaining_amount=Math.max(0,received_amount-disbursed_amount);
+    const pending_amount=activeForSum.reduce((s,c)=>s+c.pending_amount,0);
+    const remaining_amount=received_amount-disbursed_amount;
     const latestUpdate=campaigns.reduce((m,c)=>(!m||String(c.updated_at)>m)?String(c.updated_at):m,null);
     return json({
       summary:{
         campaigns_count:campaigns.length,
+        active_campaigns_count:activeForSum.length,
         target_amount,
         pledged_amount,
         received_amount,
         disbursed_amount,
+        pending_amount,
         remaining_amount,
+        is_overspent:remaining_amount<0,
+        balance_formula:"remaining_amount = received_amount - disbursed_amount",
         currency:"VND",
         has_data:campaigns.length>0,
         updated_at:latestUpdate
@@ -631,24 +859,163 @@ export async function publicRoute(request,env,url,ctx){
     },200,publicCacheHeaders(120));
   }
 
+  // Generate QR & Transfer Reference for a Public Sponsorship Campaign (Section VII.2)
+  const spQrMatch=p.match(/^\/api\/public\/sponsorship\/([^/]+)\/qr-intent$/);
+  if(spQrMatch&&request.method==="POST"){
+    const rl=await rateLimit(env,`sp-qr:${await ipHash(request)}`,15,300);
+    if(!rl.ok) return json({error:"RATE_LIMIT"},429,{"Cache-Control":"no-store"});
+    if(!(await tableExists(env,"sponsorship_campaigns"))) return json({error:"NOT_FOUND"},404);
+    const codeOrId=decodeURIComponent(spQrMatch[1]);
+    const camp=await env.DB.prepare("SELECT * FROM sponsorship_campaigns WHERE visibility='public' AND (code=? OR id=?) LIMIT 1").bind(codeOrId,codeOrId).first();
+    if(!camp) return json({error:"NOT_FOUND",message:"Không tìm thấy chương trình tài trợ công khai."},404);
+    if(camp.status!=="active") return json({error:"CAMPAIGN_NOT_ACTIVE",message:"Chương trình tài trợ này hiện không mở tiếp nhận chuyển khoản mới."},409);
+
+    const body=await readJson(request)||{};
+    const amount=Math.round(Number(body.amount||body.expected_amount||0));
+    if(!Number.isFinite(amount)||amount<1000||amount>10000000000){
+      return json({error:"INVALID_AMOUNT",message:"Số tiền đăng ký chuyển khoản phải từ 1.000 đồng trở lên."},400);
+    }
+    const donorLabel=String(body.donor_label||body.donor_name||"Nhà tài trợ ẩn danh").trim().slice(0,120);
+    const donorEmail=String(body.donor_email||"").trim().toLowerCase().slice(0,200);
+    const purpose=String(body.purpose||`Tài trợ chương trình ${camp.code}`).trim().slice(0,300);
+
+    const rnd=new Uint32Array(1); crypto.getRandomValues(rnd);
+    const refCode=`${camp.code}-${String(100000+(rnd[0]%900000))}`;
+    const intentId=uid("spqr");
+    const bankName=camp.bank_name||await getSetting(env,"sponsorship_bank_name","Ngân hàng TMCP Ngoại thương Việt Nam (Vietcombank)");
+    const bankBin=camp.bank_bin||await getSetting(env,"sponsorship_bank_bin","970436");
+    const accountNo=camp.bank_account_no||await getSetting(env,"sponsorship_bank_account_no","");
+    const accountName=camp.bank_account_name||await getSetting(env,"sponsorship_bank_account_name","SKY FIRST NETWORK");
+
+    const qrText=accountNo
+      ? `BANK:${bankBin}|ACC:${accountNo}|NAME:${accountName}|AMOUNT:${amount}|ADDINFO:${refCode}`
+      : `SKYFIRST-SPONSORSHIP|CAMPAIGN:${camp.code}|REF:${refCode}|AMOUNT:${amount}`;
+    const qrImageUrl=`https://quickchart.io/qr?size=300&text=${encodeURIComponent(qrText)}`;
+
+    if(await tableExists(env,"sponsorship_payment_intents")){
+      await env.DB.prepare(`
+        INSERT INTO sponsorship_payment_intents(
+          id,campaign_id,reference_code,expected_amount,currency,donor_label,donor_email,
+          purpose,recipient_bank_bin,recipient_account_no,recipient_account_name,qr_payload,payment_state,ip_hash
+        ) VALUES(?,?,?,?,'VND',?,?,?,?,?,?,?,'qr_generated',?)
+      `).bind(intentId,camp.id,refCode,amount,donorLabel,donorEmail,purpose,bankBin,accountNo,accountName,qrText,await ipHash(request)).run();
+    }
+
+    const noticeText="Lưu ý đối soát: Mã QR chỉ hỗ trợ điền sẵn nội dung tham chiếu chuyển khoản. Khoản tài trợ chỉ được tính vào Số tiền thực nhận sau khi hệ thống xác thực giao dịch ngân hàng hoặc Quản trị viên đối soát sao kê.";
+    return json({
+      ok:true,
+      intent:{
+        id:intentId,
+        campaign_id:camp.id,
+        campaign_code:camp.code,
+        reference_code:refCode,
+        expected_amount:amount,
+        currency:"VND",
+        payment_state:"qr_generated",
+        qr_payload:qrText,
+        qr_image_url:qrImageUrl,
+        notice:noticeText
+      },
+      intent_id:intentId,
+      campaign_id:camp.id,
+      campaign_code:camp.code,
+      reference_code:refCode,
+      expected_amount:amount,
+      currency:"VND",
+      payment_state:"qr_generated",
+      payment_state_label:"Đã tạo mã QR tham chiếu (chưa phải bằng chứng tiền đã vào tài khoản)",
+      recipient:{
+        bank_name:bankName,
+        bank_bin:bankBin,
+        account_no:accountNo||"Liên hệ Ban Tổ chức để nhận số tài khoản đối soát",
+        account_name:accountName
+      },
+      qr_payload:qrText,
+      qr_image_url:qrImageUrl,
+      notice:noticeText
+    },201,{"Cache-Control":"no-store"});
+  }
+
+  // Donor reports that they have executed the bank transfer -> transitions to transfer_reported (pending manual/webhook verification)
+  const spReportTransferMatch=p.match(/^\/api\/public\/sponsorship\/intents\/([^/]+)\/report-transfer$/);
+  if(spReportTransferMatch&&request.method==="POST"){
+    const rl=await rateLimit(env,`sp-rep:${await ipHash(request)}`,10,300);
+    if(!rl.ok) return json({error:"RATE_LIMIT"},429,{"Cache-Control":"no-store"});
+    if(!(await tableExists(env,"sponsorship_payment_intents"))) return json({error:"NOT_FOUND"},404);
+    const refOrId=decodeURIComponent(spReportTransferMatch[1]);
+    const intent=await env.DB.prepare("SELECT * FROM sponsorship_payment_intents WHERE id=? OR reference_code=? LIMIT 1").bind(refOrId,refOrId.toUpperCase()).first();
+    if(!intent) return json({error:"NOT_FOUND",message:"Không tìm thấy mã tham chiếu chuyển khoản."},404);
+    if(intent.payment_state!=="qr_generated"){
+      return json({
+        ok:true,
+        intent_id:intent.id,
+        reference_code:intent.reference_code,
+        payment_state:intent.payment_state,
+        message:"Giao dịch này đã được ghi nhận trạng thái trước đó."
+      });
+    }
+
+    const txId=uid("sptx");
+    const txCode=`PEND-${intent.reference_code}`;
+    const txCols=await tableColumns(env,"sponsorship_transactions");
+    if(txCols.has("payment_state")){
+      await env.DB.prepare(`
+        INSERT INTO sponsorship_transactions(
+          id,campaign_id,tx_code,tx_type,amount,expected_amount,currency,public_party_label,purpose,
+          occurred_at,verification_status,payment_state,is_public,reference_code,reconciliation_note
+        ) VALUES(?,?,?,'receipt',?,?,'VND',?,?,CURRENT_TIMESTAMP,'pending','transfer_reported',0,?,'Người chuyển khoản báo đã chuyển — chờ đối soát sao kê')
+      `).bind(txId,intent.campaign_id,txCode,intent.expected_amount,intent.expected_amount,intent.donor_label||"Nhà tài trợ",intent.purpose||"",intent.reference_code).run();
+    }else{
+      await env.DB.prepare(`
+        INSERT INTO sponsorship_transactions(
+          id,campaign_id,tx_code,tx_type,amount,currency,public_party_label,purpose,occurred_at,verification_status,is_public
+        ) VALUES(?,?,?,'receipt',?,'VND',?,?,CURRENT_TIMESTAMP,'pending',0)
+      `).bind(txId,intent.campaign_id,txCode,intent.expected_amount,intent.donor_label||"Nhà tài trợ",intent.purpose||"").run();
+    }
+    await env.DB.prepare("UPDATE sponsorship_payment_intents SET payment_state='transfer_reported',reported_at=CURRENT_TIMESTAMP,linked_tx_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(txId,intent.id).run();
+    await recalculateCampaignTotals(env,intent.campaign_id);
+    return json({
+      ok:true,
+      intent_id:intent.id,
+      tx_id:txId,
+      tx_code:txCode,
+      reference_code:intent.reference_code,
+      payment_state:"transfer_reported",
+      verification_status:"pending",
+      message:"Đã ghi nhận thông báo chuyển khoản ở trạng thái Chờ đối soát. Số tiền sẽ được cộng vào Thực nhận sau khi xác minh sao kê ngân hàng."
+    },200,{"Cache-Control":"no-store"});
+  }
+
   const spDetailMatch=p.match(/^\/api\/public\/sponsorship\/([^/]+)$/);
   if(spDetailMatch&&request.method==="GET"){
     if(!(await tableExists(env,"sponsorship_campaigns"))) return json({error:"NOT_FOUND",message:"Chưa có dữ liệu chương trình tài trợ."},404);
     const codeOrId=decodeURIComponent(spDetailMatch[1]);
-    const camp=await env.DB.prepare("SELECT id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,updated_at FROM sponsorship_campaigns WHERE visibility='public' AND (code=? OR id=?) LIMIT 1").bind(codeOrId,codeOrId).first();
+    const spCols=await tableColumns(env,"sponsorship_campaigns");
+    const extraCols=["bank_name","bank_bin","bank_account_no","bank_account_name","pending_amount","refunded_amount","adjusted_amount"].filter(c=>spCols.has(c));
+    const camp=await env.DB.prepare(`SELECT id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,updated_at${extraCols.length?","+extraCols.join(","):""} FROM sponsorship_campaigns WHERE visibility='public' AND (code=? OR id=?) LIMIT 1`).bind(codeOrId,codeOrId).first();
     if(!camp) return json({error:"NOT_FOUND",message:"Không tìm thấy chương trình tài trợ công khai phù hợp."},404);
+    const txCols=await tableColumns(env,"sponsorship_transactions");
+    const txExtra=["payment_state","expected_amount","reference_code","reconciliation_note"].filter(c=>txCols.has(c));
     const [txRs,repRs]=await env.DB.batch([
-      env.DB.prepare("SELECT tx_code,tx_type,amount,currency,public_party_label,purpose,voucher_file_id,occurred_at,verified_at FROM sponsorship_transactions WHERE campaign_id=? AND verification_status='verified' AND is_public=1 ORDER BY occurred_at DESC LIMIT 300").bind(camp.id),
+      env.DB.prepare(`SELECT tx_code,tx_type,amount,currency,public_party_label,purpose,voucher_file_id,occurred_at,verified_at${txExtra.length?","+txExtra.join(","):""} FROM sponsorship_transactions WHERE campaign_id=? AND verification_status='verified' AND is_public=1 ORDER BY occurred_at DESC LIMIT 300`).bind(camp.id),
       env.DB.prepare("SELECT id,title,report_period,file_id,summary,published_at FROM sponsorship_reports WHERE campaign_id=? AND status='published' ORDER BY COALESCE(published_at,created_at) DESC LIMIT 50").bind(camp.id)
     ]);
+    const received=Number(camp.received_amount||0);
+    const disbursed=Number(camp.disbursed_amount||0);
+    const remaining=received-disbursed;
     return json({
       campaign:{
         ...camp,
         target_amount:Number(camp.target_amount||0),
         pledged_amount:Number(camp.pledged_amount||0),
-        received_amount:Number(camp.received_amount||0),
-        disbursed_amount:Number(camp.disbursed_amount||0),
-        remaining_amount:Math.max(0,Number(camp.received_amount||0)-Number(camp.disbursed_amount||0))
+        received_amount:received,
+        disbursed_amount:disbursed,
+        pending_amount:Number(camp.pending_amount||0),
+        refunded_amount:Number(camp.refunded_amount||0),
+        adjusted_amount:Number(camp.adjusted_amount||0),
+        remaining_amount:remaining,
+        is_overspent:remaining<0
       },
       transactions:txRs.results||[],
       reports:repRs.results||[]
@@ -806,16 +1173,30 @@ export async function publicRoute(request,env,url,ctx){
     }catch{}
 
     const fileIds={};
+    const cleanupFailedSubmission=async()=>{
+      for(const stored of Object.values(fileIds)){
+        try{if(stored?.r2_key && env.FILES) await env.FILES.delete(stored.r2_key);}catch{}
+        try{if(stored?.id) await env.DB.prepare("DELETE FROM files WHERE id=?").bind(stored.id).run();}catch{}
+      }
+      await env.DB.prepare("DELETE FROM submissions WHERE code=?").bind(code).run();
+    };
+
     if(formData){
       for(const f of activeFields(config,answers)){
         if(!["file","signature"].includes(f.type)) continue;
         const file=formData.get(`file:${f.key}`);
         if(file && typeof file==="object" && "size" in file && file.size>0){
           try{
-            const stored=await storeFile(env,file,{ownerUserId:user?.id||null,submissionCode:code,fieldKey:f.key,emailVisible:!!f.is_profile_photo});
+            const stored=await storeFile(env,file,{
+              ownerUserId:user?.id||null,
+              submissionCode:code,
+              fieldKey:f.key,
+              emailVisible:!!f.is_profile_photo,
+              isSignature:f.type==="signature"
+            });
             fileIds[f.key]=stored;
           }catch(err){
-            await env.DB.prepare("DELETE FROM submissions WHERE code=?").bind(code).run();
+            await cleanupFailedSubmission();
             return json({error:String(err.message||err)},400);
           }
         }
@@ -823,9 +1204,29 @@ export async function publicRoute(request,env,url,ctx){
     }
     for(const f of activeFields(config,answers)){
       if(!["file","signature"].includes(f.type)||!uploadedSessions[f.key])continue;
-      try{fileIds[f.key]=await finalizeUploadSession(env,uploadedSessions[f.key],{ownerUserId:user?.id||null,submissionCode:code,fieldKey:f.key,emailVisible:!!f.is_profile_photo});}
-      catch(err){await env.DB.prepare("DELETE FROM submissions WHERE code=?").bind(code).run();return json({error:String(err.message||err)},400);}
+      try{
+        fileIds[f.key]=await finalizeUploadSession(env,uploadedSessions[f.key],{
+          ownerUserId:user?.id||null,
+          submissionCode:code,
+          fieldKey:f.key,
+          emailVisible:!!f.is_profile_photo,
+          isSignature:f.type==="signature",
+          acceptedMimes:Array.isArray(f.accept)&&f.accept.length?f.accept:null
+        });
+      }catch(err){
+        await cleanupFailedSubmission();
+        return json({error:String(err.message||err)},400);
+      }
     }
+
+    // Strict verification: never report success if a required file or signature was not actually stored!
+    for(const f of activeFields(config,answers)){
+      if((f.type==="file"||f.type==="signature") && f.required && !fileIds[f.key]?.id){
+        await cleanupFailedSubmission();
+        return json({error:f.type==="signature"?"SIGNATURE_REQUIRED_NOT_STORED":"REQUIRED_FILE_NOT_STORED",message:`Chưa lưu được ${f.label}. Vui lòng kiểm tra và gửi lại.`},400);
+      }
+    }
+
     if(Object.keys(fileIds).length){
       const merged={...answers,...Object.fromEntries(Object.entries(fileIds).map(([k,v])=>[k,{file_id:v.id,sha256:v.sha256||null}]))};
       await env.DB.prepare("UPDATE submissions SET answers_json=? WHERE code=?").bind(JSON.stringify(merged),code).run();
@@ -890,7 +1291,7 @@ export async function publicRoute(request,env,url,ctx){
     if(ctx?.waitUntil){ctx.waitUntil(sendSubmissionEmails());emailQueued=!!email;} else await sendSubmissionEmails();
 
     await audit(env,request,user,"Tiếp nhận hồ sơ","submission",code,{form_id:idForm,email_queued:emailQueued,email_sent:!!confirmation.ok});
-    return json({ok:true,code,status:"Đã tiếp nhận",received_at:new Date().toISOString(),form_name:row.name,next_action:"Theo dõi trạng thái hồ sơ và bổ sung thông tin khi được yêu cầu",tracking_url:`/ho-so?code=${encodeURIComponent(code)}`,email_queued:emailQueued,email_sent:!!confirmation.ok});
+    return json({ok:true,code,status:"Đã tiếp nhận",received_at:new Date().toISOString(),form_name:row.name,files:Object.fromEntries(Object.entries(fileIds).map(([k,v])=>[k,v.id])),next_action:"Theo dõi trạng thái hồ sơ và bổ sung thông tin khi được yêu cầu",tracking_url:`/ho-so?code=${encodeURIComponent(code)}`,email_queued:emailQueued,email_sent:!!confirmation.ok});
   }
   if(p==="/api/lookup/submission"&&(request.method==="GET"||request.method==="POST")){
     const rl=await rateLimit(env,`case-lookup:${await ipHash(request)}`,12,300);if(!rl.ok)return json({error:"RATE_LIMIT",message:"Bạn đang tra cứu quá nhanh. Vui lòng thử lại sau."},429,{"Cache-Control":"no-store"});

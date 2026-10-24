@@ -1,6 +1,5 @@
-
 import {json, readJson, uid, ipHash} from "./utils.js";
-import {getAuthUser} from "./auth.js";
+import {getAuthUser, requireAuth} from "./auth.js";
 import {hasPermission} from "./permissions.js";
 
 async function audit(env,request,user,action,entityType="",entityId="",details={}){
@@ -19,7 +18,8 @@ async function nextCode(env,prefix){
 export async function meRoute(request,env,url){
   if(!url.pathname.startsWith("/api/me/")) return null;
   const user=await getAuthUser(request,env);
-  if(!user) return json({error:"AUTH_REQUIRED"},401);
+  const authDeny=requireAuth(user);
+  if(authDeny) return authDeny;
   const p=url.pathname;
 
   if(p==="/api/me/portal"&&request.method==="GET"){
