@@ -1,12 +1,12 @@
 import {
   json, readJson, uid, randomToken, sha256, ageFromDob, flattenFields, sanitizeFilename,
   requestIp, ipHash, rateLimit, escapeHtml, safeEq, magicBytesOk, conditionOk,
-  buildVietQrPayload, buildLocalQrSvgDataUrl
+  buildVietQrPayload, buildLocalQrSvgDataUrl, NAPAS_BANKS, resolveNapasBank
 } from "./utils.js";
 import {getAuthUser} from "./auth.js";
 import {sendTemplatedEmail, answersToEmail} from "./email.js";
 import {recalculateCampaignTotals, runScheduledCmsPublishing} from "./admin.js";
-import {resolveOperationalState} from "./index.js";
+import {resolveOperationalState, getSettingsMap} from "./index.js";
 
 export const LOOKUP_DATA_POLICY_VI =
   "Hệ thống chỉ cung cấp các thông tin được phép công khai theo chính sách dữ liệu của Sky First Network. Thông tin cá nhân và dữ liệu nội bộ không thuộc phạm vi công khai phải được bảo vệ, không trả về trong phản hồi tra cứu hoặc hiển thị trên giao diện người dùng.";
@@ -764,7 +764,9 @@ export async function publicRoute(request,env,url,ctx){
       duration_ms:1200,
       cycles:1
     };
-    const storedHomeStats=await getSetting(env,"home_stats",homeStatsDefaults);
+    const smap = await getSettingsMap(env);
+    const getCfg = (k, fb = null) => (k in smap ? smap[k] : fb);
+    const storedHomeStats = getCfg("home_stats", homeStatsDefaults);
     const homeStats={
       ...homeStatsDefaults,
       ...(storedHomeStats&&typeof storedHomeStats==="object"?storedHomeStats:{}),
@@ -802,7 +804,7 @@ export async function publicRoute(request,env,url,ctx){
       }
     }catch(err){console.error("HOME_STATS_D1_FALLBACK",err)}
 
-    const opState = await resolveOperationalState(env, siteId);
+    const opState = await resolveOperationalState(env, siteId, smap);
     const defaultDesignSystem = {
       primary_color: "#0759b8",
       navy_color: "#071b35",
@@ -823,27 +825,27 @@ export async function publicRoute(request,env,url,ctx){
       cover_url: "/assets/sfn-cover.png",
       favicon_url: "/assets/sfn-logo-tight.png"
     };
-    const storedDesign = await getSetting(env, "design_system", defaultDesignSystem);
+    const storedDesign = getCfg("design_system", defaultDesignSystem);
 
     return json({
       home_stats:{...homeStats,d1_values:d1Stats},
-      app_name:await getSetting(env,"app_name","Hệ thống Thông tin Số Sky First"),
-      app_name_en:await getSetting(env,"app_name_en","Sky First Digital Information System"),
-      app_short_name:await getSetting(env,"app_short_name","Sky First"),
-      app_url:env.APP_URL||await getSetting(env,"app_url","https://app.skyfirst.io.vn"),
-      website:await getSetting(env,"website","https://skyfirst.io.vn"),
-      hotline:await getSetting(env,"hotline","0924 910 210"),
-      system_email:await getSetting(env,"system_email","app@skyfirst.io.vn"),
-      contact_email:await getSetting(env,"contact_email","lienhe@skyfirst.io.vn"),
-      support_email:await getSetting(env,"support_email","support@skyfirst.io.vn"),
-      receiver_email:await getSetting(env,"receiver_email","app@skyfirst.io.vn"),
-      slogan:await getSetting(env,"brand_slogan","Kết nối tri thức • Lan tỏa giá trị • Vì cộng đồng bền vững"),
-      slogan_en:await getSetting(env,"brand_slogan_en","Connecting Knowledge • Spreading Value • For a Sustainable Community"),
-      hero_title:await getSetting(env,"hero_title","Hệ thống Thông tin Số Sky First"),
-      hero_title_en:await getSetting(env,"hero_title_en","Sky First Digital Information System"),
-      hero_text:await getSetting(env,"hero_text","Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First."),
-      hero_text_en:await getSetting(env,"hero_text_en","Explore, verify, register, and manage Sky First programs, activities, official documents, electronic forms, digital credentials, and community support services."),
-      hero_cover_url:await getSetting(env,"hero_cover_url",""),
+      app_name:getCfg("app_name","Hệ thống Thông tin Số Sky First"),
+      app_name_en:getCfg("app_name_en","Sky First Digital Information System"),
+      app_short_name:getCfg("app_short_name","Sky First"),
+      app_url:env.APP_URL||getCfg("app_url","https://app.skyfirst.io.vn"),
+      website:getCfg("website","https://skyfirst.io.vn"),
+      hotline:getCfg("hotline","0924 910 210"),
+      system_email:getCfg("system_email","app@skyfirst.io.vn"),
+      contact_email:getCfg("contact_email","lienhe@skyfirst.io.vn"),
+      support_email:getCfg("support_email","support@skyfirst.io.vn"),
+      receiver_email:getCfg("receiver_email","app@skyfirst.io.vn"),
+      slogan:getCfg("brand_slogan","Kết nối tri thức • Lan tỏa giá trị • Vì cộng đồng bền vững"),
+      slogan_en:getCfg("brand_slogan_en","Connecting Knowledge • Spreading Value • For a Sustainable Community"),
+      hero_title:getCfg("hero_title","Hệ thống Thông tin Số Sky First"),
+      hero_title_en:getCfg("hero_title_en","Sky First Digital Information System"),
+      hero_text:getCfg("hero_text","Khám phá, tra cứu, đăng ký và quản lý các chương trình, hoạt động, tài liệu, biểu mẫu, chứng nhận và dịch vụ hỗ trợ cộng đồng của Sky First."),
+      hero_text_en:getCfg("hero_text_en","Explore, verify, register, and manage Sky First programs, activities, official documents, electronic forms, digital credentials, and community support services."),
+      hero_cover_url:getCfg("hero_cover_url",""),
       maintenance_mode:opState.is_maintenance,
       operational_mode:opState.mode,
       operational_state:opState,
@@ -862,32 +864,33 @@ export async function publicRoute(request,env,url,ctx){
         try{seo=JSON.parse(w.seo_json||"{}")}catch{}
         return {...w,config:cfg,theme,seo,config_json:undefined,theme_json:undefined,seo_json:undefined};
       }),
-      header_show_brand:await getSetting(env,"header_show_brand",true),
-      header_show_theme:await getSetting(env,"header_show_theme",true),
-      header_show_account:await getSetting(env,"header_show_account",true),
-      header_account_label:await getSetting(env,"header_account_label","Đăng nhập"),
-      header_account_label_en:await getSetting(env,"header_account_label_en","Admin Sign In"),
-      footer_description:await getSetting(env,"footer_description","Hệ thống thông tin và dịch vụ số phục vụ tra cứu, đăng ký chương trình, biểu mẫu, chứng nhận và minh bạch hoạt động."),
-      footer_description_en:await getSetting(env,"footer_description_en","Central digital information and verification system serving program registration, electronic forms, credential verification, and financial transparency."),
-      footer_email:await getSetting(env,"footer_email","lienhe@skyfirst.io.vn"),
-      footer_support_email:await getSetting(env,"footer_support_email","support@skyfirst.io.vn"),
-      footer_portal_email:await getSetting(env,"footer_portal_email","app@skyfirst.io.vn"),
-      portal_main_label:await getSetting(env,"portal_main_label","Trang Thông tin Điện tử Sky First"),
-      portal_main_url:await getSetting(env,"portal_main_url","https://skyfirst.io.vn"),
-      portal_ctt_url:await getSetting(env,"portal_ctt_url","https://ctt.skyfirst.io.vn"),
-      portal_mail_url:await getSetting(env,"portal_mail_url","https://mail.skyfirst.io.vn"),
-      portal_sfec_url:await getSetting(env,"portal_sfec_url","https://sfec.skyfirst.io.vn"),
-      portal_member_url:await getSetting(env,"portal_member_url","https://member.skyfirst.io.vn"),
-      portal_exam_url:await getSetting(env,"portal_exam_url","https://exam.skyfirst.io.vn"),
-      footer_copyright:await getSetting(env,"footer_copyright","© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền."),
-      footer_copyright_en:await getSetting(env,"footer_copyright_en","© 2026 Sky First Digital Information System. All rights reserved."),
-      footer_citation_notice:await getSetting(env,"footer_citation_notice","Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân."),
-      footer_citation_notice_en:await getSetting(env,"footer_citation_notice_en","All cited information must clearly state the source and link to the original content where possible; content must not be distorted and must comply with copyright, intellectual property, and personal data protection regulations."),
+      header_show_brand:getCfg("header_show_brand",true),
+      header_show_theme:getCfg("header_show_theme",true),
+      header_show_account:getCfg("header_show_account",true),
+      header_account_label:getCfg("header_account_label","Đăng nhập"),
+      header_account_label_en:getCfg("header_account_label_en","Admin Sign In"),
+      footer_description:getCfg("footer_description","Hệ thống thông tin và dịch vụ số phục vụ tra cứu, đăng ký chương trình, biểu mẫu, chứng nhận và minh bạch hoạt động."),
+      footer_description_en:getCfg("footer_description_en","Central digital information and verification system serving program registration, electronic forms, credential verification, and financial transparency."),
+      footer_email:getCfg("footer_email","lienhe@skyfirst.io.vn"),
+      footer_support_email:getCfg("footer_support_email","support@skyfirst.io.vn"),
+      footer_portal_email:getCfg("footer_portal_email","app@skyfirst.io.vn"),
+      portal_main_label:getCfg("portal_main_label","Trang Thông tin Điện tử Sky First"),
+      portal_main_url:getCfg("portal_main_url","https://skyfirst.io.vn"),
+      portal_ctt_url:getCfg("portal_ctt_url","https://ctt.skyfirst.io.vn"),
+      portal_mail_url:getCfg("portal_mail_url","https://mail.skyfirst.io.vn"),
+      portal_sfec_url:getCfg("portal_sfec_url","https://sfec.skyfirst.io.vn"),
+      portal_member_url:getCfg("portal_member_url","https://member.skyfirst.io.vn"),
+      portal_exam_url:getCfg("portal_exam_url","https://exam.skyfirst.io.vn"),
+      footer_copyright:getCfg("footer_copyright","© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền."),
+      footer_copyright_en:getCfg("footer_copyright_en","© 2026 Sky First Digital Information System. All rights reserved."),
+      footer_citation_notice:getCfg("footer_citation_notice","Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân."),
+      footer_citation_notice_en:getCfg("footer_citation_notice_en","All cited information must clearly state the source and link to the original content where possible; content must not be distorted and must comply with copyright, intellectual property, and personal data protection regulations."),
       lookup_data_policy_notice:LOOKUP_DATA_POLICY_VI,
       lookup_data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
       lookup_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
       lookup_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN,
-      i18n_overrides:await getSetting(env,"i18n_overrides",{}),
+      i18n_overrides:getCfg("i18n_overrides",{}),
+      napas_banks:NAPAS_BANKS,
       modules:mods.results||[],
       forms:forms.results||[],
       google_oauth:!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_REDIRECT_URI),
@@ -1092,10 +1095,25 @@ export async function publicRoute(request,env,url,ctx){
     const rnd=new Uint32Array(1); crypto.getRandomValues(rnd);
     const refCode=`${camp.code}-${String(100000+(rnd[0]%900000))}`;
     const intentId=uid("spqr");
-    const bankName=camp.bank_name||await getSetting(env,"sponsorship_bank_name","Ngân hàng TMCP Quân đội (MB Bank)");
-    const bankBin=camp.bank_bin||await getSetting(env,"sponsorship_bank_bin","970422");
-    const accountNo=camp.bank_account_no||await getSetting(env,"sponsorship_bank_account_no","");
-    const accountName=camp.bank_account_name||await getSetting(env,"sponsorship_bank_account_name","SKY FIRST NETWORK");
+    const resolvedBank = resolveNapasBank({
+      bank_bin: camp.bank_bin || (await getSetting(env, "sponsorship_bank_bin", "")),
+      bank_name: camp.bank_name || (await getSetting(env, "sponsorship_bank_name", ""))
+    });
+    const bankName = String(camp.bank_name || resolvedBank?.name || (await getSetting(env, "sponsorship_bank_name", "")) || "").trim();
+    const bankBin = String(camp.bank_bin || resolvedBank?.bin || (await getSetting(env, "sponsorship_bank_bin", "")) || "").replace(/\D/g, "");
+    const accountNo = String(camp.bank_account_no || (await getSetting(env, "sponsorship_bank_account_no", "")) || "").trim();
+    const accountName = String(camp.bank_account_name || (await getSetting(env, "sponsorship_bank_account_name", "")) || "").trim();
+
+    if (!bankBin || bankBin.length !== 6 || !accountNo || !accountName) {
+      return json(
+        {
+          error: "BANK_CONFIG_INCOMPLETE",
+          message: "Chương trình tài trợ này chưa cấu hình đầy đủ thông tin ngân hàng thụ hưởng (mã BIN, số tài khoản, chủ tài khoản) để sinh mã VietQR."
+        },
+        409,
+        { "Cache-Control": "no-store" }
+      );
+    }
 
     // Standards-compliant EMVCo/VietQR payload that ONLY contains bank BIN, accountNo, amount, and anonymous refCode (ZERO donor PII)
     const qrText = buildVietQrPayload({
@@ -1489,7 +1507,30 @@ export async function publicRoute(request,env,url,ctx){
     }
 
     if(Object.keys(fileIds).length){
-      const merged={...answers,...Object.fromEntries(Object.entries(fileIds).map(([k,v])=>[k,{file_id:v.id,sha256:v.sha256||null}]))};
+      const signedAtIso = new Date().toISOString();
+      const fieldTypeMap = Object.fromEntries(activeFields(config,answers).map(f=>[f.key,f.type]));
+      const merged={
+        ...answers,
+        ...Object.fromEntries(
+          Object.entries(fileIds).map(([k,v])=>[
+            k,
+            fieldTypeMap[k]==="signature"
+              ? {
+                  file_id:v.id,
+                  sha256:v.sha256||null,
+                  signature_method:answers[k]==="uploaded"?"uploaded_image":"drawn_image",
+                  signature_type:"electronic_image_confirmation",
+                  signer_name:fullName||null,
+                  signer_email:email||null,
+                  signed_at:signedAtIso,
+                  form_id:idForm,
+                  form_version:row.version,
+                  ip_hash:ip
+                }
+              : {file_id:v.id,sha256:v.sha256||null}
+          ])
+        )
+      };
       await env.DB.prepare("UPDATE submissions SET answers_json=? WHERE code=?").bind(JSON.stringify(merged),code).run();
     }
 

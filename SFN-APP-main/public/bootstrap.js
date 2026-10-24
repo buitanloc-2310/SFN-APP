@@ -10,7 +10,7 @@ function currentRoute(){
 }
 
 function needsAppBundle({path,route}){
-  return path==='/admin'||path==='/admin/login'||['admin','login','portal','form'].includes(route);
+  return path==='/admin'||path==='/admin/login'||path.startsWith('/admin/')||['admin','login','portal','form'].includes(route);
 }
 
 async function loadAppBundle(){

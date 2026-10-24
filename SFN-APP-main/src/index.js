@@ -5,7 +5,21 @@ import {meRoute} from "./me.js";
 import {adminRoute, buildBackupSnapshot, runScheduledCmsPublishing} from "./admin.js";
 import {hasPermission} from "./permissions.js";
 
-async function getSetting(env,key,fallback=null){
+export async function getSettingsMap(env){
+  const map = {};
+  try{
+    if(!env?.DB) return map;
+    const rs = await env.DB.prepare("SELECT key, value_json FROM settings").all();
+    for(const row of rs.results || []){
+      try{ map[row.key] = JSON.parse(row.value_json); }
+      catch{ map[row.key] = row.value_json; }
+    }
+  }catch{}
+  return map;
+}
+
+async function getSetting(env,key,fallback=null,preloadedMap=null){
+  if(preloadedMap && key in preloadedMap) return preloadedMap[key];
   try{
     if(!env.DB) return fallback;
     const r=await env.DB.prepare("SELECT value_json FROM settings WHERE key=?").bind(key).first();
@@ -51,14 +65,15 @@ function renderMaintenanceHtml(stateInfo, lang = "vi") {
   );
 }
 
-export async function resolveOperationalState(env, websiteId = "app") {
-  const legacyMaint = await getSetting(env, "maintenance_mode", false);
-  const opModeSetting = await getSetting(env, "system_operational_mode", "normal");
-  const rawCfg = (await getSetting(env, "maintenance_config", {})) || {};
-  const titleVi = await getSetting(env, "maintenance_title", rawCfg.title_vi || "Hệ thống Thông tin Số Sky First đang bảo trì");
-  const textVi = await getSetting(env, "maintenance_text", rawCfg.message_vi || "Hệ thống đang được nâng cấp định kỳ để phục vụ bạn tốt hơn. Vui lòng quay lại sau.");
-  const contactEmail = await getSetting(env, "support_email", rawCfg.contact_email || "support@skyfirst.io.vn");
-  const hotline = await getSetting(env, "hotline", rawCfg.hotline || "0924 910 210");
+export async function resolveOperationalState(env, websiteId = "app", preloadedSettings = null) {
+  const smap = preloadedSettings || (await getSettingsMap(env));
+  const legacyMaint = smap.maintenance_mode ?? false;
+  const opModeSetting = smap.system_operational_mode ?? "normal";
+  const rawCfg = (smap.maintenance_config && typeof smap.maintenance_config === "object" ? {...smap.maintenance_config} : {}) || {};
+  const titleVi = smap.maintenance_title ?? (rawCfg.title_vi || "Hệ thống Thông tin Số Sky First đang bảo trì");
+  const textVi = smap.maintenance_text ?? (rawCfg.message_vi || "Hệ thống đang được nâng cấp định kỳ để phục vụ bạn tốt hơn. Vui lòng quay lại sau.");
+  const contactEmail = smap.support_email ?? (rawCfg.contact_email || "support@skyfirst.io.vn");
+  const hotline = smap.hotline ?? (rawCfg.hotline || "0924 910 210");
 
   let mode = rawCfg.mode || opModeSetting || "normal";
   if (legacyMaint === true && mode === "normal") {
@@ -368,7 +383,7 @@ const PORTAL_PATH_PREFIXES = [
 
 function isSpaRoute(pathname){
   if(PORTAL_PATH_PREFIXES.includes(pathname)) return true;
-  return ["/gcn/","/chuong-trinh/","/su-kien/","/tai-lieu/","/tai-tro/","/trang/"].some(prefix=>pathname.startsWith(prefix));
+  return ["/admin/","/gcn/","/chuong-trinh/","/su-kien/","/tai-lieu/","/tai-tro/","/trang/"].some(prefix=>pathname.startsWith(prefix));
 }
 
 function isPublicPortalPageRoute(pathname) {
@@ -429,6 +444,19 @@ async function handle(request,env,ctx){
       storage:!!env.FILES,
       storage_operational: r2Operational
     });
+  }
+
+  // Fast-path for immutable/versioned static assets (.css, .js, .png, .ico, .webmanifest, .svg, .woff2)
+  // Avoids running 8 D1 queries on every static asset request while preserving full security headers
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    !url.pathname.startsWith("/api/") &&
+    (url.pathname.startsWith("/assets/") || /\.(?:css|js|png|jpg|jpeg|webp|svg|ico|webmanifest|woff2?)$/i.test(url.pathname))
+  ) {
+    if (env.ASSETS) {
+      const staticAsset = await env.ASSETS.fetch(request);
+      if (staticAsset.status !== 404) return staticAsset;
+    }
   }
 
   // Server-side Operational State (6 modes) & Per-Website Maintenance Guard

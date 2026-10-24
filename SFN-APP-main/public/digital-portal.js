@@ -153,7 +153,7 @@ const I18N = {
     nav_cases: "Hồ sơ",
     nav_sponsorship: "Tài trợ",
     nav_safety: "An toàn",
-    nav_support: "Trung tâm Hỗ trợ (/ho-tro)",
+    nav_support: "Trung tâm Hỗ trợ",
     nav_login: "Đăng nhập",
     hero_badge: "HỆ THỐNG THÔNG TIN SỐ · Sky First",
     hero_title_top: "Hệ thống Thông tin Số",
@@ -190,11 +190,11 @@ const I18N = {
     search_hint: "Chỉ tìm kiếm trên dữ liệu công khai. Dùng phím ↑ ↓ để chọn, Enter để mở.",
     skip_nav: "Bỏ qua điều hướng",
     footer_brand_title: "Hệ thống Thông tin Số Sky First",
-    footer_link_hub: "Trung tâm Tra cứu (/tra-cuu)",
-    footer_link_certs: "Chứng nhận (/gcn)",
-    footer_link_cases: "Hồ sơ (/ho-so)",
-    footer_link_sponsorship: "Tài trợ (/tai-tro)",
-    footer_link_safety: "An toàn (/an-toan)",
+    footer_link_hub: "Trung tâm Tra cứu",
+    footer_link_certs: "Chứng nhận",
+    footer_link_cases: "Hồ sơ",
+    footer_link_sponsorship: "Tài trợ",
+    footer_link_safety: "An toàn",
     footer_sys_email_label: "Hệ thống:",
     footer_contact_email_label: "Liên hệ chung:",
     footer_support_email_label: "Hỗ trợ kỹ thuật:",
@@ -217,7 +217,7 @@ const I18N = {
     nav_cases: "Records",
     nav_sponsorship: "Sponsorship",
     nav_safety: "Safety",
-    nav_support: "Support Center (/ho-tro)",
+    nav_support: "Support Center",
     nav_login: "Sign In",
     hero_badge: "Sky First Digital Information System",
     hero_title_top: "Digital Information System",
@@ -254,11 +254,11 @@ const I18N = {
     search_hint: "Searches public records only. Use ↑ ↓ arrows to navigate, Enter to open.",
     skip_nav: "Skip to main content",
     footer_brand_title: "Sky First Digital Information System",
-    footer_link_hub: "Verification Hub (/tra-cuu)",
-    footer_link_certs: "Certificates (/gcn)",
-    footer_link_cases: "Records (/ho-so)",
-    footer_link_sponsorship: "Sponsorship (/tai-tro)",
-    footer_link_safety: "Safety (/an-toan)",
+    footer_link_hub: "Verification Hub",
+    footer_link_certs: "Certificates",
+    footer_link_cases: "Records",
+    footer_link_sponsorship: "Sponsorship",
+    footer_link_safety: "Safety",
     footer_sys_email_label: "System:",
     footer_contact_email_label: "General Contact:",
     footer_support_email_label: "Technical Support:",
@@ -627,7 +627,7 @@ async function formCenter(app){
   updateActiveNav('forms');
   setMeta(bi('Biểu mẫu điện tử','Electronic Forms'),'Hệ thống Biểu mẫu điện tử Sky First — tiếp nhận thông tin, chữ ký hình ảnh và tệp đính kèm an toàn.');
   const d=await api('/api/config'); cachedPublicConfig=d; applyPublicConfigToDom(d); const forms=d.forms||[];
-  app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>${bi('BIỂU MẪU ĐIỆN TỬ','ELECTRONIC FORMS')}</h1><p>${bi('Gửi đăng ký chương trình, hồ sơ tham gia và yêu cầu trực tuyến trên app.skyfirst.io.vn. Sau khi gửi thành công, hệ thống cấp mã hồ sơ để bạn tra cứu tiến trình xử lý tại mục ','Submit program registrations, applications, and requests online at app.skyfirst.io.vn. Upon submission, you receive a reference code to track progress at ')}<b>${bi('Hồ sơ (/ho-so)','Records (/ho-so)')}</b>.</p></section>
+  app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">HỆ THỐNG THÔNG TIN SỐ · Sky First</span><h1>${bi('BIỂU MẪU ĐIỆN TỬ','ELECTRONIC FORMS')}</h1><p>${bi('Gửi đăng ký chương trình, hồ sơ tham gia và yêu cầu trực tuyến trên app.skyfirst.io.vn. Sau khi gửi thành công, hệ thống cấp mã hồ sơ để bạn tra cứu tiến trình xử lý tại mục ','Submit program registrations, applications, and requests online at app.skyfirst.io.vn. Upon submission, you receive a reference code to track progress at ')}<b>${bi('Hồ sơ','Records')}</b>.</p></section>
   ${renderSystemPageCmsZone('/bieu-mau')}
   <section class="dip-section tight">
     <div class="capability-strip"><span>${bi('Biểu mẫu nhiều bước','Multi-step forms')}</span><span>${bi('Điều kiện hiển thị linh hoạt','Conditional logic')}</span><span>${bi('Tải tệp kiểm tra chữ ký byte','Magic-byte verified uploads')}</span><span>${bi('Hỗ trợ vẽ/tải ảnh chữ ký','Draw or upload signature')}</span><span>${bi('Bảo vệ người dưới 18 tuổi','Minor guardian protection')}</span><span>${bi('Xem lại trước khi gửi','Review before submit')}</span></div>
@@ -649,8 +649,8 @@ function lookupPolicyBanner(){
 async function lookupCenter(app){
   updateActiveNav('gcn');
   await ensurePublicConfig();
-  setMeta(bi('Tra cứu thông tin','Verification & Lookup Hub'),'Chọn phân hệ tra cứu Chứng nhận (/gcn) hoặc Hồ sơ (/ho-so) trên Hệ thống Thông tin Số Sky First.');
-  app.innerHTML=lookupShell(bi('TRUNG TÂM TRA CỨU','CENTRAL VERIFICATION HUB'),bi('Chọn đúng phân hệ cần tra cứu: Chứng nhận đã phát hành (/gcn), Hồ sơ đã gửi (/ho-so) hoặc Minh bạch Tài trợ (/tai-tro).','Select a verification module: Issued Credentials (/gcn), Submitted Applications (/ho-so), or Sponsorship Transparency (/tai-tro).'))+renderSystemPageCmsZone('/tra-cuu')+lookupPolicyBanner()+`<section class="lookup-choice-v3"><a class="lookup-choice paper" href="/gcn"><div class="choice-art"><span>✓</span><i>▦</i></div><small>CHỨNG NHẬN (/GCN)</small><h2>${bi('Tra cứu Giấy chứng nhận, Giấy xác nhận & Bằng khen','Verify Certificates, Confirmations & Merit Awards')}</h2><p>${bi('Tra cứu tính hợp lệ và trạng thái hiệu lực bằng mã chứng nhận hoặc thông tin đăng ký được xác thực.','Verify authenticity and validity status using the credential code or registered contact information.')}</p><b>${bi('Mở tra cứu chứng nhận →','Open Credential Verification →')}</b></a><a class="lookup-choice case" href="/ho-so"><div class="choice-art"><span>⌁</span><i>•••</i></div><small>HỒ SƠ (/HO-SO)</small><h2>${bi('Tra cứu tiến trình xử lý hồ sơ','Track Application Processing Status')}</h2><p>${bi('Xác minh bằng mã hồ sơ và địa chỉ email đã đăng ký để bảo vệ thông tin cá nhân.','Verify with both your application code and registered email address to protect personal data.')}</p><b>${bi('Mở tra cứu hồ sơ →','Open Application Lookup →')}</b></a></section>`;
+  setMeta(bi('Tra cứu thông tin','Verification & Lookup Hub'),'Chọn phân hệ tra cứu Chứng nhận hoặc Hồ sơ trên Hệ thống Thông tin Số Sky First.');
+  app.innerHTML=lookupShell(bi('TRUNG TÂM TRA CỨU','CENTRAL VERIFICATION HUB'),bi('Chọn đúng phân hệ cần tra cứu: Chứng nhận đã phát hành, Hồ sơ đã gửi hoặc Minh bạch Tài trợ.','Select a verification module: Issued Credentials, Submitted Applications, or Sponsorship Transparency.'))+renderSystemPageCmsZone('/tra-cuu')+lookupPolicyBanner()+`<section class="lookup-choice-v3"><a class="lookup-choice paper" href="/gcn"><div class="choice-art"><span>✓</span><i>▦</i></div><small>CHỨNG NHẬN</small><h2>${bi('Tra cứu Giấy chứng nhận, Giấy xác nhận & Bằng khen','Verify Certificates, Confirmations & Merit Awards')}</h2><p>${bi('Tra cứu tính hợp lệ và trạng thái hiệu lực bằng mã chứng nhận hoặc thông tin đăng ký được xác thực.','Verify authenticity and validity status using the credential code or registered contact information.')}</p><b>${bi('Mở tra cứu chứng nhận →','Open Credential Verification →')}</b></a><a class="lookup-choice case" href="/ho-so"><div class="choice-art"><span>⌁</span><i>•••</i></div><small>HỒ SƠ</small><h2>${bi('Tra cứu tiến trình xử lý hồ sơ','Track Application Processing Status')}</h2><p>${bi('Xác minh bằng mã hồ sơ và địa chỉ email đã đăng ký để bảo vệ thông tin cá nhân.','Verify with both your application code and registered email address to protect personal data.')}</p><b>${bi('Mở tra cứu hồ sơ →','Open Application Lookup →')}</b></a></section>`;
 }
 
 function credentialResult(x){return `<article class="verification-record ${statusClass(x.status_text)}"><div class="verify-state"><i>${x.status==='issued'?'✓':x.status==='revoked'?'!':'↻'}</i><div><span>${bi('KẾT QUẢ ĐỐI CHIẾU CHỨNG NHẬN','CREDENTIAL VERIFICATION RESULT')}</span><h2>${esc(publicStatusLabel(x.status_text))}</h2></div></div><dl><div><dt>${bi('Mã chứng nhận','Credential Code')}</dt><dd>${esc(x.code)}</dd></div><div><dt>${bi('Loại văn bản','Document Type')}</dt><dd>${esc(x.type)}</dd></div><div><dt>${bi('Người được ghi nhận','Recipient Name')}</dt><dd>${esc(x.full_name)}</dd></div><div class="wide"><dt>${bi('Nội dung ghi nhận','Citation / Content')}</dt><dd>${esc(x.content)}</dd></div>${x.program?`<div><dt>${bi('Chương trình / Hoạt động','Program / Activity')}</dt><dd>${esc(x.program)}</dd></div>`:''}<div><dt>${bi('Đơn vị phát hành','Issuing Unit')}</dt><dd>${esc(x.unit_name)}</dd></div><div><dt>${bi('Ngày phát hành','Issued Date')}</dt><dd>${esc(x.issued_at?fmt(x.issued_at):'—')}</dd></div><div><dt>${bi('Trạng thái hiệu lực','Validity Status')}</dt><dd>${esc(publicStatusLabel(x.status_text))}</dd></div>${x.replacement_code?`<div class="wide"><dt>${bi('Được thay thế bởi mã mới','Superseded by Code')}</dt><dd><a href="/gcn/${encodeURIComponent(x.replacement_code)}">${esc(x.replacement_code)}</a></dd></div>`:''}${x.revocation_reason?`<div class="wide"><dt>${bi('Lý do thu hồi','Revocation Reason')}</dt><dd>${esc(x.revocation_reason)}</dd></div>`:''}</dl><p class="record-note">${esc(t('lookup_policy_2'))}<br><small>${esc(t('lookup_policy_1'))}</small></p></article>`}
@@ -972,7 +972,12 @@ async function safetyCenter(app){
 function renderVisualBlock(b={}){
   const type=b.type||'paragraph';
   const align=b.align||'left';
-  const style=`text-align:${esc(align)};`;
+  const styleParts=[`text-align:${esc(align)}`];
+  if(b.fontFamily) styleParts.push(`font-family:${esc(b.fontFamily)}`);
+  if(b.fontSize) styleParts.push(`font-size:${esc(b.fontSize)}`);
+  if(b.textColor) styleParts.push(`color:${esc(b.textColor)}`);
+  if(b.bgColor) styleParts.push(`background:${esc(b.bgColor)};padding:14px 18px;border-radius:12px`);
+  const style=styleParts.join(';')+';';
   if(type==='shared_block'){
     const sbList = cachedPublicConfig?.shared_blocks || [];
     const found = sbList.find(s => s.key === (b.sharedKey || b.key) || s.id === (b.sharedId || b.id));

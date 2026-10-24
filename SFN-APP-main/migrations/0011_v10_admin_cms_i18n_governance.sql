@@ -166,7 +166,7 @@ INSERT OR IGNORE INTO menus(id, website_id, location, name, items_json, updated_
     {"id":"m_safe","label_vi":"An toàn","label_en":"Safety","href":"/an-toan","module_key":"safety","enabled":true,"target":"_self"}
   ]', CURRENT_TIMESTAMP),
   ('menu_app_footer_primary', 'app', 'footer_primary', 'Menu Chân trang — Dịch vụ Số', '[
-    {"id":"f_lookup","label_vi":"Trung tâm Tra cứu (/tra-cuu)","label_en":"Verification Hub (/tra-cuu)","href":"/tra-cuu","module_key":"lookup","enabled":true,"target":"_self"},
+    {"id":"f_lookup","label_vi":"Trung tâm Tra cứu","label_en":"Verification Hub","href":"/tra-cuu","module_key":"lookup","enabled":true,"target":"_self"},
     {"id":"f_gcn","label_vi":"Xác thực GCN / GXN / BK","label_en":"Verify GCN / GXN / BK","href":"/gcn","module_key":"certificates","enabled":true,"target":"_self"},
     {"id":"f_hoso","label_vi":"Tra cứu Tiến trình Hồ sơ","label_en":"Application Status Lookup","href":"/ho-so","module_key":"lookup","enabled":true,"target":"_self"},
     {"id":"f_bieumau","label_vi":"Biểu mẫu Điện tử","label_en":"Electronic Forms","href":"/bieu-mau","module_key":"forms","enabled":true,"target":"_self"},

@@ -13,7 +13,7 @@ const J=x=>{try{return typeof x==="string"?JSON.parse(x):x}catch{return {}}};
 const fmt=d=>d?new Date(d).toLocaleString("vi-VN",{timeZone:"Asia/Ho_Chi_Minh"}):"—";
 const cttToday=()=>{const p=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Ho_Chi_Minh",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`;};
 const rolesOf=u=>(u?.roles||[]).map(r=>r.role_id);
-const isAdmin=u=>(u?.roles||[]).some(r=>Number(r.level)>=40||["owner","super_admin","system_admin","network_secretary","content_admin","office","hr","certificate_manager","reviewer","case_manager","communications","external_events","editor","unit_admin","handler"].includes(r.role_id));
+const isAdmin=u=>Array.isArray(u?.permissions)&&(u.permissions.includes("*")||u.permissions.includes("admin.access"))||(u?.roles||[]).some(r=>Number(r.level)>=40);
 const isMember=u=>(u?.roles||[]).some(r=>["member","volunteer","handler","unit_admin","editor","communications","external_events","case_manager","reviewer","certificate_manager","hr","office","content_admin","network_secretary","system_admin","super_admin","owner"].includes(r.role_id));
 
 async function api(path,options={}){
@@ -252,7 +252,7 @@ function fieldHtml(f){
   if(f.type==="select")return `<div class="field"><label>${E(f.label)}${req}</label><select ${attrs}><option value="">-- Chọn --</option>${(f.options||[]).map(x=>`<option>${E(x)}</option>`).join("")}</select></div>`;
   if(f.type==="checkbox")return `<div class="check"><input type="checkbox" ${attrs}><label>${E(f.label)}${req}</label></div>`;
 if(f.type==="file")return `<div class="field upload-field"><label>${E(f.label)}${req}</label><input type="file" ${attrs} ${f.accept?`accept="${E(f.accept.join(","))}"`:""}><div class="file-preview" data-file-preview="${E(f.key)}"><span>Chưa chọn tệp</span></div>`
-  if(f.type==="signature")return `<div class="field signature-field"><label>${E(f.label)}${req}</label><div class="signature-pad"><canvas data-signature-canvas="${E(f.key)}" width="900" height="280" aria-label="Vùng vẽ chữ ký"></canvas><div class="signature-actions"><button type="button" class="secondary" data-signature-clear="${E(f.key)}">Xóa / ký lại</button><label class="secondary signature-upload-label">Upload chữ ký<input type="file" data-signature-upload="${E(f.key)}" accept="image/png,image/jpeg,image/webp" hidden></label></div><div class="signature-preview-slot" data-signature-preview="${E(f.key)}" style="margin-top:8px;"></div></div></div>`;
+  if(f.type==="signature")return `<div class="field signature-field"><label>${E(f.label)}${req}</label><div class="signature-pad"><canvas data-signature-canvas="${E(f.key)}" width="900" height="280" aria-label="Vùng vẽ chữ ký"></canvas><div class="signature-actions"><button type="button" class="secondary" data-signature-clear="${E(f.key)}">Xóa / ký lại</button><label class="secondary signature-upload-label">Tải ảnh chữ ký lên<input type="file" data-signature-upload="${E(f.key)}" accept="image/png,image/jpeg,image/webp" hidden></label></div><div class="signature-preview-slot" data-signature-preview="${E(f.key)}" style="margin-top:8px;"></div></div></div>`;
   return `<div class="field"><label>${E(f.label)}${req}</label><input type="${E(f.type||"text")}" ${attrs}></div>`;
 }
 function sectionActive(section,answers){
@@ -316,7 +316,7 @@ async function renderForm(idForm){
     const c=d.form.config||{},presentation=c.presentation||"classic",multi=["multi-step","guided"].includes(presentation);
     const sections=c.sections||[];
     app.innerHTML=`<section class="page-hero compact"><span class="hero-eyebrow">Sky First · BIỂU MẪU SỐ</span><h1>${E(d.form.name)}</h1><p>${E(d.form.description||"Biểu mẫu số Sky First")}</p></section><div class="form-wrap digital-form-wrap"><a class="ghost" href="/bieu-mau">← Danh mục biểu mẫu</a><div class="card digital-form-card">
-      <div class="form-meta"><span class="pill">${E(d.form.prefix)}</span><span>Phiên bản ${E(d.form.version)}</span><span>${presentation==="classic"?"Classic Form":presentation==="guided"?"Guided Form":"Multi-step Form"}</span>${c.minor_mode?'<span>Minor-aware</span>':''}</div>
+      <div class="form-meta"><span class="pill">${E(d.form.prefix)}</span> <span aria-hidden="true">•</span> <span>Phiên bản ${E(d.form.version)}</span> <span aria-hidden="true">•</span> <span>${presentation==="classic"?"Biểu mẫu tiêu chuẩn":presentation==="guided"?"Biểu mẫu hướng dẫn từng bước":"Biểu mẫu nhiều bước"}</span>${c.minor_mode?' <span aria-hidden="true">•</span> <span>Hỗ trợ người dưới 18 tuổi</span>':''}</div>
       ${(d.terms||[]).map(t=>`<details class="term"><summary>${E(t.name)} · ${E(t.version)}</summary><pre>${E(t.body)}</pre></details>`).join("")}
       ${multi?`<div class="form-stepper" id="formStepper">${sections.map((x,i)=>`<span data-step-dot="${i}" class="${i===0?'active':''}"><b>${i+1}</b><small>${E(x.title)}</small></span>`).join('')}</div>`:''}
       <form id="dynamicForm" novalidate>${sections.map((sec,i)=>`<section data-section="${i}" class="${multi&&i!==0?'step-hidden':''}"><div class="form-section-head"><span>${String(i+1).padStart(2,'0')}</span><div><h2>${E(sec.title)}</h2>${sec.description?`<p>${E(sec.description)}</p>`:''}</div></div>${(sec.fields||[]).map(f=>`<div data-field-wrap="${E(f.key)}">${fieldHtml(f)}</div>`).join("")}</section>`).join("")}
@@ -956,19 +956,19 @@ const adminMenu=[
   ["dashboard","Tổng quan hệ thống","dashboard.view"],["home-stats","5 Chỉ số trang chủ","settings.manage"],["approvals","Trung tâm phê duyệt","approval.view"],["search","Tìm kiếm nội bộ","search.use"]
  ]},
  {group:"QUẢN TRỊ NỘI DUNG & ĐA WEBSITE",items:[
-  ["page-builder","Trình dựng trang & CMS","cms.view"],["websites","Quản trị đa Website (7 cổng)","website.view"],["news","Tin tức & Thông báo","news.manage"],["site","Nhận diện & Design System","settings.manage"],["header","Thanh điều hướng & Menu","settings.manage"],["footer","Chân trang & Hệ sinh thái","settings.manage"],["media","Thư viện tài nguyên & Kiểm toán","file.manage"]
+  ["page-builder","Trình dựng trang trực quan","cms.view"],["websites","Quản trị đa Website (7 cổng)","website.view"],["news","Tin tức & Thông báo","news.manage"],["site","Nhận diện & Hệ thống thiết kế","settings.manage"],["header","Thanh điều hướng & Menu","settings.manage"],["footer","Chân trang & Hệ sinh thái","settings.manage"],["media","Thư viện tài nguyên & Kiểm toán","file.manage"]
  ]},
  {group:"CHƯƠNG TRÌNH, SỰ KIỆN & TÀI TRỢ",items:[
   ["classes","Chương trình & Lớp học","class.manage"],["events","Sự kiện & Hoạt động","event.manage"],["sponsorship","Minh bạch Tài trợ & VietQR","sponsorship.view"],["units","Đơn vị & Đối tác","unit.view"],["people","Hồ sơ nhân sự","people.view"],["tasks","Nhiệm vụ & Bàn giao","task.manage"]
  ]},
  {group:"BIỂU MẪU & HỒ SƠ",items:[
-  ["forms","Trình dựng Biểu mẫu","form.view"],["submissions","Tiếp nhận & Xử lý hồ sơ","submission.view"],["recruitment","Tuyển dụng & Đánh giá","submission.view"],["teaching","Phạm vi TNV Dạy học","people.view"],["terms","Điều khoản & Cam kết","form.view"]
+  ["forms","Quản lý & Dựng Biểu mẫu","form.view"],["submissions","Tiếp nhận & Xử lý hồ sơ","submission.view"],["recruitment","Tuyển dụng & Đánh giá","submission.view"],["terms","Điều khoản & Chính sách","form.view"]
  ]},
  {group:"CHỨNG NHẬN & THƯ VIỆN PDF",items:[
   ["certificates","Chứng nhận (GCN/GXN/BK)","certificate.view"],["documents","Thư viện PDF & Tài liệu","document.view"],["files","Kho tệp & Minh chứng","file.manage"]
  ]},
  {group:"AN TOÀN, EMAIL & HỆ THỐNG",items:[
-  ["email","Trung tâm Email tự động","email.view"],["safety","Báo cáo An toàn số","safety.view"],["tickets","Hỗ trợ & Ticket","ticket.manage"],["users","Tài khoản & Phân quyền","user.view"],["privacy","Yêu cầu Quyền riêng tư","privacy.manage"],["audit","Nhật ký kiểm toán","audit.view"],["backup","Sao lưu & Phục hồi","backup.create"],["maintenance","Chế độ vận hành, Sự cố & QA","settings.manage"],["modules","Quản lý Phân hệ","module.manage"],["settings","Cài đặt hệ thống","settings.manage"]
+  ["email","Trung tâm Email tự động","email.view"],["safety","Báo cáo An toàn số","safety.view"],["tickets","Phiếu hỗ trợ","ticket.manage"],["users","Tài khoản & Phân quyền","user.view"],["privacy","Yêu cầu Quyền riêng tư","privacy.manage"],["audit","Nhật ký kiểm toán","audit.view"],["backup","Sao lưu & Phục hồi","backup.create"],["maintenance","Chế độ vận hành & Bảo trì","settings.manage"],["modules","Quản lý Phân hệ","module.manage"],["settings","Cài đặt hệ thống","settings.manage"]
  ]}
 ];
 
@@ -976,7 +976,7 @@ const adminRoutePermissions={
  dashboard:"dashboard.view","home-stats":"settings.manage",approvals:"approval.view",search:"search.use",
  "page-builder":"cms.view",websites:"website.view",site:"settings.manage",header:"settings.manage",news:"news.manage",footer:"settings.manage",media:"file.manage",
  classes:"class.manage",events:"event.manage",sponsorship:"sponsorship.view",units:"unit.view",people:"people.view",tasks:"task.manage",tickets:"ticket.manage",
- forms:"form.view",submissions:"submission.view",recruitment:"submission.view",teaching:"people.view",terms:"form.view",
+ forms:"form.view",submissions:"submission.view",recruitment:"submission.view",terms:"form.view",
  certificates:"certificate.view",documents:"document.view",files:"file.manage",users:"user.view",email:"email.view",safety:"safety.view",
  privacy:"privacy.manage",audit:"audit.view",backup:"backup.create",maintenance:"settings.manage",modules:"module.manage",settings:"settings.manage"
 };
@@ -1005,7 +1005,8 @@ function adminMenuMarkup(section){
 async function renderAdmin(){
   document.body.classList.add("admin-mode");document.body.classList.remove("public-digital");
   if(!state.user||!isAdmin(state.user)){location.hash="login";return;}
-  const section=location.hash.split("/")[1]||"dashboard";
+  const pathSec=location.pathname.startsWith("/admin/")?location.pathname.slice("/admin/".length).replace(/\/+$/,""):"";
+  const section=(pathSec&&pathSec!=="login"?pathSec:location.hash.split("/")[1])||"dashboard";
   const requiredPermission=adminRoutePermissions[section];
   const currentTitle=adminMenu.flatMap(g=>g.items).find(x=>x[0]===section)?.[1]||"Quản trị hệ thống";
 
@@ -1025,7 +1026,7 @@ async function renderAdmin(){
         <div class="admin-sidebar-foot"><span class="admin-online-dot"></span><span>Hệ thống quản trị</span><a href="/" target="_blank" rel="noopener">Xem website ↗</a></div>
       </aside>
       <section class="admin-workspace">
-        <header class="admin-topbar"><div class="admin-topbar-left"><button type="button" id="adminMenuToggle" class="admin-mobile-menu" aria-controls="adminSidebar" aria-expanded="false">☰ <span>Danh mục</span></button><div><span class="admin-topbar-kicker">Sky First · V10 Admin-Driven</span><b id="adminCurrentLabel">${E(currentTitle)}</b></div></div><div class="admin-topbar-actions"><button type="button" class="secondary" id="adminLangSwitch" title="Chuyển ngôn ngữ hiển thị cổng công khai">🌐 ${curLang.toUpperCase()}</button><span class="admin-user-chip"><i>${E((state.user.full_name||state.user.email||"A").slice(0,1).toUpperCase())}</i><span><b>${E(state.user.full_name||"Quản trị viên")}</b><small>${E(state.user.email||"")}</small></span></span><a href="/" class="admin-view-site" target="_blank" rel="noopener">Xem website ↗</a><button type="button" id="adminLogout" class="admin-logout">Đăng xuất</button></div></header>
+        <header class="admin-topbar"><div class="admin-topbar-left"><button type="button" id="adminMenuToggle" class="admin-mobile-menu" aria-controls="adminSidebar" aria-expanded="false">☰ <span>Danh mục</span></button><div><span class="admin-topbar-kicker">Hệ thống Thông tin Số Sky First · Quản trị</span><b id="adminCurrentLabel">${E(currentTitle)}</b></div></div><div class="admin-topbar-actions"><button type="button" class="secondary" id="adminLangSwitch" title="Chuyển ngôn ngữ hiển thị cổng công khai">🌐 ${curLang.toUpperCase()}</button><span class="admin-user-chip"><i>${E((state.user.full_name||state.user.email||"A").slice(0,1).toUpperCase())}</i><span><b>${E(state.user.full_name||"Quản trị viên")}</b><small>${E(state.user.email||"")}</small></span></span><a href="/" class="admin-view-site" target="_blank" rel="noopener">Xem website ↗</a><button type="button" id="adminLogout" class="admin-logout">Đăng xuất</button></div></header>
         <section id="adminMain" class="admin-main"><div class="loading">Đang tải dữ liệu quản trị…</div></section>
       </section>
     </div>`;
@@ -1112,7 +1113,6 @@ async function renderAdmin(){
     if(section==="recruitment")return await adminRecruitment(main);
     if(section==="forms")return await adminForms(main);
     if(section==="terms")return await adminTerms(main);
-    if(section==="teaching")return await adminTeaching(main);
     if(section==="classes")return await adminGeneric(main,"classes","Chương trình & Lớp học",["unit_code","title","level","status","capacity"]);
     if(section==="events")return await adminGeneric(main,"events","Hoạt động & Sự kiện",["unit_code","title","start_at","end_at","status","capacity"]);
     if(section==="page-builder")return await adminPageBuilder(main);
@@ -1162,7 +1162,7 @@ async function adminDashboard(main){
     dataOk=true;
   }catch(err){console.error("ADMIN_DASHBOARD_DATA",err)}
 
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">SUPER ADMIN · HỆ THỐNG QUẢN TRỊ TẬP TRUNG</span><h1>Tổng quan Hệ thống Thông tin Số Sky First</h1><p class="muted">Số liệu thời gian thực từ cơ sở dữ liệu D1, tình trạng tài liệu, chứng nhận, email tự động và nhật ký hoạt động gần đây.</p></div><span class="system-pill ${health.ok?"ok":"warn"}">${health.ok?"● Hệ thống đang hoạt động":"● Cần kiểm tra hệ thống"}</span></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">TRUNG TÂM ĐIỀU HÀNH & QUẢN TRỊ HỆ THỐNG</span><h1>Tổng quan Hệ thống Thông tin Số Sky First</h1><p class="muted">Số liệu thời gian thực từ cơ sở dữ liệu D1, tình trạng tài liệu, chứng nhận, email tự động và nhật ký hoạt động gần đây.</p></div><span class="system-pill ${health.ok?"ok":"warn"}">${health.ok?"● Hệ thống đang hoạt động":"● Cần kiểm tra hệ thống"}</span></div>
   <div class="system-status-grid">
     <div class="status-card"><span>Ứng dụng Worker</span><b>${health.ok?"Hoạt động":"Gián đoạn"}</b></div>
     <div class="status-card"><span>Cơ sở dữ liệu D1</span><b>${health.database?"Đã kết nối":"Không khả dụng"}</b></div>
@@ -1178,11 +1178,11 @@ async function adminDashboard(main){
     <div class="kpi"><b>${E(c.published_documents)} / ${E(c.documents)}</b>Tài liệu PDF công bố</div>
     <div class="kpi"><b>${E(c.published_pages)} / ${E(c.cms_pages)}</b>Trang CMS xuất bản</div>
     <div class="kpi"><b>${E(c.approvals)}</b>Yêu cầu chờ phê duyệt</div>
-    <div class="kpi"><b>${E(c.tickets)}</b>Ticket hỗ trợ (${E(c.safety_open)} an toàn)</div>
+    <div class="kpi"><b>${E(c.tickets)}</b>Phiếu hỗ trợ (${E(c.safety_open)} an toàn)</div>
   </div>
   <div class="admin-quick-grid">
     <button class="admin-quick" onclick="location.hash='admin/submissions'">${lineIcon("users")}<b>Xử lý hồ sơ & Biểu mẫu</b><span>Tiếp nhận, phân công và phê duyệt hồ sơ</span></button>
-    <button class="admin-quick" onclick="location.hash='admin/page-builder'">${lineIcon("spark")}<b>CMS & Trình dựng trang</b><span>Quản trị nội dung động và xuất bản trang</span></button>
+    <button class="admin-quick" onclick="location.hash='admin/page-builder'">${lineIcon("spark")}<b>Trình dựng trang & Nội dung</b><span>Quản trị nội dung động và xuất bản trang</span></button>
     <button class="admin-quick" onclick="location.hash='admin/documents'">${lineIcon("book")}<b>Thư viện PDF & Tài liệu</b><span>Quản lý phiên bản, quyền tải và vòng đời</span></button>
     <button class="admin-quick" onclick="location.hash='admin/certificates'">${lineIcon("badge")}<b>Chứng nhận (GCN/GXN/BK)</b><span>Đề nghị, duyệt hai bước, phát hành & thu hồi</span></button>
   </div>
@@ -1192,7 +1192,7 @@ async function adminDashboard(main){
       <h2>Thống kê Trung tâm Email (email_universal_auto.html)</h2>
       <div class="kpis" style="margin-top:10px;">
         <div class="kpi"><b>${E(emailBreakdown.sent)}</b>Đã gửi tới nhà cung cấp</div>
-        <div class="kpi"><b>${E(emailBreakdown.pending)}</b>Chờ cấu hình gửi (Pending)</div>
+        <div class="kpi"><b>${E(emailBreakdown.pending)}</b>Chờ cấu hình dịch vụ gửi</div>
         <div class="kpi"><b>${E(emailBreakdown.failed)}</b>Gửi thất bại</div>
       </div>
       <div class="actions" style="margin-top:12px;"><button type="button" class="secondary" onclick="location.hash='admin/email'">Mở Trung tâm Email tự động →</button></div>
@@ -1292,7 +1292,16 @@ window.viewSubmission=async code=>{
     <div class="field"><label>Lý do phê duyệt / từ chối / yêu cầu bổ sung (hiển thị trên tiến trình & email thông báo)</label><input id="subPublicNote" value="${E(r.result_summary||"")}" placeholder="Nhập tóm tắt kết quả hoặc nội dung yêu cầu bổ sung..."></div>
     <div class="field"><label>Hướng dẫn bước tiếp theo cho người nộp</label><input id="subNextAction" value="${E(r.next_action||"")}" placeholder="VD: Bổ sung minh chứng trước ngày... / Kiểm tra email lịch hẹn"></div>
     <div class="field"><label>Ghi chú nội bộ (chỉ quản trị viên xem, không trả về tra cứu công khai)</label><textarea id="subNote">${E(r.internal_note||"")}</textarea></div>
-    <h3>Câu trả lời</h3>${Object.entries(r.answers||{}).map(([k,v])=>`<div class="card" style="margin:6px 0"><b>${E(k)}</b><br>${E(typeof v==="object"?JSON.stringify(v):v)}</div>`).join("")}
+    <h3>Nội dung kê khai & Chữ ký xác nhận</h3>${Object.entries(r.answers||{}).map(([k,v])=>{
+      if(v&&typeof v==="object"&&v.file_id){
+        const isSig=v.signature_type==="electronic_image_confirmation"||v.signature_method;
+        if(isSig){
+          return `<div class="card" style="margin:6px 0;border-left:4px solid var(--blue)"><b>${E(k)} — Chữ ký xác nhận biểu mẫu (Hình ảnh chữ ký điện tử)</b><div class="small muted" style="margin:4px 0">Phương thức: <b>${v.signature_method==="uploaded_image"?"Tải ảnh chữ ký":"Vẽ chữ ký tay trực tiếp"}</b> · Người ký: <b>${E(v.signer_name||r.full_name||"—")}</b> · Thời điểm ký: <b>${fmt(v.signed_at||r.created_at)}</b> · Phiên bản biểu mẫu: <b>v${E(v.form_version||r.form_version||1)}</b> · SHA-256: <code>${E((v.sha256||"—").slice(0,24))}…</code></div><img src="/api/files/${encodeURIComponent(v.file_id)}" alt="Chữ ký xác nhận" style="max-height:110px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px;margin-top:6px;"><div class="small muted" style="margin-top:4px">Lưu ý nghiệp vụ: Đây là hình ảnh chữ ký xác nhận gắn với hồ sơ và mã băm toàn vẹn SHA-256 trên hệ thống, tách biệt với chữ ký số chuyên dụng (CA).</div></div>`;
+        }
+        return `<div class="card" style="margin:6px 0"><b>${E(k)} (Tệp đính kèm)</b><br><a href="/api/files/${encodeURIComponent(v.file_id)}" target="_blank">Mở tệp đính kèm (${E(v.file_id)}) ↗</a>${v.sha256?` · <small class="muted">SHA-256: <code>${E(v.sha256.slice(0,20))}…</code></small>`:""}</div>`;
+      }
+      return `<div class="card" style="margin:6px 0"><b>${E(k)}</b><br>${E(typeof v==="object"?JSON.stringify(v):v)}</div>`;
+    }).join("")}
     <h3>Tệp</h3>${(d.files||[]).map(f=>`<p><a href="/api/files/${encodeURIComponent(f.id)}" target="_blank">${E(f.filename)}</a> (${Math.round((f.size||0)/1024)} KB)</p>`).join("")||"<p>Không có.</p>"}
     <div class="actions"><button class="primary" onclick="saveSubmission('${E(r.code)}')">Lưu xử lý</button><button class="secondary" onclick="scheduleInterview('${E(r.code)}')">Lịch phỏng vấn</button><button class="secondary" onclick="addEvaluation('${E(r.code)}')">Chấm đánh giá</button><button class="secondary" onclick="requestGenericApproval('submission','${E(r.code)}')">Gửi phê duyệt</button>${["member","core","volunteer"].includes(r.form_id)&&r.status==="Đã duyệt"?`<button class="secondary" onclick="convertPerson('${E(r.code)}')">Tiếp nhận thành nhân sự</button>`:""}</div>`);
   }catch(err){
@@ -1482,7 +1491,7 @@ async function adminPeople(main){
   main.innerHTML=`<h1>Hồ sơ nhân sự điện tử</h1><div class="card table-scroll"><table><thead><tr><th>Họ tên</th><th>Email</th><th>Đơn vị</th><th>Chức danh/Vai trò</th><th>Trạng thái</th><th>Gia nhập</th></tr></thead><tbody>${(d.items||[]).map(p=>`<tr><td><b>${E(p.full_name)}</b></td><td>${E(p.email||"")}</td><td>${E(p.unit_code||"")}</td><td>${E(p.position||"")}</td><td><span class="status">${E(p.status)}</span></td><td>${E(p.joined_at||"")}</td></tr>`).join("")}</tbody></table></div>`;
 }
     async function adminRecruitment(main){
-  main.innerHTML=`<h1>Tuyển dụng & Đánh giá</h1><div class="grid"><div class="card"><h3>Quy trình Core Team</h3><p>Tiếp nhận → Sàng lọc → Phỏng vấn → Đánh giá bổ sung → Thông báo → Tiếp nhận.</p><a class="primary" href="#admin/submissions">Mở hồ sơ</a></div><div class="card"><h3>TNV Dạy học</h3><p>Đánh giá đúng phạm vi Lớp 9/10/11/12/Cơ bản/Giao tiếp/IELTS; có thể dạy thử trước khi phân lớp.</p><a class="primary" href="#admin/submissions">Mở hồ sơ TNV</a></div><div class="card"><h3>Chấm điểm & Phỏng vấn</h3><p>Mở một hồ sơ và dùng nút Lịch phỏng vấn / Chấm đánh giá.</p></div></div>`;
+  main.innerHTML=`<h1>Tuyển dụng & Đánh giá</h1><div class="grid"><div class="card"><h3>Quy trình Core Team</h3><p>Tiếp nhận → Sàng lọc → Phỏng vấn → Đánh giá bổ sung → Thông báo → Tiếp nhận.</p><a class="primary" href="#admin/submissions">Mở hồ sơ</a></div><div class="card"><h3>Tuyển Tình nguyện viên</h3><p>Tiếp nhận hồ sơ đăng ký tình nguyện viên, phân loại theo ban chuyên môn và theo dõi đánh giá.</p><a class="primary" href="#admin/submissions">Mở hồ sơ TNV</a></div><div class="card"><h3>Chấm điểm & Phỏng vấn</h3><p>Mở một hồ sơ và dùng nút Lịch phỏng vấn / Chấm đánh giá.</p></div></div>`;
 }
 
 window.requestGenericApproval=async(entity_type,entity_id)=>{
@@ -1499,14 +1508,85 @@ window.requestGenericApproval=async(entity_type,entity_id)=>{
 async function adminTerms(main){
   const d=await api("/api/admin/terms");
   state.admin.terms=d.items||[];
-  main.innerHTML=`<h1>Điều khoản & Chính sách</h1><p class="muted">Hệ thống lưu phiên bản điều khoản mà từng người đã xác nhận.</p>${state.admin.terms.map(t=>`<div class="card" style="margin:10px 0"><div class="toolbar"><div><b>${E(t.code)} — ${E(t.name)}</b><br><span class="small muted">Phiên bản ${E(t.version)} • ${E(t.status)}</span></div><button class="secondary" onclick="editTerm('${encodeURIComponent(t.code)}')">Sửa</button></div><pre style="white-space:pre-wrap;max-height:180px;overflow:auto">${E(t.body)}</pre></div>`).join("")}`;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">QUẢN LÝ ĐIỀU KHOẢN, CAM KẾT & CHÍNH SÁCH</span><h1>Điều khoản & Chính sách Hệ thống</h1><p class="muted">Quản lý nội dung các văn bản điều khoản, chính sách quyền riêng tư và cam kết tham gia. Hệ thống lưu đầy đủ lịch sử phiên bản (không ghi đè mất dấu vết) và ghi nhận chính xác phiên bản mà người dùng đã đồng ý khi gửi biểu mẫu.</p></div><button type="button" class="primary" onclick="createTermModal()">+ Thêm điều khoản mới</button></div>
+  <div style="display:grid;gap:14px;">${state.admin.terms.map(t=>`<article class="card"><div class="toolbar"><div><span class="pill">${E(t.code)}</span> <b style="font-size:17px;margin-left:6px;">${E(t.name)}</b><br><span class="small muted">Phiên bản: <b>${E(t.version)}</b> • Phạm vi: <b>${E(t.scope||"Toàn hệ thống")}</b> • Cập nhật: ${fmt(t.updated_at)}</span></div><div style="margin-left:auto;display:flex;gap:8px;align-items:center;"><span class="status ${t.status==="published"?"":"status-warn"}">${t.status==="published"?"Đang công bố":t.status==="draft"?"Bản nháp":E(t.status)}</span><button type="button" class="secondary" onclick="previewTermModal('${encodeURIComponent(t.code)}')">Xem trước</button><button type="button" class="secondary" onclick="viewTermRevisions('${encodeURIComponent(t.code)}')">Lịch sử phiên bản</button><button type="button" class="primary" onclick="editTerm('${encodeURIComponent(t.code)}')">Chỉnh sửa</button></div></div><pre style="white-space:pre-wrap;max-height:160px;overflow:auto;margin-top:10px;padding:12px;background:var(--bg);border-radius:10px;border:1px solid var(--line);font-family:inherit;">${E(t.body)}</pre></article>`).join("")||`<div class="card muted">Chưa có điều khoản nào.</div>`}</div>`;
 }
+
+window.createTermModal=()=>{
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">ĐIỀU KHOẢN & CHÍNH SÁCH</span><h2>Tạo điều khoản / chính sách mới</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+  <form id="createTermForm">
+    <div class="row2"><div class="field"><label for="newTermCode">Mã điều khoản *</label><input id="newTermCode" required placeholder="VD: DK-03/2026/SFN"></div><div class="field"><label for="newTermVersion">Phiên bản *</label><input id="newTermVersion" value="24/10/2026" required></div></div>
+    <div class="row2"><div class="field"><label for="newTermName">Tên điều khoản / chính sách *</label><input id="newTermName" required placeholder="VD: Điều khoản Bảo mật & Quy tắc ứng xử"></div><div class="field"><label for="newTermScope">Phạm vi áp dụng</label><input id="newTermScope" value="Toàn hệ thống"></div></div>
+    <div class="row2"><div class="field"><label for="newTermStatus">Trạng thái xuất bản</label><select id="newTermStatus"><option value="draft">Bản nháp (Chưa áp dụng công khai)</option><option value="published">Công bố chính thức</option></select></div><div class="field"><label for="newTermNote">Ghi chú phiên bản</label><input id="newTermNote" value="Khởi tạo điều khoản mới"></div></div>
+    <div class="field"><label for="newTermBody">Nội dung chi tiết *</label><textarea id="newTermBody" rows="8" required placeholder="Nhập toàn văn điều khoản hoặc chính sách..."></textarea></div>
+    <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button type="submit" class="primary" id="newTermSubmitBtn">Lưu điều khoản</button></div>
+  </form>`);
+  document.getElementById("createTermForm").onsubmit=async e=>{
+    e.preventDefault();
+    const btn=document.getElementById("newTermSubmitBtn");btn.disabled=true;btn.textContent="Đang lưu…";
+    try{
+      await api("/api/admin/terms",{
+        method:"POST",
+        body:{
+          code:document.getElementById("newTermCode").value.trim(),
+          name:document.getElementById("newTermName").value.trim(),
+          version:document.getElementById("newTermVersion").value.trim(),
+          scope:document.getElementById("newTermScope").value.trim(),
+          status:document.getElementById("newTermStatus").value,
+          change_note:document.getElementById("newTermNote").value.trim(),
+          body:document.getElementById("newTermBody").value
+        }
+      });
+      closeModal();toast("Đã tạo điều khoản mới và lưu lịch sử phiên bản.");adminTerms(document.getElementById("adminMain"));
+    }catch(err){toast(errorText(err),"bad");btn.disabled=false;btn.textContent="Lưu điều khoản";}
+  };
+};
+
+window.previewTermModal=encoded=>{
+  const code=decodeURIComponent(encoded);
+  const t=(state.admin.terms||[]).find(x=>x.code===code);if(!t)return;
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">XEM TRƯỚC ĐIỀU KHOẢN HIỂN THỊ TRÊN BIỂU MẪU</span><h2>${E(t.name)} (${E(t.code)})</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+  <div class="card" style="background:var(--bg);"><div class="toolbar"><span class="pill">Phiên bản: ${E(t.version)}</span><span class="pill">Phạm vi: ${E(t.scope||"Toàn hệ thống")}</span><span class="status ${t.status==="published"?"":"status-warn"}">${t.status==="published"?"Đang công bố":"Bản nháp"}</span></div><div style="white-space:pre-wrap;line-height:1.75;padding:14px;background:var(--card);border-radius:12px;border:1px solid var(--line);max-height:420px;overflow:auto;">${E(t.body)}</div></div>
+  <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Đóng</button><button type="button" class="primary" onclick="editTerm('${encodeURIComponent(t.code)}')">Chỉnh sửa điều khoản này</button></div>`);
+};
+
+window.viewTermRevisions=async encoded=>{
+  const code=decodeURIComponent(encoded);
+  try{
+    const d=await api(`/api/admin/terms/${encodeURIComponent(code)}/revisions`);
+    const items=d.items||[];
+    state.admin.termRevisions=items;
+    modal(`<div class="admin-modal-head"><div><span class="eyebrow">LỊCH SỬ PHIÊN BẢN ĐIỀU KHOẢN</span><h2>${E(code)} (${items.length} phiên bản)</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+    <div class="table-scroll"><table><thead><tr><th>Phiên bản</th><th>Tên & Phạm vi</th><th>Trạng thái</th><th>Ghi chú thay đổi</th><th>Thời điểm lưu</th><th>Thao tác</th></tr></thead><tbody>
+      ${items.map((r,idx)=>`<tr><td><b>${E(r.version)}</b></td><td><b>${E(r.name)}</b><br><small class="muted">${E(r.scope||"")}</small></td><td><span class="status ${r.status==="published"?"":"status-warn"}">${r.status==="published"?"Đã công bố":"Bản nháp"}</span></td><td><small>${E(r.change_note||"—")}</small></td><td>${fmt(r.created_at)}</td><td><button type="button" class="secondary" onclick="restoreTermRevision('${encodeURIComponent(code)}',${idx})">Khôi phục bản này</button></td></tr>`).join("")||`<tr><td colspan="6" class="muted">Chưa có bản ghi lịch sử.</td></tr>`}
+    </tbody></table></div>
+    <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Đóng</button></div>`);
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.restoreTermRevision=async(encoded,idx)=>{
+  const code=decodeURIComponent(encoded);
+  const rev=(state.admin.termRevisions||[])[idx];if(!rev)return;
+  if(!await adminConfirm(`Khôi phục điều khoản ${code} về nội dung của phiên bản ${rev.version}? Hệ thống sẽ tạo một bản ghi lịch sử mới để bảo toàn dấu vết.`,{title:"Khôi phục phiên bản điều khoản",confirmText:"Khôi phục"}))return;
+  try{
+    await api(`/api/admin/terms/${encodeURIComponent(code)}`,{
+      method:"PUT",
+      body:{name:rev.name,version:rev.version,scope:rev.scope,body:rev.body,status:rev.status,change_note:`Khôi phục từ phiên bản ${rev.version}`}
+    });
+    closeModal();toast("Đã khôi phục phiên bản điều khoản.");adminTerms(document.getElementById("adminMain"));
+  }catch(e){toast(errorText(e),"bad")}
+};
 
 window.editTerm=encoded=>{
   const code=decodeURIComponent(encoded);
   const t=state.admin.terms.find(x=>x.code===code);
   if(!t)return;
-  modal(`<h2>${E(code)}</h2><div class="field"><label>Tên</label><input id="termName" value="${E(t.name)}"></div><div class="field"><label>Phiên bản</label><input id="termVersion" value="${E(t.version)}"></div><div class="field"><label>Phạm vi</label><input id="termScope" value="${E(t.scope||"")}"></div><div class="field"><label>Nội dung</label><textarea id="termBody" style="min-height:360px">${E(t.body)}</textarea></div><button class="primary" onclick="saveTerm('${encodeURIComponent(code)}')">Lưu phiên bản</button>`);
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">CẬP NHẬT ĐIỀU KHOẢN</span><h2>${E(code)}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+  <div class="row2"><div class="field"><label for="termName">Tên điều khoản</label><input id="termName" value="${E(t.name)}"></div><div class="field"><label for="termVersion">Phiên bản</label><input id="termVersion" value="${E(t.version)}"></div></div>
+  <div class="row2"><div class="field"><label for="termScope">Phạm vi áp dụng</label><input id="termScope" value="${E(t.scope||"")}"></div><div class="field"><label for="termStatus">Trạng thái</label><select id="termStatus"><option value="published" ${t.status==="published"?"selected":""}>Đang công bố</option><option value="draft" ${t.status==="draft"?"selected":""}>Bản nháp</option><option value="archived" ${t.status==="archived"?"selected":""}>Lưu trữ</option></select></div></div>
+  <div class="field"><label for="termChangeNote">Ghi chú thay đổi phiên bản</label><input id="termChangeNote" placeholder="Nhập tóm tắt nội dung chỉnh sửa để lưu vào lịch sử phiên bản..."></div>
+  <div class="field"><label for="termBody">Nội dung điều khoản</label><textarea id="termBody" style="min-height:320px">${E(t.body)}</textarea></div>
+  <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button type="button" class="primary" onclick="saveTerm('${encodeURIComponent(code)}')">Lưu phiên bản mới</button></div>`);
 };
 
 window.saveTerm=encoded=>{
@@ -1517,12 +1597,13 @@ window.saveTerm=encoded=>{
       name:document.getElementById("termName").value,
       version:document.getElementById("termVersion").value,
       scope:document.getElementById("termScope").value,
-      body:document.getElementById("termBody").value,
-      status:"published"
+      status:document.getElementById("termStatus")?.value||"published",
+      change_note:document.getElementById("termChangeNote")?.value||"Cập nhật nội dung điều khoản",
+      body:document.getElementById("termBody").value
     }
   }).then(()=>{
     closeModal();
-    toast("Đã cập nhật điều khoản.");
+    toast("Đã cập nhật điều khoản và lưu lịch sử phiên bản.");
     adminTerms(document.getElementById("adminMain"));
   }).catch(e=>toast(errorText(e),"bad"));
 };
@@ -1538,46 +1619,6 @@ window.viewEmailTemplateVersions=async key=>{
     <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Đóng</button></div>`);
   }catch(e){toast(errorText(e),"bad")}
 };
-
-async function adminTeaching(main){
-  const [ppl,ts]=await Promise.all([
-    api("/api/admin/people"),
-    api("/api/admin/teaching-scopes")
-  ]);
-  state.admin.people=ppl.items||[];
-  state.admin.teaching=ts.items||[];
-
-  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Phạm vi TNV Dạy học</h1><button class="primary" onclick="addTeachingScope()">+ Thêm phạm vi</button></div><div class="notice">Các phạm vi chuẩn: Lớp 9, Lớp 10, Lớp 11, Lớp 12, Tiếng Anh Cơ bản, Tiếng Anh Giao tiếp, IELTS. Được nhận làm TNV không đồng nghĩa được phép dạy tất cả phạm vi.</div><div class="card table-scroll"><table><thead><tr><th>Nhân sự</th><th>Phạm vi</th><th>Trạng thái</th><th>Ghi chú đánh giá</th><th></th></tr></thead><tbody>${state.admin.teaching.map(x=>`<tr><td>${E(x.full_name)}<br><span class="small">${E(x.email||"")}</span></td><td><b>${E(x.scope)}</b></td><td><span class="status">${E(x.status)}</span></td><td>${E(x.assessment_note||"")}</td><td><button class="secondary" onclick="editTeachingScope('${E(x.id)}')">Đánh giá</button></td></tr>`).join("")}</tbody></table></div>`;
-}
-
-window.addTeachingScope=async()=>{
-  const values=await adminDialog({title:"Thêm phạm vi tình nguyện viên dạy học",confirmText:"Thêm phạm vi",fields:[
-    {name:"person",label:"ID hồ sơ nhân sự",type:"number",min:1,step:1,required:true},
-    {name:"scope",label:"Phạm vi giảng dạy",type:"select",required:true,options:["Lớp 9","Lớp 10","Lớp 11","Lớp 12","Tiếng Anh Cơ bản","Tiếng Anh Giao tiếp","IELTS"]}
-  ]});
-  if(!values)return;const person=Number(values.person);if(!Number.isInteger(person)||person<=0){toast("ID hồ sơ phải là số nguyên dương.","bad");return;}
-  api("/api/admin/teaching-scopes",{method:"POST",body:{person_id:person,scope:values.scope,status:"Đang đánh giá"}})
-    .then(()=>{toast("Đã thêm phạm vi.");adminTeaching(document.getElementById("adminMain"));})
-    .catch(e=>toast(errorText(e),"bad"));
-};
-
-window.editTeachingScope=idt=>{
-  const x=state.admin.teaching.find(i=>i.id===idt);
-  if(!x)return;
-  modal(`<h2>${E(x.full_name)} — ${E(x.scope)}</h2><div class="field"><label>Trạng thái</label><select id="teachStatus">${["Đang đánh giá","Được mời dạy thử","Đã duyệt","Chưa được duyệt","Tạm dừng"].map(v=>`<option ${v===x.status?"selected":""}>${E(v)}</option>`).join("")}</select></div><div class="field"><label>Ghi chú đánh giá</label><textarea id="teachNote">${E(x.assessment_note||"")}</textarea></div><button class="primary" onclick="saveTeachingScope('${E(idt)}')">Lưu</button>`);
-};
-
-window.saveTeachingScope=idt=>api(`/api/admin/teaching-scopes/${encodeURIComponent(idt)}`,{
-  method:"PATCH",
-  body:{
-    status:document.getElementById("teachStatus").value,
-    assessment_note:document.getElementById("teachNote").value
-  }
-}).then(()=>{
-  closeModal();
-  toast("Đã cập nhật phạm vi.");
-  adminTeaching(document.getElementById("adminMain"));
-}).catch(e=>toast(errorText(e),"bad"));
 
 async function adminPrivacy(main){
   const d=await api("/api/admin/data-requests");
@@ -1596,14 +1637,54 @@ window.processPrivacy=async idr=>{
     .catch(e=>toast(errorText(e),"bad"));
 };
 
+function formWfLabel(wf,enabled){
+  if(enabled&&wf==="published") return "Đang công bố (Mở nhận hồ sơ)";
+  if(wf==="pending_review") return "Chờ phê duyệt";
+  if(wf==="approved") return "Đã duyệt (Chờ mở công khai)";
+  if(wf==="paused") return "Tạm ngừng tiếp nhận";
+  return "Bản nháp (Chưa công bố)";
+}
+
 async function adminForms(main){
   const d=await api("/api/admin/forms");
   state.admin.forms=d.items||[];
 
-  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Form Builder</h1><button class="primary" onclick="createForm()">+ Tạo biểu mẫu</button></div>
-  <p class="muted">Form Experience Studio quản lý phiên bản, cấu trúc, logic, upload, chữ ký, Minor Mode và cách trình bày. Không mặc định thu ảnh/CCCD hoặc dữ liệu vượt quá nhu cầu của chương trình.</p>
-  <div class="grid">${state.admin.forms.map(f=>`<div class="card"><span class="pill">${E(f.prefix)}</span><h3>${E(f.name)}</h3><p class="muted">${E(f.description)}</p><p>Phiên bản: ${f.version} • ${f.enabled?"Đang bật":"Đang tắt"}</p><p class="small muted">Ảnh cá nhân: ${f.config?.profile_photo_required===false?"Không bắt buộc":"Bắt buộc"}</p><div class="actions"><button class="secondary" onclick="editForm('${E(f.id)}')">Chỉnh sửa</button><button class="secondary" onclick="cloneForm('${E(f.id)}')">Sao chép</button></div></div>`).join("")}</div>`;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">QUẢN LÝ & DỰNG BIỂU MẪU ĐIỆN TỬ</span><h1>Trình dựng Biểu mẫu & Quản lý Phiên bản</h1><p class="muted">Quản lý cấu trúc câu hỏi, điều khoản áp dụng, logic hiển thị, tải tệp, chữ ký xác nhận và quy trình phê duyệt. Biểu mẫu mới tạo luôn ở trạng thái <b>Bản nháp</b> và chỉ hiển thị công khai sau khi được phê duyệt công bố.</p></div><button class="primary" onclick="createForm()">+ Tạo biểu mẫu mới</button></div>
+  <div class="grid">${state.admin.forms.map(f=>{
+    const wf=f.workflow_status||(f.enabled?"published":"draft");
+    return `<div class="card"><div class="toolbar"><span class="pill">${E(f.prefix)}</span><span class="status ${f.enabled?"":"status-warn"}">${E(formWfLabel(wf,f.enabled))}</span></div><h3>${E(f.name)}</h3><p class="muted">${E(f.description||"Biểu mẫu điện tử Sky First")}</p><p class="small">Phiên bản: <b>v${f.version}</b> • Mã: <code>${E(f.id)}</code></p><p class="small muted">Ảnh cá nhân: ${f.config?.profile_photo_required===true?"Bắt buộc":"Không bắt buộc"} • Chữ ký: ${f.config?.signature_required===true?"Bắt buộc":"Tùy chọn"}</p><div class="actions" style="flex-wrap:wrap;gap:6px;"><button class="primary" onclick="editForm('${E(f.id)}')">Chỉnh sửa câu hỏi</button><button class="secondary" onclick="viewFormRevisions('${E(f.id)}')">Lịch sử phiên bản</button>${!f.enabled?`<button class="secondary" onclick="runFormWorkflow('${E(f.id)}','submit_review')">Gửi duyệt</button><button class="secondary" onclick="runFormWorkflow('${E(f.id)}','publish')">Phê duyệt & Công bố</button>`:`<button class="secondary" onclick="runFormWorkflow('${E(f.id)}','pause')">Tạm ngừng</button>`}<button class="ghost" onclick="cloneForm('${E(f.id)}')">Sao chép</button></div></div>`;
+  }).join("")}</div>`;
 }
+
+window.runFormWorkflow=async(idForm,action)=>{
+  const labels={submit_review:"Gửi biểu mẫu vào hàng đợi chờ phê duyệt?",publish:"Phê duyệt và công bố biểu mẫu này lên cổng công khai (/bieu-mau)?",pause:"Tạm ngừng tiếp nhận hồ sơ cho biểu mẫu này?"};
+  if(labels[action]&&!await adminConfirm(labels[action],{title:"Quy trình phê duyệt & công bố biểu mẫu",confirmText:"Xác nhận"}))return;
+  try{
+    await api(`/api/admin/forms/${encodeURIComponent(idForm)}/workflow`,{method:"POST",body:{action}});
+    toast("Đã cập nhật trạng thái quy trình biểu mẫu.");
+    adminForms(document.getElementById("adminMain"));
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.viewFormRevisions=async idForm=>{
+  try{
+    const d=await api(`/api/admin/forms/${encodeURIComponent(idForm)}/revisions`);
+    const items=d.items||[];
+    modal(`<div class="admin-modal-head"><div><span class="eyebrow">LỊCH SỬ PHIÊN BẢN BIỂU MẪU</span><h2>Biểu mẫu: ${E(idForm)}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+    <div class="table-scroll"><table><thead><tr><th>Phiên bản</th><th>Trạng thái</th><th>Thời điểm lưu</th><th>Thao tác</th></tr></thead><tbody>
+      ${items.map(r=>`<tr><td><b>v${E(r.version)}</b></td><td><span class="status ${r.status==="published"?"":"status-warn"}">${E(r.status==="published"?"Đã công bố":r.status==="draft"?"Bản nháp":r.status)}</span></td><td>${fmt(r.created_at)}</td><td><button type="button" class="secondary" onclick="restoreFormVersion('${E(idForm)}',${r.version})">Khôi phục về bản nháp</button></td></tr>`).join("")||`<tr><td colspan="4" class="muted">Đang ở phiên bản khởi tạo v1.</td></tr>`}
+    </tbody></table></div>
+    <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Đóng</button></div>`);
+  }catch(e){toast(errorText(e),"bad")}
+};
+
+window.restoreFormVersion=async(idForm,version)=>{
+  if(!await adminConfirm(`Khôi phục cấu hình biểu mẫu "${idForm}" từ phiên bản v${version} sang một bản nháp mới?`,{title:"Khôi phục phiên bản biểu mẫu",confirmText:"Khôi phục"}))return;
+  try{
+    await api(`/api/admin/forms/${encodeURIComponent(idForm)}/workflow`,{method:"POST",body:{action:"restore_version",version}});
+    closeModal();toast(`Đã khôi phục phiên bản v${version} về trạng thái Bản nháp.`);adminForms(document.getElementById("adminMain"));
+  }catch(e){toast(errorText(e),"bad")}
+};
 
 window.editForm=idForm=>{
   const f=state.admin.forms.find(x=>x.id===idForm);
@@ -1616,16 +1697,16 @@ window.editForm=idForm=>{
 
 function renderFormBuilder(){
   const f=state.formBuilder,c=f.config;
-  modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Chỉnh biểu mẫu — ${E(f.name)}</h2>
-   <div class="row2"><div class="field"><label>Tên biểu mẫu</label><input id="fbName" value="${E(f.name)}"></div><div class="field"><label>Mã tiền tố</label><input id="fbPrefix" value="${E(f.prefix)}"></div></div>
-   <div class="field"><label>Mô tả</label><textarea id="fbDesc">${E(f.description||"")}</textarea></div>
-   <div class="row2"><div class="field"><label>Loại biểu mẫu</label><select id="fbType"><option value="general" ${c.form_type!=="class"&&c.form_type!=="student"?"selected":""}>Đăng ký chung</option><option value="class" ${c.form_type==="class"?"selected":""}>Lớp học</option><option value="student" ${c.form_type==="student"?"selected":""}>Học viên mới</option></select></div><div class="field"><label>Trình bày</label><select id="fbPresentation"><option value="classic" ${(c.presentation||"classic")==="classic"?"selected":""}>Classic Form</option><option value="multi-step" ${c.presentation==="multi-step"?"selected":""}>Multi-step Form</option><option value="guided" ${c.presentation==="guided"?"selected":""}>Guided Form</option></select></div></div>
-   <div class="row2"><div class="field"><label>Trạng thái</label><select id="fbEnabled"><option value="1" ${f.enabled?"selected":""}>Đang mở</option><option value="0" ${!f.enabled?"selected":""}>Đóng / Draft</option></select></div><div class="field"><label>Chính sách review</label><select id="fbReview"><option value="1" ${c.review_before_submit!==false?"selected":""}>Review trước khi gửi</option><option value="0" ${c.review_before_submit===false?"selected":""}>Gửi trực tiếp</option></select></div></div>
-   <div class="check"><input id="fbMinorMode" type="checkbox" ${c.minor_mode?"checked":""}><label>MINOR PARTICIPANT MODE — tự hiển thị phần người giám hộ khi dưới 18 tuổi</label></div>
-   <div class="check"><input id="fbPhotoRequired" type="checkbox" ${c.profile_photo_required===true?"checked":""}><label>Yêu cầu ảnh cá nhân (chỉ bật khi thật sự cần)</label></div>
-   <div class="check"><input id="fbSignatureRequired" type="checkbox" ${c.signature_required===true?"checked":""}><label>Bắt buộc phải có chữ ký xác nhận (vẽ trực tiếp hoặc tải ảnh chữ ký)</label></div><p class="small muted">Data minimization: ảnh, giấy tờ định danh và tệp nhạy cảm không được bật mặc định.</p>
-   <div id="builderSections">${(c.sections||[]).map((sec,si)=>`<div class="builder-section"><div class="toolbar"><b>${E(sec.title)}</b><button class="secondary" onclick="addBuilderField(${si})">+ Câu hỏi</button><button class="danger" onclick="deleteBuilderSection(${si})">Xóa phần</button></div>${(sec.fields||[]).map((x,fi)=>`<div class="builder-field" draggable="true" data-builder-pos="${si}:${fi}"><span><b>${E(x.label)}</b><br><span class="small muted">${E(x.key)}</span></span><span>${E(x.type)}</span><span>${x.required?"Bắt buộc":"Không bắt buộc"}</span><span><button class="ghost" onclick="moveField(${si},${fi},-1)">↑</button><button class="ghost" onclick="moveField(${si},${fi},1)">↓</button><button class="secondary" onclick="editBuilderField(${si},${fi})">Sửa</button><button class="danger" onclick="deleteBuilderField(${si},${fi})">×</button></span></div>`).join("")}</div>`).join("")}</div>
-   <div class="actions"><button class="secondary" onclick="addBuilderSection()">+ Thêm phần</button><button class="secondary" onclick="previewFormBuilder()">Xem trước</button><button class="primary" onclick="saveFormBuilder()">Lưu phiên bản mới</button></div>`);
+  modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Chỉnh sửa biểu mẫu — ${E(f.name)}</h2>
+   <div class="row2"><div class="field"><label>Tên biểu mẫu</label><input id="fbName" value="${E(f.name)}"></div><div class="field"><label>Mã tiền tố hồ sơ</label><input id="fbPrefix" value="${E(f.prefix)}"></div></div>
+   <div class="field"><label>Mô tả biểu mẫu</label><textarea id="fbDesc">${E(f.description||"")}</textarea></div>
+   <div class="row2"><div class="field"><label>Loại biểu mẫu</label><select id="fbType"><option value="general" ${c.form_type!=="class"&&c.form_type!=="student"?"selected":""}>Đăng ký chung</option><option value="class" ${c.form_type==="class"?"selected":""}>Lớp học</option><option value="student" ${c.form_type==="student"?"selected":""}>Học viên mới</option></select></div><div class="field"><label>Kiểu trình bày</label><select id="fbPresentation"><option value="classic" ${(c.presentation||"classic")==="classic"?"selected":""}>Biểu mẫu tiêu chuẩn (Một trang)</option><option value="multi-step" ${c.presentation==="multi-step"?"selected":""}>Biểu mẫu nhiều bước</option><option value="guided" ${c.presentation==="guided"?"selected":""}>Biểu mẫu hướng dẫn từng bước</option></select></div></div>
+   <div class="row2"><div class="field"><label>Trạng thái xuất bản</label><select id="fbEnabled"><option value="1" ${f.enabled?"selected":""}>Đang công bố (Mở nhận hồ sơ)</option><option value="0" ${!f.enabled?"selected":""}>Bản nháp / Tạm đóng</option></select></div><div class="field"><label>Bước kiểm tra trước khi gửi</label><select id="fbReview"><option value="1" ${c.review_before_submit!==false?"selected":""}>Xem lại thông tin trước khi gửi</option><option value="0" ${c.review_before_submit===false?"selected":""}>Gửi trực tiếp</option></select></div></div>
+   <div class="check"><input id="fbMinorMode" type="checkbox" ${c.minor_mode?"checked":""}><label>Chế độ người tham gia dưới 18 tuổi — tự động hiển thị phần thông tin người giám hộ khi dưới 18 tuổi</label></div>
+   <div class="check"><input id="fbPhotoRequired" type="checkbox" ${c.profile_photo_required===true?"checked":""}><label>Yêu cầu ảnh cá nhân (chỉ bật khi chương trình thực sự cần)</label></div>
+   <div class="check"><input id="fbSignatureRequired" type="checkbox" ${c.signature_required===true?"checked":""}><label>Bắt buộc có chữ ký xác nhận (vẽ trực tiếp hoặc tải ảnh chữ ký)</label></div><p class="small muted">Nguyên tắc tối thiểu hóa dữ liệu: ảnh cá nhân, giấy tờ định danh và tệp nhạy cảm không được bật mặc định nếu nghiệp vụ không yêu cầu.</p>
+   <div id="builderSections">${(c.sections||[]).map((sec,si)=>`<div class="builder-section"><div class="toolbar"><b>${E(sec.title)}</b><button class="secondary" onclick="addBuilderField(${si})">+ Thêm câu hỏi</button><button class="danger" onclick="deleteBuilderSection(${si})">Xóa phần</button></div>${(sec.fields||[]).map((x,fi)=>`<div class="builder-field" draggable="true" data-builder-pos="${si}:${fi}"><span><b>${E(x.label)}</b><br><span class="small muted">${E(x.key)}</span></span><span>${E(x.type)}</span><span>${x.required?"Bắt buộc":"Không bắt buộc"}</span><span><button class="ghost" onclick="moveField(${si},${fi},-1)">↑</button><button class="ghost" onclick="moveField(${si},${fi},1)">↓</button><button class="secondary" onclick="editBuilderField(${si},${fi})">Sửa</button><button class="danger" onclick="deleteBuilderField(${si},${fi})">×</button></span></div>`).join("")}</div>`).join("")}</div>
+   <div class="actions"><button class="secondary" onclick="addBuilderSection()">+ Thêm phần mới</button><button class="secondary" onclick="previewFormBuilder()">Xem trước</button><button class="primary" onclick="saveFormBuilder()">Lưu phiên bản mới</button></div>`);
   document.getElementById("fbType").onchange=e=>{
     const type=e.target.value;
     if(type==="class"||type==="student") document.getElementById("fbPhotoRequired").checked=false;
@@ -1637,7 +1718,7 @@ function initBuilderDragDrop(){
 }
 
 window.addBuilderSection=async()=>{
-  const value=await adminPrompt("Tên phần","",{title:"Thêm phần biểu mẫu",required:true});
+  const value=await adminPrompt("Tên phần biểu mẫu","",{title:"Thêm phần biểu mẫu",required:true});
   const title=String(value||"").trim();if(!title)return;
   state.formBuilder.config.sections.push({title,fields:[]});renderFormBuilder();
 };
@@ -1645,35 +1726,44 @@ window.deleteBuilderSection=async i=>{
   const section=state.formBuilder.config.sections[i];if(!section)return;
   if(await adminConfirm(`Xóa phần “${section.title}” cùng toàn bộ câu hỏi bên trong?`,{title:"Xóa phần biểu mẫu",confirmText:"Xóa phần",danger:true})){state.formBuilder.config.sections.splice(i,1);renderFormBuilder();}
 };
-const builderFieldTypes=["text","email","date","textarea","select","checkbox","file","signature"];
+const builderFieldTypes=[
+  {value:"text",label:"Văn bản ngắn (text)"},
+  {value:"email",label:"Địa chỉ Email (email)"},
+  {value:"date",label:"Ngày tháng (date)"},
+  {value:"textarea",label:"Văn bản dài (textarea)"},
+  {value:"select",label:"Danh sách lựa chọn (select)"},
+  {value:"checkbox",label:"Ô đánh dấu xác nhận (checkbox)"},
+  {value:"file",label:"Tệp đính kèm (file)"},
+  {value:"signature",label:"Chữ ký xác nhận (signature)"}
+];
 function builderFieldKey(value){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/g,"d").replace(/Đ/g,"D").toLowerCase().trim().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,50);}
 window.addBuilderField=async si=>{
-  const value=await adminDialog({title:"Thêm câu hỏi",description:"Mã kỹ thuật được tạo tự động nếu để trống. Với câu hỏi dạng lựa chọn, nhập mỗi lựa chọn trên một dòng.",confirmText:"Thêm câu hỏi",fields:[
+  const value=await adminDialog({title:"Thêm câu hỏi biểu mẫu",description:"Mã kỹ thuật được tạo tự động nếu để trống. Với câu hỏi dạng danh sách lựa chọn, nhập mỗi lựa chọn trên một dòng.",confirmText:"Thêm câu hỏi",fields:[
     {name:"label",label:"Nhãn câu hỏi",required:true},
     {name:"key",label:"Mã kỹ thuật (không bắt buộc)",placeholder:"vd: ho_ten"},
-    {name:"type",label:"Loại trường",type:"select",value:"text",required:true,options:builderFieldTypes.map(v=>({value:v,label:v}))},
+    {name:"type",label:"Loại trường dữ liệu",type:"select",value:"text",required:true,options:builderFieldTypes},
     {name:"required",label:"Bắt buộc trả lời",type:"select",value:"yes",options:[{value:"yes",label:"Có, bắt buộc"},{value:"no",label:"Không bắt buộc"}]},
-    {name:"options",label:"Các lựa chọn (chỉ cho select)",type:"textarea",rows:4,placeholder:"Một lựa chọn trên mỗi dòng"}
+    {name:"options",label:"Các lựa chọn (dành cho trường danh sách lựa chọn)",type:"textarea",rows:4,placeholder:"Một lựa chọn trên mỗi dòng"}
   ]});
   if(!value)return;const label=value.label.trim(),key=builderFieldKey(value.key||label),type=value.type,options=String(value.options||"").split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
   if(!label||!key){toast("Nhãn và mã kỹ thuật hợp lệ là bắt buộc.","bad");return;}
   if(state.formBuilder.config.sections.some(sec=>(sec.fields||[]).some(f=>f.key===key))){toast("Mã kỹ thuật đã tồn tại trong biểu mẫu.","bad");return;}
-  if(type==="select"&&!options.length){toast("Câu hỏi dạng select cần ít nhất một lựa chọn.","bad");return;}
+  if(type==="select"&&!options.length){toast("Câu hỏi dạng danh sách lựa chọn cần ít nhất một lựa chọn.","bad");return;}
   state.formBuilder.config.sections[si].fields.push({key,label,type,required:value.required==="yes",options:type==="select"?options:[]});renderFormBuilder();
 };
 window.editBuilderField=async(si,fi)=>{
   const x=state.formBuilder.config.sections[si]?.fields[fi];if(!x)return;
-  const value=await adminDialog({title:"Chỉnh sửa câu hỏi",description:"Giữ nguyên mã kỹ thuật để tránh làm sai dữ liệu đã gửi. Với loại select, nhập mỗi lựa chọn trên một dòng.",confirmText:"Lưu câu hỏi",fields:[
+  const value=await adminDialog({title:"Chỉnh sửa câu hỏi",description:"Giữ nguyên mã kỹ thuật để tránh làm sai lệch dữ liệu đã gửi. Với trường danh sách lựa chọn, nhập mỗi lựa chọn trên một dòng.",confirmText:"Lưu câu hỏi",fields:[
     {name:"label",label:"Nhãn câu hỏi",value:x.label,required:true},
     {name:"key",label:"Mã kỹ thuật",value:x.key,required:true},
-    {name:"type",label:"Loại trường",type:"select",value:x.type||"text",required:true,options:builderFieldTypes.map(v=>({value:v,label:v}))},
+    {name:"type",label:"Loại trường dữ liệu",type:"select",value:x.type||"text",required:true,options:builderFieldTypes},
     {name:"required",label:"Bắt buộc trả lời",type:"select",value:x.required?"yes":"no",options:[{value:"yes",label:"Có, bắt buộc"},{value:"no",label:"Không bắt buộc"}]},
-    {name:"options",label:"Các lựa chọn (chỉ cho select)",type:"textarea",value:(x.options||[]).join("\n"),rows:4}
+    {name:"options",label:"Các lựa chọn (dành cho trường danh sách lựa chọn)",type:"textarea",value:(x.options||[]).join("\n"),rows:4}
   ]});
   if(!value)return;const label=value.label.trim(),key=builderFieldKey(value.key),type=value.type,options=String(value.options||"").split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
   if(!label||!key){toast("Nhãn và mã kỹ thuật hợp lệ là bắt buộc.","bad");return;}
   if(state.formBuilder.config.sections.some((sec,sidx)=>(sec.fields||[]).some((f,fidx)=>f.key===key&&(sidx!==si||fidx!==fi)))){toast("Mã kỹ thuật đã được dùng bởi câu hỏi khác.","bad");return;}
-  if(type==="select"&&!options.length){toast("Câu hỏi dạng select cần ít nhất một lựa chọn.","bad");return;}
+  if(type==="select"&&!options.length){toast("Câu hỏi dạng danh sách lựa chọn cần ít nhất một lựa chọn.","bad");return;}
   Object.assign(x,{label,key,type,required:value.required==="yes",options:type==="select"?options:[]});renderFormBuilder();
 };
 window.deleteBuilderField=async(si,fi)=>{const field=state.formBuilder.config.sections[si]?.fields[fi];if(!field)return;if(await adminConfirm(`Xóa câu hỏi “${field.label}” khỏi cấu hình biểu mẫu?`,{title:"Xóa câu hỏi",confirmText:"Xóa câu hỏi",danger:true})){state.formBuilder.config.sections[si].fields.splice(fi,1);renderFormBuilder();}};
@@ -1681,8 +1771,8 @@ window.moveField=(si,fi,dir)=>{const a=state.formBuilder.config.sections[si].fie
 
 window.previewFormBuilder=()=>{
   const c=state.formBuilder.config;
-  const html=(c.sections||[]).map(sec=>`<section><h3>${E(sec.title)}</h3>${(sec.fields||[]).map(x=>`<div class="field"><label>${E(x.label)}${x.required?" *":""}</label><div class="small muted">${E(x.type)} • ${E(x.key)}</div></div>`).join("")}</section>`).join("");
-  modal(`<button class="ghost" onclick="renderFormBuilder()">← Quay lại chỉnh sửa</button><h2>Xem trước — ${E(state.formBuilder.name)}</h2><div class="card">${html}</div>`);
+  const html=(c.sections||[]).map(sec=>`<section><h3>${E(sec.title)}</h3>${(sec.fields||[]).map(x=>`<div class="field"><label>${E(x.label)}${x.required?" *":""}</label><div class="small muted">Loại: ${E(x.type)} • Mã trường: <code>${E(x.key)}</code></div></div>`).join("")}</section>`).join("");
+  modal(`<button class="ghost" onclick="renderFormBuilder()">← Quay lại chỉnh sửa</button><h2>Xem trước cấu trúc — ${E(state.formBuilder.name)}</h2><div class="card">${html}</div>`);
 };
 
 window.saveFormBuilder=async()=>{
@@ -1696,38 +1786,39 @@ window.saveFormBuilder=async()=>{
   state.formBuilder.config.minor_mode=document.getElementById("fbMinorMode").checked;
   state.formBuilder.config.profile_photo_required=document.getElementById("fbPhotoRequired").checked;
   state.formBuilder.config.signature_required=!!document.getElementById("fbSignatureRequired")?.checked;
+  state.formBuilder.config.workflow_status=state.formBuilder.enabled?"published":"draft";
   try{
-    await api(`/api/admin/forms/${encodeURIComponent(state.formBuilder.id)}`,{method:"PUT",body:{name:state.formBuilder.name,prefix:state.formBuilder.prefix,description:state.formBuilder.description,audience:state.formBuilder.audience,min_age:state.formBuilder.min_age,enabled:!!state.formBuilder.enabled,recipient_email:state.formBuilder.recipient_email,config:state.formBuilder.config}});
-    closeModal();toast("Đã lưu phiên bản biểu mẫu.");adminForms(document.getElementById("adminMain"));
+    await api(`/api/admin/forms/${encodeURIComponent(state.formBuilder.id)}`,{method:"PUT",body:{name:state.formBuilder.name,prefix:state.formBuilder.prefix,description:state.formBuilder.description,audience:state.formBuilder.audience,min_age:state.formBuilder.min_age,enabled:!!state.formBuilder.enabled,workflow_status:state.formBuilder.config.workflow_status,recipient_email:state.formBuilder.recipient_email,config:state.formBuilder.config}});
+    closeModal();toast("Đã lưu phiên bản biểu mẫu mới.");adminForms(document.getElementById("adminMain"));
   }catch(e){toast(errorText(e),"bad")}
 };
 
 window.createForm=async()=>{
-  const values=await adminDialog({title:"Tạo biểu mẫu mới",description:"Biểu mẫu được tạo với các trường cơ bản; có thể mở Form Builder để bổ sung logic và điều kiện.",confirmText:"Tạo biểu mẫu",fields:[
-    {name:"name",label:"Tên biểu mẫu",required:true},
-    {name:"id",label:"ID biểu mẫu",required:true,placeholder:"volunteer_2026",help:"Dùng chữ thường, số và dấu gạch dưới; phải duy nhất."},
-    {name:"prefix",label:"Tiền tố mã đăng ký",value:"SFN-FORM",required:true,placeholder:"SFN-TNV"},
-    {name:"kind",label:"Loại biểu mẫu",type:"select",value:"general",options:[{value:"general",label:"Đăng ký chung"},{value:"class",label:"Lớp học"},{value:"student",label:"Học viên mới"}]}
+  const values=await adminDialog({title:"Tạo biểu mẫu mới (Bản nháp)",description:"Biểu mẫu mới sẽ được khởi tạo ở trạng thái Bản nháp (chưa công bố công khai). Bạn có thể bổ sung câu hỏi, xem trước và gửi phê duyệt trước khi công bố.",confirmText:"Khởi tạo bản nháp",fields:[
+    {name:"name",label:"Tên biểu mẫu *",required:true,placeholder:"VD: Đăng ký Chương trình Tình nguyện Mùa hè 2026"},
+    {name:"id",label:"Mã định danh biểu mẫu (ID) *",required:true,placeholder:"tnv_mua_he_2026",help:"Dùng chữ thường, số, dấu gạch dưới hoặc gạch ngang; phải duy nhất."},
+    {name:"prefix",label:"Tiền tố mã hồ sơ *",value:"SFN-FORM",required:true,placeholder:"SFN-TNV"},
+    {name:"description",label:"Mô tả ngắn",placeholder:"Nhập mô tả mục đích và đối tượng của biểu mẫu..."},
+    {name:"kind",label:"Phân loại biểu mẫu",type:"select",value:"general",options:[{value:"general",label:"Đăng ký chung"},{value:"class",label:"Đăng ký lớp học"},{value:"student",label:"Học viên mới"}]}
   ]});
-  if(!values)return;const name=values.name.trim(),idForm=values.id.trim().toLowerCase(),prefix=values.prefix.trim(),kind=values.kind;
-  if(!/^[a-z0-9_-]{2,80}$/.test(idForm)){toast("ID chỉ được gồm chữ thường, số, dấu gạch dưới hoặc gạch ngang.","bad");return;}
-  const cfg={id:idForm,name,prefix,description:"",audience:"public",form_type:kind,presentation:"classic",review_before_submit:true,minor_mode:false,profile_photo_required:false,term_codes:["PRIVACY/SFN"],sections:[{title:"Thông tin",fields:[{key:"full_name",label:"Họ và tên",type:"text",required:true},{key:"email",label:"Email",type:"email",required:true}]}]};
-  api("/api/admin/forms",{method:"POST",body:{id:idForm,name,prefix,description:"",audience:"public",config:cfg}}).then(()=>{toast("Đã tạo biểu mẫu.");adminForms(document.getElementById("adminMain"));}).catch(e=>toast(errorText(e),"bad"));
+  if(!values)return;const name=values.name.trim(),idForm=values.id.trim().toLowerCase(),prefix=values.prefix.trim().toUpperCase(),kind=values.kind;
+  if(!/^[a-z0-9_-]{2,80}$/.test(idForm)){toast("Mã định danh chỉ được gồm chữ thường, số, dấu gạch dưới hoặc gạch ngang (tối thiểu 2 ký tự).","bad");return;}
+  const cfg={id:idForm,name,prefix,description:values.description||"",audience:"public",form_type:kind,workflow_status:"draft",presentation:"classic",review_before_submit:true,minor_mode:false,profile_photo_required:false,signature_required:false,term_codes:["PRIVACY/SFN"],sections:[{title:"Thông tin người đăng ký",fields:[{key:"full_name",label:"Họ và tên",type:"text",required:true},{key:"email",label:"Địa chỉ Email",type:"email",required:true}]}]};
+  api("/api/admin/forms",{method:"POST",body:{id:idForm,name,prefix,description:values.description||"",audience:"public",publish:false,config:cfg}}).then(()=>{toast("Đã tạo biểu mẫu ở trạng thái Bản nháp.");adminForms(document.getElementById("adminMain"));}).catch(e=>toast(errorText(e),"bad"));
 };
 
 window.cloneForm=async idForm=>{
   const src=state.admin.forms.find(x=>x.id===idForm);if(!src)return;
-  const values=await adminDialog({title:"Sao chép biểu mẫu",description:"Cấu hình và các câu hỏi hiện tại sẽ được sao chép sang biểu mẫu mới.",confirmText:"Sao chép",fields:[
-    {name:"id",label:"ID biểu mẫu mới",value:`${src.id}_copy`,required:true},
+  const values=await adminDialog({title:"Sao chép biểu mẫu sang Bản nháp mới",description:"Cấu hình và các câu hỏi hiện tại sẽ được sao chép sang một biểu mẫu mới ở trạng thái Bản nháp.",confirmText:"Sao chép",fields:[
+    {name:"id",label:"Mã định danh biểu mẫu mới",value:`${src.id}_ban_sao`,required:true},
     {name:"name",label:"Tên biểu mẫu mới",value:`${src.name} — Bản sao`,required:true},
-    {name:"prefix",label:"Tiền tố mã đăng ký",value:src.prefix,required:true}
+    {name:"prefix",label:"Tiền tố mã hồ sơ",value:src.prefix,required:true}
   ]});
-  if(!values)return;const newId=values.id.trim().toLowerCase(),newName=values.name.trim(),newPrefix=values.prefix.trim();
-  if(!/^[a-z0-9_-]{2,80}$/.test(newId)){toast("ID chỉ được gồm chữ thường, số, dấu gạch dưới hoặc gạch ngang.","bad");return;}
-  const cfg=JSON.parse(JSON.stringify(src.config));cfg.id=newId;cfg.name=newName;cfg.prefix=newPrefix;
-  api("/api/admin/forms",{method:"POST",body:{id:newId,name:newName,prefix:newPrefix,description:src.description||"",audience:src.audience||"public",min_age:src.min_age,recipient_email:src.recipient_email,config:cfg}}).then(()=>{toast("Đã sao chép biểu mẫu.");adminForms(document.getElementById("adminMain"));}).catch(e=>toast(errorText(e),"bad"));
+  if(!values)return;const newId=values.id.trim().toLowerCase(),newName=values.name.trim(),newPrefix=values.prefix.trim().toUpperCase();
+  if(!/^[a-z0-9_-]{2,80}$/.test(newId)){toast("Mã định danh chỉ được gồm chữ thường, số, dấu gạch dưới hoặc gạch ngang.","bad");return;}
+  const cfg=JSON.parse(JSON.stringify(src.config));cfg.id=newId;cfg.name=newName;cfg.prefix=newPrefix;cfg.workflow_status="draft";
+  api("/api/admin/forms",{method:"POST",body:{id:newId,name:newName,prefix:newPrefix,description:src.description||"",audience:src.audience||"public",min_age:src.min_age,recipient_email:src.recipient_email,publish:false,config:cfg}}).then(()=>{toast("Đã sao chép biểu mẫu sang Bản nháp mới.");adminForms(document.getElementById("adminMain"));}).catch(e=>toast(errorText(e),"bad"));
 };
-
 
 function adminNewsSlug(value){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/g,"d").replace(/Đ/g,"D").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,160);}
 function adminNewsTags(value){try{const parsed=typeof value==="string"?JSON.parse(value||"[]"):value;return Array.isArray(parsed)?parsed.map(x=>String(x)).join(", "):""}catch{return String(value||"")}}
@@ -1877,7 +1968,7 @@ window.confirmDeleteGeneric=(type,idv)=>{
 
 function adminTitle(t){
   return {
-    news:"Tin tức & CMS",
+    news:"Tin tức & Thông báo",
     classes:"Lớp học",
     events:"Sự kiện",
     units:"Đơn vị trực thuộc",
@@ -1939,8 +2030,8 @@ async function adminCertificates(main){
   state.admin.certificates=d.items||[];
 
   main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Giấy đã phát hành</h1><button class="primary" onclick="requestCertificate()">+ Phát hành giấy</button></div>
-  <div class="notice"><b>Draft → Prepare → Review → Issue → Verify → Revoke/Supersede.</b> Mã mới chỉ được sinh khi Issue, dạng <code>SFN-GCN/GXN/BK-#####</code> ngẫu nhiên. Mã legacy giữ nguyên, không convert.</div>
-  <div class="card table-scroll"><table><thead><tr><th>Mã</th><th>Người được ghi nhận</th><th>Nội dung</th><th>Trạng thái</th><th>Actions</th></tr></thead><tbody>${state.admin.certificates.map(c=>`<tr><td><b>${E(c.code||"Chưa phát hành")}</b></td><td>${E(c.full_name)}<br><span class="small muted">${E(c.cert_type||"")}</span></td><td>${E(c.content)}</td><td><span class="status">${E(c.status)}</span></td><td><button class="secondary" onclick="credentialHistory('${E(c.id)}')">History</button> ${c.status==="approved"?`<button class="primary" onclick="issueCert('${E(c.id)}')">Issue</button>`:""}${c.status==="issued"?` <button class="secondary" onclick="showCertQR('${E(c.code)}')">QR</button> <button class="secondary" onclick="supersedeCert('${E(c.id)}')">Supersede</button> <button class="danger" onclick="revokeCert('${E(c.id)}')">Revoke</button>`:""}</td></tr>`).join("")}</tbody></table></div>`;
+  <div class="notice"><b>Quy trình chuẩn: Đề nghị → Thẩm định & Phê duyệt → Phát hành chính thức → Xác thực trực tuyến → Thu hồi / Thay thế.</b> Mã định danh chỉ được sinh khi Phát hành chính thức (dạng <code>SFN-GCN/GXN/BK-########</code>); các mã lịch sử được bảo toàn nguyên trạng.</div>
+  <div class="card table-scroll"><table><thead><tr><th>Mã chứng nhận</th><th>Người được ghi nhận</th><th>Nội dung ghi nhận</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>${state.admin.certificates.map(c=>`<tr><td><b>${E(c.code||"Chưa phát hành")}</b></td><td>${E(c.full_name)}<br><span class="small muted">${E(c.cert_type||"")}</span></td><td>${E(c.content)}</td><td><span class="status">${E(c.status)}</span></td><td><button class="secondary" onclick="credentialHistory('${E(c.id)}')">Lịch sử</button> ${c.status==="approved"?`<button class="primary" onclick="issueCert('${E(c.id)}')">Phát hành</button>`:""}${c.status==="issued"?` <button class="secondary" onclick="showCertQR('${E(c.code)}')">Mã QR</button> <button class="secondary" onclick="supersedeCert('${E(c.id)}')">Thay thế</button> <button class="danger" onclick="revokeCert('${E(c.id)}')">Thu hồi</button>`:""}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 window.requestCertificate=()=>{
@@ -2056,7 +2147,7 @@ window.requestCertificate=()=>{
       });
 
       closeModal();
-      toast("Đã tạo credential ở trạng thái chờ duyệt.");
+      toast("Đã tạo đề nghị cấp chứng nhận ở trạng thái chờ duyệt.");
       adminCertificates(document.getElementById("adminMain"));
 
     }catch(err){
@@ -2095,17 +2186,17 @@ window.revokeCert=async idc=>{
 window.supersedeCert=async idc=>{
   const note=await adminPrompt("Lý do cần thay thế giấy","",{title:"Yêu cầu thay thế giấy",type:"textarea",required:true});if(note===null||!note.trim())return;
   if(!await adminConfirm("Tạo một yêu cầu thay thế chờ phê duyệt; giấy hiện tại chưa bị thay đổi cho đến khi bản mới được phát hành.",{title:"Xác nhận yêu cầu thay thế",confirmText:"Gửi yêu cầu"}))return;
-  api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{method:"PATCH",body:{action:"supersede",note:note.trim()}}).then(()=>{toast("Đã tạo bản replacement chờ phê duyệt.");adminCertificates(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"));
+  api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{method:"PATCH",body:{action:"supersede",note:note.trim()}}).then(()=>{toast("Đã tạo bản thay thế chờ phê duyệt.");adminCertificates(document.getElementById("adminMain"))}).catch(e=>toast(errorText(e),"bad"));
 };
 window.credentialHistory=async idc=>{
-  try{const d=await api(`/api/admin/certificates/${encodeURIComponent(idc)}/history`);modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Lịch sử giấy đã phát hành</h2><p><b>${E(d.item.code||'Chưa phát hành')}</b> · ${E(d.item.full_name)} · ${E(d.item.status)}</p><div class="timeline-admin">${(d.history||[]).map(h=>`<div class="card"><b>${E(h.action)}</b><p>${E(h.note||'')}</p><small>${fmt(h.created_at)}${h.actor_id?` · Actor #${E(h.actor_id)}`:''}</small></div>`).join('')||'<p>Chưa có history.</p>'}</div>`)}catch(e){toast(errorText(e),'bad')}
+  try{const d=await api(`/api/admin/certificates/${encodeURIComponent(idc)}/history`);modal(`<button class="ghost" onclick="closeModal()">✕ Đóng</button><h2>Lịch sử giấy đã phát hành</h2><p><b>${E(d.item.code||'Chưa phát hành')}</b> · ${E(d.item.full_name)} · ${E(d.item.status)}</p><div class="timeline-admin">${(d.history||[]).map(h=>`<div class="card"><b>${E(h.action)}</b><p>${E(h.note||'')}</p><small>${fmt(h.created_at)}${h.actor_id?` · Người thực hiện #${E(h.actor_id)}`:''}</small></div>`).join('')||'<p>Chưa có lịch sử thao tác.</p>'}</div>`)}catch(e){toast(errorText(e),'bad')}
 };
 
 async function adminTickets(main){
   const d=await api("/api/admin/tickets");
   state.admin.tickets=d.items||[];
 
-  main.innerHTML=`<h1>Hỗ trợ & Ticket</h1><div class="card table-scroll"><table><thead><tr><th>Mã</th><th>Người gửi</th><th>Loại</th><th>Ưu tiên</th><th>Trạng thái</th><th></th></tr></thead><tbody>${state.admin.tickets.map(t=>`<tr><td><b>${E(t.code)}</b></td><td>${E(t.submitter_name||"")}<br>${E(t.email||"")}</td><td>${E(t.ticket_type||"")}</td><td>${E(t.priority)}</td><td>${E(t.status)}</td><td><button class="secondary" onclick="editTicket('${E(t.id)}')">Xử lý</button></td></tr>`).join("")}</tbody></table></div>`;
+  main.innerHTML=`<h1>Quản lý Phiếu hỗ trợ</h1><div class="card table-scroll"><table><thead><tr><th>Mã</th><th>Người gửi</th><th>Loại</th><th>Ưu tiên</th><th>Trạng thái</th><th></th></tr></thead><tbody>${state.admin.tickets.map(t=>`<tr><td><b>${E(t.code)}</b></td><td>${E(t.submitter_name||"")}<br>${E(t.email||"")}</td><td>${E(t.ticket_type||"")}</td><td>${E(t.priority)}</td><td>${E(t.status)}</td><td><button class="secondary" onclick="editTicket('${E(t.id)}')">Xử lý</button></td></tr>`).join("")}</tbody></table></div>`;
 }
 
 window.editTicket=idt=>{
@@ -2124,47 +2215,116 @@ window.saveTicket=idt=>api(`/api/admin/tickets/${encodeURIComponent(idt)}`,{
   }
 }).then(()=>{
   closeModal();
-  toast("Đã cập nhật ticket.");
+  toast("Đã cập nhật phiếu hỗ trợ.");
   adminTickets(document.getElementById("adminMain"));
 }).catch(e=>toast(errorText(e),"bad"));
 
 async function adminFiles(main){
   const d=await api("/api/admin/files");
+  state.admin.filesList=d.items||[];
+  state.admin.filesPage=1;
+  state.admin.filesQuery="";
+  state.admin.filesVis="all";
 
-  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">File & Minh chứng</h1><button class="primary" onclick="uploadAdminFile()">+ Upload</button></div><div class="card table-scroll"><table><thead><tr><th>Tệp</th><th>Loại</th><th>Dung lượng</th><th>Quyền</th><th></th></tr></thead><tbody>${(d.items||[]).map(f=>`<tr><td><a href="/api/files/${E(f.id)}" target="_blank">${E(f.filename)}</a></td><td>${E(f.mime)}</td><td>${Math.round((f.size||0)/1024)} KB</td><td>${E(f.visibility)}</td><td><button class="danger" onclick="deleteFile('${E(f.id)}')">Xóa</button></td></tr>`).join("")}</tbody></table></div>`;
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">KHO TỆP & MINH CHỨNG HỆ THỐNG</span><h1>Quản lý Tệp & Minh chứng (/admin/files)</h1><p class="muted">Quản lý toàn bộ tệp đính kèm hồ sơ, tài liệu PDF và minh chứng lưu trữ trên R2/D1. Hỗ trợ tìm kiếm tức thời, lọc theo phạm vi truy cập, phân trang và kiểm tra an toàn tham chiếu trước khi xóa.</p></div><button type="button" class="primary" onclick="uploadAdminFile()">+ Tải tệp mới lên</button></div>
+  <section class="card admin-card-premium">
+    <div class="toolbar">
+      <label class="admin-searchbox" style="flex:1;min-width:240px;"><span>⌕</span><input id="adminFilesSearch" type="search" placeholder="Tìm theo tên tệp, mã hồ sơ, loại MIME hoặc mã tệp…" aria-label="Tìm kiếm tệp"></label>
+      <select id="adminFilesVisFilter" aria-label="Lọc quyền truy cập">
+        <option value="all">Tất cả quyền truy cập</option>
+        <option value="public">Công khai (Public)</option>
+        <option value="private">Nội bộ / Bảo mật (Private)</option>
+      </select>
+      <span id="adminFilesSummary" class="small muted"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Tên tệp & Mã định danh</th><th>Hồ sơ / Trường liên kết</th><th>Định dạng (MIME)</th><th>Dung lượng</th><th>Quyền truy cập</th><th>Thời gian tải lên</th><th>Thao tác</th></tr></thead>
+        <tbody id="adminFilesRows"></tbody>
+      </table>
+    </div>
+    <div class="toolbar" id="adminFilesPager" style="margin-top:12px;justify-content:space-between;"></div>
+  </section>`;
+
+  const renderRows=()=>{
+    const q=(state.admin.filesQuery||"").toLowerCase();
+    const vis=state.admin.filesVis||"all";
+    const filtered=(state.admin.filesList||[]).filter(f=>{
+      if(vis!=="all"&&f.visibility!==vis) return false;
+      if(q&&![f.id,f.filename,f.mime,f.submission_code,f.field_key].join(" ").toLowerCase().includes(q)) return false;
+      return true;
+    });
+    const pageSize=25;
+    const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
+    if(state.admin.filesPage>totalPages) state.admin.filesPage=totalPages;
+    const start=(state.admin.filesPage-1)*pageSize;
+    const pageItems=filtered.slice(start,start+pageSize);
+
+    const summaryEl=document.getElementById("adminFilesSummary");
+    if(summaryEl) summaryEl.textContent=`Hiển thị ${pageItems.length} / ${filtered.length} tệp`;
+
+    const tbody=document.getElementById("adminFilesRows");
+    if(tbody){
+      tbody.innerHTML=pageItems.map(f=>`<tr>
+        <td><a href="/api/files/${encodeURIComponent(f.id)}" target="_blank" rel="noopener"><b>${E(f.filename||f.id)}</b></a><br><small class="muted">Mã: <code>${E(f.id)}</code>${f.sha256?` · SHA-256: <code>${E(f.sha256.slice(0,12))}…</code>`:""}</small></td>
+        <td>${f.submission_code?`<b>${E(f.submission_code)}</b><br><small class="muted">${E(f.field_key||"")}</small>`:"<span class='muted'>Tải lên trực tiếp</span>"}</td>
+        <td><code>${E(f.mime||"application/octet-stream")}</code></td>
+        <td>${Math.max(1,Math.round((f.size||0)/1024))} KB</td>
+        <td><span class="status ${f.visibility==="public"?"":"status-warn"}">${f.visibility==="public"?"Công khai":"Nội bộ"}</span></td>
+        <td>${fmt(f.created_at)}</td>
+        <td><div class="admin-row-actions"><a class="secondary" href="/api/files/${encodeURIComponent(f.id)}" target="_blank" rel="noopener">Xem</a><a class="secondary" href="/api/files/${encodeURIComponent(f.id)}?download=1">Tải về</a><button type="button" class="danger" onclick="deleteFile('${E(f.id)}')">Xóa</button></div></td>
+      </tr>`).join("")||`<tr><td colspan="7" class="muted">Không có tệp nào phù hợp với bộ lọc hiện tại.</td></tr>`;
+    }
+
+    const pager=document.getElementById("adminFilesPager");
+    if(pager){
+      pager.innerHTML=`<span class="small muted">Trang ${state.admin.filesPage} / ${totalPages} (Tổng ${filtered.length} tệp)</span>
+      <div style="display:flex;gap:6px;">
+        <button type="button" class="secondary" id="filesPrevPage" ${state.admin.filesPage<=1?"disabled":""}>← Trang trước</button>
+        <button type="button" class="secondary" id="filesNextPage" ${state.admin.filesPage>=totalPages?"disabled":""}>Trang sau →</button>
+      </div>`;
+      document.getElementById("filesPrevPage")?.addEventListener("click",()=>{if(state.admin.filesPage>1){state.admin.filesPage--;renderRows();}});
+      document.getElementById("filesNextPage")?.addEventListener("click",()=>{if(state.admin.filesPage<totalPages){state.admin.filesPage++;renderRows();}});
+    }
+  };
+
+  document.getElementById("adminFilesSearch")?.addEventListener("input",e=>{state.admin.filesQuery=e.target.value.trim();state.admin.filesPage=1;renderRows();});
+  document.getElementById("adminFilesVisFilter")?.addEventListener("change",e=>{state.admin.filesVis=e.target.value;state.admin.filesPage=1;renderRows();});
+  renderRows();
 }
 
 window.uploadAdminFile=()=>{
-  modal(`<h2>Upload file</h2><form id="upFile"><div class="field"><input name="file" type="file" required></div><div class="check"><input name="public" type="checkbox"><label>Cho phép công khai</label></div><button class="primary">Upload</button></form>`);
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">KHO TỆP & MINH CHỨNG</span><h2>Tải tệp mới lên hệ thống</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+  <form id="upFile">
+    <div class="field"><label for="upFileInput">Chọn tệp từ thiết bị *</label><input id="upFileInput" name="file" type="file" required></div>
+    <div class="check"><input id="upFilePublic" name="public" type="checkbox"><label for="upFilePublic">Cho phép truy cập công khai (Public)</label></div>
+    <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button type="submit" class="primary" id="upFileSubmitBtn">Tải tệp lên</button></div>
+  </form>`);
 
   document.getElementById("upFile").onsubmit=async e=>{
     e.preventDefault();
-
+    const btn=document.getElementById("upFileSubmitBtn");
     const f=new FormData(e.target);
     const fd=new FormData();
-
     fd.append("file",f.get("file"));
     fd.append("visibility",f.get("public")?"public":"private");
-
+    if(btn){btn.disabled=true;btn.textContent="Đang tải lên…";}
     try{
-      await api("/api/admin/upload",{
-        method:"POST",
-        body:fd
-      });
-
+      await api("/api/admin/upload",{method:"POST",body:fd});
       closeModal();
-      toast("Đã upload.");
+      toast("Đã tải tệp lên kho lưu trữ thành công.");
       adminFiles(document.getElementById("adminMain"));
     }catch(err){
       toast(errorText(err),"bad");
+      if(btn){btn.disabled=false;btn.textContent="Tải tệp lên";}
     }
   };
 };
 
 window.deleteFile=async idf=>{
-  if(!await adminConfirm("Tệp sẽ bị xóa khỏi kho lưu trữ. Thao tác này không thể hoàn tác.",{title:"Xóa tệp",confirmText:"Xóa tệp",danger:true}))return;
+  if(!await adminConfirm("Tệp sẽ bị xóa khỏi kho lưu trữ sau khi hệ thống kiểm tra không còn hồ sơ, tài liệu hay chứng nhận nào đang tham chiếu. Thao tác này không thể hoàn tác.",{title:"Xóa tệp khỏi kho lưu trữ",confirmText:"Xác nhận xóa tệp",danger:true}))return;
   api(`/api/admin/files/${encodeURIComponent(idf)}`,{method:"DELETE"})
-    .then(()=>{toast("Đã xóa.");adminFiles(document.getElementById("adminMain"));})
+    .then(()=>{toast("Đã xóa tệp khỏi kho lưu trữ.");adminFiles(document.getElementById("adminMain"));})
     .catch(e=>toast(errorText(e),"bad"));
 };
 
@@ -2183,7 +2343,8 @@ const EMAIL_TEMPLATE_META = {
   fundraising_update: {name:"Thông báo cập nhật minh bạch tài trợ", group:"Tài trợ", trigger:"Khi công bố báo cáo hoặc cập nhật chương trình tài trợ", file:"email_universal_auto.html"},
   submission_internal: {name:"Thông báo hồ sơ mới (Quản trị viên)", group:"Quản trị nội bộ", trigger:"Gửi về địa chỉ tiếp nhận nội bộ khi có hồ sơ mới", file:"email_universal_auto.html"},
   verify_email: {name:"Xác minh địa chỉ email", group:"Tài khoản & Bảo mật", trigger:"Khi yêu cầu xác minh email tài khoản", file:"email_universal_auto.html"},
-  password_reset: {name:"Hướng dẫn đặt lại mật khẩu", group:"Tài khoản & Bảo mật", trigger:"Khi quản trị viên cấp liên kết đặt lại mật khẩu", file:"email_universal_auto.html"}
+  password_reset: {name:"Hướng dẫn đặt lại mật khẩu", group:"Tài khoản & Bảo mật", trigger:"Khi quản trị viên cấp liên kết đặt lại mật khẩu", file:"email_universal_auto.html"},
+  document_published: {name:"Thông báo phát hành tài liệu số", group:"Tài liệu & Thư viện PDF", trigger:"Khi tài liệu mới được phê duyệt và công bố", file:"email_universal_auto.html"}
 };
 
 async function adminEmail(main){
@@ -2269,18 +2430,39 @@ window.saveEmailTemplate=key=>api(
 }).catch(e=>toast(errorText(e),"bad"));
 
 // ================= QUẢN LÝ MINH BẠCH TÀI TRỢ & VIETQR (#admin/sponsorship) =================
+const ADMIN_NAPAS_BANKS=[
+  {bin:"970436",code:"VCB",short_name:"Vietcombank",name:"Ngân hàng TMCP Ngoại thương Việt Nam (Vietcombank)"},
+  {bin:"970415",code:"ICB",short_name:"VietinBank",name:"Ngân hàng TMCP Công thương Việt Nam (VietinBank)"},
+  {bin:"970418",code:"BIDV",short_name:"BIDV",name:"Ngân hàng TMCP Đầu tư và Phát triển Việt Nam (BIDV)"},
+  {bin:"970405",code:"VBA",short_name:"Agribank",name:"Ngân hàng Nông nghiệp và Phát triển Nông thôn Việt Nam (Agribank)"},
+  {bin:"970422",code:"MB",short_name:"MBBank",name:"Ngân hàng TMCP Quân đội (MB Bank)"},
+  {bin:"970407",code:"TCB",short_name:"Techcombank",name:"Ngân hàng TMCP Kỹ thương Việt Nam (Techcombank)"},
+  {bin:"970416",code:"ACB",short_name:"ACB",name:"Ngân hàng TMCP Á Châu (ACB)"},
+  {bin:"970432",code:"VPB",short_name:"VPBank",name:"Ngân hàng TMCP Việt Nam Thịnh Vượng (VPBank)"},
+  {bin:"970423",code:"TPB",short_name:"TPBank",name:"Ngân hàng TMCP Tiên Phong (TPBank)"},
+  {bin:"970403",code:"STB",short_name:"Sacombank",name:"Ngân hàng TMCP Sài Gòn Thương Tín (Sacombank)"},
+  {bin:"970437",code:"HDB",short_name:"HDBank",name:"Ngân hàng TMCP Phát triển TP. Hồ Chí Minh (HDBank)"},
+  {bin:"970441",code:"VIB",short_name:"VIB",name:"Ngân hàng TMCP Quốc tế Việt Nam (VIB)"},
+  {bin:"970443",code:"SHB",short_name:"SHB",name:"Ngân hàng TMCP Sài Gòn - Hà Nội (SHB)"},
+  {bin:"970431",code:"EIB",short_name:"Eximbank",name:"Ngân hàng TMCP Xuất Nhập khẩu Việt Nam (Eximbank)"},
+  {bin:"970426",code:"MSB",short_name:"MSB",name:"Ngân hàng TMCP Hàng Hải Việt Nam (MSB)"},
+  {bin:"970448",code:"OCB",short_name:"OCB",name:"Ngân hàng TMCP Phương Đông (OCB)"},
+  {bin:"970440",code:"SEAB",short_name:"SeABank",name:"Ngân hàng TMCP Đông Nam Á (SeABank)"},
+  {bin:"970449",code:"LPB",short_name:"LPBank",name:"Ngân hàng TMCP Lộc Phát Việt Nam (LPBank)"}
+];
+
 async function adminSponsorship(main){
   const d=await api("/api/admin/sponsorship");
   state.admin.sponsorship=d;
   const camps=d.campaigns||[],txs=d.transactions||[],reps=d.reports||[],intents=d.payment_intents||[],trail=d.audit_trail||[];
   const fmtVnd=n=>new Intl.NumberFormat("vi-VN").format(Math.round(Number(n||0)))+" đồng";
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">MINH BẠCH TÀI CHÍNH, VIETQR & ĐỐI SOÁT</span><h1>Quản lý Chương trình Tài trợ & Sổ cái Giao dịch</h1><p class="muted">Tách biệt rõ Mục tiêu, Cam kết, Thực nhận, Đã chi và Số dư còn lại. Tích hợp sinh mã VietQR động theo chiến dịch, đối soát Webhook tự động và xuất báo cáo CSV.</p></div><div class="actions"><button type="button" class="secondary" onclick="location.href='/api/admin/export/sponsorship.csv'">⬇ Xuất CSV đối soát</button><button type="button" class="secondary" onclick="createSponsorshipReport()">+ Thêm báo cáo/chứng từ</button><button type="button" class="secondary" onclick="createSponsorshipTx()">+ Ghi nhận giao dịch</button><button type="button" class="primary" onclick="editSponsorshipCampaign(null)">+ Tạo chương trình tài trợ</button></div></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">MINH BẠCH TÀI CHÍNH, VIETQR & ĐỐI SOÁT</span><h1>Quản lý Chương trình Tài trợ & Sổ cái Giao dịch</h1><p class="muted">Tách biệt rõ 5 chỉ tiêu: Mục tiêu, Cam kết, Thực nhận, Đã chi và Số dư còn lại. Tích hợp danh mục ngân hàng chuẩn NAPAS 247, sinh mã VietQR chuẩn ISO/IEC 18004 theo từng chiến dịch và đối soát hai bước.</p></div><div class="actions"><button type="button" class="secondary" onclick="location.href='/api/admin/export/sponsorship.csv'">⬇ Xuất CSV đối soát</button><button type="button" class="secondary" onclick="createSponsorshipReport()">+ Thêm báo cáo/chứng từ</button><button type="button" class="secondary" onclick="createSponsorshipTx()">+ Ghi nhận giao dịch</button><button type="button" class="primary" onclick="editSponsorshipCampaign(null)">+ Tạo chương trình tài trợ</button></div></div>
   <section class="card admin-card-premium">
     <div class="admin-card-heading"><div><span class="eyebrow">01 / CHƯƠNG TRÌNH TÀI TRỢ & TÀI KHOẢN VIETQR</span><h2>Danh sách chương trình (${camps.length})</h2></div></div>
-    <div class="table-scroll"><table><thead><tr><th>Mã & Tên chương trình</th><th>Tài khoản nhận (VietQR)</th><th>Mục tiêu</th><th>Thực nhận</th><th>Đã chi</th><th>Trạng thái & Công khai</th><th>Thao tác</th></tr></thead><tbody>
+    <div class="table-scroll"><table><thead><tr><th>Mã & Tên chương trình</th><th>Tài khoản nhận (VietQR NAPAS)</th><th>Mục tiêu</th><th>Thực nhận</th><th>Đã chi</th><th>Trạng thái & Công khai</th><th>Thao tác</th></tr></thead><tbody>
       ${camps.map(c=>`<tr>
         <td><b>${E(c.code)}</b> — ${E(c.title)}<br><small class="muted">${E(c.summary||"")}</small></td>
-        <td><small><b>${E(c.bank_name||c.bank_code||"Chưa cấu hình")}</b><br>STK: <code>${E(c.bank_account_no||"—")}</code><br>${E(c.bank_account_name||"")}</small></td>
+        <td><small><b>${E(c.bank_name||"Chưa chọn ngân hàng")}</b>${c.bank_bin?` (<code>BIN: ${E(c.bank_bin)}</code>)`:""}<br>STK: <code>${E(c.bank_account_no||"Chưa cấu hình")}</code><br>${E(c.bank_account_name||"")}</small></td>
         <td>${E(fmtVnd(c.target_amount))}</td>
         <td><b style="color:var(--good)">${E(fmtVnd(c.received_amount))}</b><br><small class="muted">Cam kết: ${E(fmtVnd(c.pledged_amount))}</small></td>
         <td>${E(fmtVnd(c.disbursed_amount))}</td>
@@ -2293,48 +2475,74 @@ async function adminSponsorship(main){
     <div class="admin-card-heading"><div><span class="eyebrow">02 / GIAO DỊCH ĐỐI SOÁT</span><h2>Nhật ký cam kết, thực nhận & giải ngân (${txs.length})</h2></div></div>
     <div class="table-scroll"><table><thead><tr><th>Mã GD & Tham chiếu</th><th>Chương trình</th><th>Loại</th><th>Số tiền</th><th>Đơn vị hiển thị công khai</th><th>Trạng thái xác minh</th><th>Thao tác</th></tr></thead><tbody>
       ${txs.map(tx=>`<tr>
-        <td><b>${E(tx.tx_code)}</b>${tx.bank_ref?`<br><small class="muted">Ref: <code>${E(tx.bank_ref)}</code></small>`:""}</td>
+        <td><b>${E(tx.tx_code)}</b>${(tx.reference_code||tx.bank_ref)?`<br><small class="muted">Tham chiếu: <code>${E(tx.reference_code||tx.bank_ref)}</code></small>`:""}</td>
         <td>${E(tx.campaign_code)}</td>
-        <td><span class="pill">${E(tx.tx_type)}</span></td>
+        <td><span class="pill">${E(tx.tx_type==="pledge"?"Cam kết":tx.tx_type==="receipt"?"Thực nhận":tx.tx_type==="disbursement"?"Giải ngân":tx.tx_type==="refund"?"Hoàn trả":"Điều chỉnh")}</span></td>
         <td><b>${E(fmtVnd(tx.amount))}</b></td>
         <td>${E(tx.public_party_label)}<br><small class="muted">${E(tx.purpose||"")}</small></td>
-        <td><span class="status ${tx.verification_status==="verified"?"":"status-warn"}">${E(tx.verification_status)}</span> (${tx.is_public?"Công khai":"Nội bộ"})</td>
-        <td><button type="button" class="secondary" onclick="verifySponsorshipTx('${E(tx.id)}','${tx.verification_status==='verified'?'pending':'verified'}',${tx.is_public?0:1})">${tx.verification_status==="verified"?"Đổi trạng thái":"Xác minh & Công bố"}</button></td>
+        <td><span class="status ${tx.verification_status==="verified"?"":"status-warn"}">${tx.verification_status==="verified"?"Đã xác minh":"Chờ đối soát"}</span> (${tx.is_public?"Công khai":"Nội bộ"})</td>
+        <td><button type="button" class="secondary" onclick="verifySponsorshipTx('${E(tx.id)}','${tx.verification_status==='verified'?'pending':'verified'}',${tx.is_public?0:1})">${tx.verification_status==="verified"?"Chuyển về chờ đối soát":"Xác minh & Công bố"}</button></td>
       </tr>`).join("")||`<tr><td colspan="7" class="muted">Chưa có giao dịch tài trợ nào.</td></tr>`}
     </tbody></table></div>
   </section>
   <div class="admin-grid2" style="margin-top:18px;">
     <section class="card admin-card-premium">
-      <div class="admin-card-heading"><div><span class="eyebrow">03 / LỆNH CHUYỂN KHOẢN QR (PAYMENT INTENTS)</span><h2>Mã tham chiếu QR đã tạo (${intents.length})</h2></div></div>
-      <div class="table-scroll"><table><thead><tr><th>Mã tham chiếu</th><th>Số tiền</th><th>Nội dung CK</th><th>Trạng thái</th></tr></thead><tbody>
-        ${intents.slice(0,20).map(it=>`<tr><td><b>${E(it.intent_code)}</b><br><small class="muted">${fmt(it.created_at)}</small></td><td>${E(fmtVnd(it.amount))}</td><td><code>${E(it.transfer_memo||"")}</code></td><td><span class="status ${it.status==="paid"?"":"status-warn"}">${E(it.status)}</span></td></tr>`).join("")||`<tr><td colspan="4" class="muted">Chưa có lệnh QR nào.</td></tr>`}
+      <div class="admin-card-heading"><div><span class="eyebrow">03 / PHIÊN CHUYỂN KHOẢN QR</span><h2>Mã tham chiếu QR đã khởi tạo (${intents.length})</h2></div></div>
+      <div class="table-scroll"><table><thead><tr><th>Mã tham chiếu</th><th>Số tiền dự kiến</th><th>Nội dung & Ngân hàng</th><th>Trạng thái đối soát</th></tr></thead><tbody>
+        ${intents.slice(0,30).map(it=>{
+          const refCode=it.reference_code||it.intent_code||"—";
+          const amt=it.expected_amount??it.amount??0;
+          const memo=it.purpose||it.transfer_memo||refCode;
+          const pState=it.payment_state||it.status||"qr_generated";
+          const pLabel=pState==="verified"||pState==="paid"?"Đã đối soát":pState==="transfer_reported"?"Người gửi báo đã chuyển (Chờ đối soát)":"Mới tạo mã QR (Chưa xác nhận tiền về)";
+          return `<tr><td><b><code>${E(refCode)}</code></b><br><small class="muted">${fmt(it.created_at)}</small></td><td><b>${E(fmtVnd(amt))}</b></td><td><small>${E(memo)}<br>BIN: <code>${E(it.recipient_bank_bin||"—")}</code> · STK: <code>${E(it.recipient_account_no||"—")}</code></small></td><td><span class="status ${pState==="verified"||pState==="paid"?"":"status-warn"}">${E(pLabel)}</span></td></tr>`;
+        }).join("")||`<tr><td colspan="4" class="muted">Chưa có phiên mã QR nào được tạo.</td></tr>`}
       </tbody></table></div>
     </section>
     <section class="card admin-card-premium">
       <div class="admin-card-heading"><div><span class="eyebrow">04 / NHẬT KÝ KIỂM TOÁN TÀI TRỢ BẤT BIẾN</span><h2>Lịch sử thay đổi tài chính (${trail.length})</h2></div></div>
       <div class="table-scroll"><table><thead><tr><th>Thời điểm</th><th>Hành động</th><th>Người thực hiện</th><th>Ghi chú</th></tr></thead><tbody>
-        ${trail.slice(0,20).map(a=>`<tr><td>${fmt(a.created_at)}</td><td><b>${E(a.action)}</b><br><small><code>${E(a.entity_type)}:${E(a.entity_id)}</code></small></td><td>${E(a.actor_email||"Hệ thống")}</td><td><small>${E(a.reason||"")}</small></td></tr>`).join("")||`<tr><td colspan="4" class="muted">Chưa có bản ghi kiểm toán tài chính.</td></tr>`}
+        ${trail.slice(0,30).map(a=>`<tr><td>${fmt(a.created_at)}</td><td><b>${E(a.action)}</b><br><small><code>${E(a.campaign_id||"")}${a.transaction_id?` / ${E(a.transaction_id)}`:""}</code></small></td><td>${E(a.actor_email||"Hệ thống")}</td><td><small>${E(a.reason||"")}</small></td></tr>`).join("")||`<tr><td colspan="4" class="muted">Chưa có bản ghi kiểm toán tài chính.</td></tr>`}
       </tbody></table></div>
     </section>
   </div>`;
 }
 
 window.editSponsorshipCampaign=id=>{
+  const banks=state.admin.sponsorship?.napas_banks||state.config?.napas_banks||ADMIN_NAPAS_BANKS;
   const c=id?(state.admin.sponsorship?.campaigns||[]).find(x=>x.id===id):null;
-  const x=c||{code:"SFN-TT-2026-01",title:"",summary:"",purpose:"",target_amount:0,bank_code:"MB",bank_name:"MBBank",bank_account_no:"",bank_account_name:"SKY FIRST NETWORK",qr_template:"compact2",status:"active",visibility:"draft"};
-  modal(`<div class="admin-modal-head"><div><span class="eyebrow">CHƯƠNG TRÌNH TÀI TRỢ & VIETQR</span><h2>${c?"Cập nhật chương trình tài trợ":"Tạo chương trình tài trợ mới"}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
+  const x=c||{code:"SFN-TT-2026-01",title:"",summary:"",purpose:"",target_amount:0,bank_bin:"",bank_name:"",bank_account_no:"",bank_account_name:"",status:"active",visibility:"draft"};
+  modal(`<div class="admin-modal-head"><div><span class="eyebrow">CHƯƠNG TRÌNH TÀI TRỢ & CẤU HÌNH VIETQR</span><h2>${c?"Cập nhật chương trình tài trợ":"Tạo chương trình tài trợ mới"}</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
   <form id="spCampForm">
     <div class="row2"><div class="field"><label>Mã chương trình *</label><input name="code" value="${E(x.code)}" ${c?"readonly":""} required></div><div class="field"><label>Mục tiêu tài chính (VND) *</label><input name="target_amount" type="number" min="0" step="1000" value="${E(x.target_amount||0)}" required></div></div>
     <div class="field"><label>Tên chương trình tài trợ *</label><input name="title" value="${E(x.title)}" required></div>
     <div class="field"><label>Tóm tắt ngắn</label><input name="summary" value="${E(x.summary||"")}"></div>
     <div class="field"><label>Mục đích sử dụng nguồn lực</label><textarea name="purpose" rows="2">${E(x.purpose||"")}</textarea></div>
-    <div class="row2"><div class="field"><label>Mã ngân hàng (NAPAS / VietQR)</label><input name="bank_code" value="${E(x.bank_code||"MB")}" placeholder="MB, VCB, BIDV, ICB, TCB..."></div><div class="field"><label>Tên ngân hàng hiển thị</label><input name="bank_name" value="${E(x.bank_name||"MBBank")}"></div></div>
-    <div class="row2"><div class="field"><label>Số tài khoản nhận tài trợ</label><input name="bank_account_no" value="${E(x.bank_account_no||"")}" placeholder="Nhập số tài khoản thụ hưởng"></div><div class="field"><label>Tên chủ tài khoản</label><input name="bank_account_name" value="${E(x.bank_account_name||"SKY FIRST NETWORK")}"></div></div>
-    <div class="row2"><div class="field"><label>Trạng thái chương trình</label><select name="status"><option value="active" ${x.status==="active"?"selected":""}>Đang triển khai</option><option value="completed" ${x.status==="completed"?"selected":""}>Đã hoàn thành</option><option value="paused" ${x.status==="paused"?"selected":""}>Tạm dừng</option></select></div><div class="field"><label>Phạm vi hiển thị (cần quyền duyệt)</label><select name="visibility"><option value="draft" ${x.visibility!=="public"?"selected":""}>Bản nháp nội bộ</option><option value="public" ${x.visibility==="public"?"selected":""}>Công khai trên /tai-tro</option></select></div></div>
+    <div class="row2">
+      <div class="field">
+        <label for="spBankSelect">Ngân hàng thụ hưởng (Danh mục chuẩn NAPAS 247)</label>
+        <select id="spBankSelect" name="bank_bin">
+          <option value="">-- Chọn ngân hàng thụ hưởng --</option>
+          ${banks.map(b=>`<option value="${E(b.bin)}" data-bank-name="${E(b.short_name)}" ${String(x.bank_bin||"")===String(b.bin)?"selected":""}>${E(b.short_name)} (${E(b.code)}) — BIN ${E(b.bin)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field"><label for="spBankNameInput">Tên ngân hàng hiển thị</label><input id="spBankNameInput" name="bank_name" value="${E(x.bank_name||"")}" placeholder="Tự động điền khi chọn ngân hàng"></div>
+    </div>
+    <div class="row2"><div class="field"><label>Số tài khoản nhận tài trợ</label><input name="bank_account_no" value="${E(x.bank_account_no||"")}" placeholder="Nhập chính xác số tài khoản thụ hưởng"></div><div class="field"><label>Tên chủ tài khoản</label><input name="bank_account_name" value="${E(x.bank_account_name||"")}" placeholder="VD: SKY FIRST NETWORK"></div></div>
+    <div class="row2"><div class="field"><label>Trạng thái chương trình</label><select name="status"><option value="active" ${x.status==="active"?"selected":""}>Đang triển khai</option><option value="completed" ${x.status==="completed"?"selected":""}>Đã hoàn thành</option><option value="paused" ${x.status==="paused"?"selected":""}>Tạm dừng</option></select></div><div class="field"><label>Phạm vi hiển thị (cần quyền phê duyệt)</label><select name="visibility"><option value="draft" ${x.visibility!=="public"?"selected":""}>Bản nháp nội bộ</option><option value="public" ${x.visibility==="public"?"selected":""}>Công khai trên trang Tài trợ</option></select></div></div>
     <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button type="submit" class="primary">Lưu chương trình</button></div>
   </form>`);
+  document.getElementById("spBankSelect")?.addEventListener("change",e=>{
+    const opt=e.target.selectedOptions?.[0];
+    const nameInput=document.getElementById("spBankNameInput");
+    if(opt&&nameInput&&opt.dataset.bankName) nameInput.value=opt.dataset.bankName;
+  });
   document.getElementById("spCampForm").onsubmit=async e=>{
     e.preventDefault();const f=new FormData(e.target),body=Object.fromEntries(f);body.target_amount=Number(body.target_amount||0);
+    if((body.bank_account_no||body.bank_bin)&&(!body.bank_bin||!body.bank_account_no||!body.bank_account_name)){
+      toast("Khi cấu hình tài khoản VietQR, vui lòng chọn đúng Ngân hàng (mã BIN), nhập Số tài khoản và Tên chủ tài khoản.","bad");
+      return;
+    }
     try{
       if(c) await api(`/api/admin/sponsorship/campaigns/${encodeURIComponent(c.id)}`,{method:"PUT",body});
       else await api("/api/admin/sponsorship/campaigns",{method:"POST",body});
@@ -2348,9 +2556,9 @@ window.createSponsorshipTx=()=>{
   if(!camps.length){toast("Hãy tạo chương trình tài trợ trước khi ghi nhận giao dịch.","warn");return;}
   modal(`<div class="admin-modal-head"><div><span class="eyebrow">ĐỐI SOÁT TÀI CHÍNH</span><h2>Ghi nhận giao dịch tài trợ</h2></div><button type="button" class="admin-modal-close" onclick="closeModal()">×</button></div>
   <form id="spTxForm">
-    <div class="row2"><div class="field"><label>Chương trình *</label><select name="campaign_id" required>${camps.map(c=>`<option value="${E(c.id)}">${E(c.code)} — ${E(c.title)}</option>`).join("")}</select></div><div class="field"><label>Loại chỉ tiêu *</label><select name="tx_type"><option value="pledge">Khoản cam kết (Pledge)</option><option value="receipt">Khoản thực nhận (Receipt)</option><option value="disbursement">Khoản giải ngân / đã chi (Disbursement)</option><option value="adjustment">Điều chỉnh tăng/giảm</option><option value="refund">Hoàn trả</option></select></div></div>
+    <div class="row2"><div class="field"><label>Chương trình *</label><select name="campaign_id" required>${camps.map(c=>`<option value="${E(c.id)}">${E(c.code)} — ${E(c.title)}</option>`).join("")}</select></div><div class="field"><label>Loại chỉ tiêu *</label><select name="tx_type"><option value="pledge">Khoản cam kết</option><option value="receipt">Khoản thực nhận (Thu)</option><option value="disbursement">Khoản giải ngân / đã chi (Chi)</option><option value="adjustment">Điều chỉnh đối soát</option><option value="refund">Hoàn trả</option></select></div></div>
     <div class="row2"><div class="field"><label>Số tiền (VND, cho phép âm khi điều chỉnh giảm) *</label><input name="amount" type="number" step="1000" required></div><div class="field"><label>Tên hiển thị công khai (ẩn thông tin nhạy cảm) *</label><input name="public_party_label" required placeholder="VD: Nhà tài trợ đồng hành / Chi học liệu đợt 1"></div></div>
-    <div class="row2"><div class="field"><label>Mã giao dịch ngân hàng (Bank Ref)</label><input name="bank_ref" placeholder="VD: FT26296..."></div><div class="field"><label>Phương thức thanh toán</label><select name="payment_method"><option value="bank_transfer">Chuyển khoản ngân hàng (VietQR)</option><option value="direct">Tiếp nhận trực tiếp</option><option value="contract">Hợp đồng tài trợ</option></select></div></div>
+    <div class="row2"><div class="field"><label>Mã tham chiếu / Mã giao dịch ngân hàng</label><input name="reference_code" placeholder="VD: SFN-TT-2026-01-123456 hoặc FT26296..."></div><div class="field"><label>Phương thức thanh toán</label><select name="payment_method"><option value="bank_transfer">Chuyển khoản ngân hàng (VietQR)</option><option value="direct">Tiếp nhận trực tiếp</option><option value="contract">Hợp đồng tài trợ</option></select></div></div>
     <div class="field"><label>Nội dung / Mục đích chi tiết</label><textarea name="purpose" rows="2"></textarea></div>
     <div class="check"><input type="checkbox" id="spTxVerify" checked><label for="spTxVerify">Xác minh đối soát và cho phép hiển thị công khai</label></div>
     <div class="admin-sticky-save"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button type="submit" class="primary">Lưu giao dịch</button></div>
@@ -2358,7 +2566,7 @@ window.createSponsorshipTx=()=>{
   document.getElementById("spTxForm").onsubmit=async e=>{
     e.preventDefault();const f=new FormData(e.target),verified=document.getElementById("spTxVerify").checked;
     try{
-      await api("/api/admin/sponsorship/transactions",{method:"POST",body:{campaign_id:f.get("campaign_id"),tx_type:f.get("tx_type"),amount:Number(f.get("amount")),public_party_label:f.get("public_party_label"),bank_ref:f.get("bank_ref"),payment_method:f.get("payment_method"),purpose:f.get("purpose"),verification_status:verified?"verified":"pending",is_public:verified}});
+      await api("/api/admin/sponsorship/transactions",{method:"POST",body:{campaign_id:f.get("campaign_id"),tx_type:f.get("tx_type"),amount:Number(f.get("amount")),public_party_label:f.get("public_party_label"),reference_code:f.get("reference_code"),payment_method:f.get("payment_method"),purpose:f.get("purpose"),verification_status:verified?"verified":"pending",is_public:verified}});
       closeModal();toast("Đã ghi nhận giao dịch và tự động cập nhật tổng số liệu.");adminSponsorship(document.getElementById("adminMain"));
     }catch(err){toast(errorText(err),"bad")}
   };
@@ -2608,7 +2816,7 @@ async function adminPageBuilder(main){
   pbState.sharedBlocks=cmsData.shared_blocks||[];
   pbState.websites=sitesData.items||[{id:"app",name:"Hệ thống Thông tin Số Sky First",domain:"app.skyfirst.io.vn"}];
 
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">CMS TOÀN TRANG · VISUAL BUILDER & WORDPRESS ADAPTER</span><h1>Trình dựng Trang Trực quan, Trang Hệ thống & Quy trình Xuất bản</h1><p class="muted">Quản trị cả 13 trang hệ thống (<code>/</code>, <code>/gioi-thieu</code>, <code>/chuong-trinh</code>, <code>/su-kien</code>, <code>/tai-tro</code>, <code>/tai-lieu</code>, <code>/bieu-mau</code>, <code>/ho-so</code>, <code>/tra-cuu</code>, <code>/gcn</code>, <code>/an-toan</code>, <code>/ho-tro</code>, <code>/admin/login</code>) và các trang nội dung mở rộng <code>/trang/...</code> với song ngữ VI/EN, khối dùng chung, hẹn giờ xuất bản và đồng bộ WordPress Gutenberg.</p></div><div class="actions"><button type="button" class="secondary" onclick="runScheduledPublishNow()">⏱ Chạy lịch xuất bản</button><button type="button" class="secondary" onclick="openSharedBlocksManager()">🧩 Khối dùng chung (${pbState.sharedBlocks.length})</button><button type="button" class="secondary" onclick="openTemplatesManager()">📐 Mẫu bố cục (${pbState.templates.length})</button><button type="button" class="secondary" onclick="openWordPressImportModal()">⇄ WordPress / Gutenberg</button><button type="button" class="primary" onclick="createNewCmsPage()">＋ Tạo trang mới</button></div></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">HỆ THỐNG QUẢN TRỊ NỘI DUNG & TRÌNH DỰNG TRANG TRỰC QUAN</span><h1>Trình dựng Trang Trực quan, Trang Hệ thống & Quy trình Xuất bản</h1><p class="muted">Quản trị cả 13 trang hệ thống (<code>/</code>, <code>/gioi-thieu</code>, <code>/chuong-trinh</code>, <code>/su-kien</code>, <code>/tai-tro</code>, <code>/tai-lieu</code>, <code>/bieu-mau</code>, <code>/ho-so</code>, <code>/tra-cuu</code>, <code>/gcn</code>, <code>/an-toan</code>, <code>/ho-tro</code>, <code>/admin/login</code>) và các trang nội dung mở rộng <code>/trang/...</code> với song ngữ VI/EN, khối dùng chung, hẹn giờ xuất bản và đồng bộ WordPress Gutenberg.</p></div><div class="actions"><button type="button" class="secondary" onclick="runScheduledPublishNow()">⏱ Chạy lịch xuất bản</button><button type="button" class="secondary" onclick="openSharedBlocksManager()">🧩 Khối dùng chung (${pbState.sharedBlocks.length})</button><button type="button" class="secondary" onclick="openTemplatesManager()">📐 Mẫu bố cục (${pbState.templates.length})</button><button type="button" class="secondary" onclick="openWordPressImportModal()">⇄ WordPress / Gutenberg</button><button type="button" class="primary" onclick="createNewCmsPage()">＋ Tạo trang mới</button></div></div>
   <section class="card admin-card-premium">
     <div class="toolbar"><label class="admin-searchbox"><span>⌕</span><input id="cmsPageSearch" type="search" placeholder="Tìm tiêu đề, đường dẫn, route..."></label><select id="cmsTypeFilter"><option value="all">Tất cả loại trang (${pbState.pages.length})</option><option value="system">Trang hệ thống (System Routes)</option><option value="custom">Trang mở rộng (/trang/...)</option></select><select id="cmsSiteFilter"><option value="all">Tất cả Website</option>${pbState.websites.map(w=>`<option value="${E(w.id)}">${E(w.name)} (${E(w.domain)})</option>`).join("")}</select></div>
     <div class="table-scroll"><table><thead><tr><th>Website & Loại</th><th>Tiêu đề (VI / EN) & Đường dẫn</th><th>Phiên bản</th><th>Trạng thái quy trình</th><th>Cập nhật</th><th>Thao tác</th></tr></thead><tbody id="cmsPageRows"></tbody></table></div>
@@ -2754,55 +2962,91 @@ function renderVisualBuilderWorkspace(){
   const p=pbState.current,blocks=activePbBlocks();
   const vpWidth=pbState.viewport==="mobile"?"390px":pbState.viewport==="tablet"?"768px":"100%";
   const publicUrl=p.page_type==="system"&&p.route_path?p.route_path:`/trang/${p.slug}`;
+  if(pbState.selectedBlockIdx===undefined||pbState.selectedBlockIdx>=blocks.length) pbState.selectedBlockIdx=blocks.length?0:-1;
+  const selBlock=pbState.selectedBlockIdx>=0?blocks[pbState.selectedBlockIdx]:null;
 
   mount.innerHTML=`<section class="card admin-card-premium" style="border:2px solid var(--blue);">
     <div class="toolbar" style="border-bottom:1px solid var(--line);padding-bottom:12px;">
       <div style="margin-right:auto">
-        <span class="eyebrow">TRÌNH DỰNG TRANG TRỰC QUAN · WEBSITE: ${E(p.website_id.toUpperCase())} · ${p.page_type==="system"?"TRANG HỆ THỐNG":"TRANG CMS"} · v${E(p.version)}</span>
+        <span class="eyebrow">TRÌNH QUẢN TRỊ NỘI DUNG & DỰNG TRANG TRỰC QUAN · WEBSITE: ${E(p.website_id.toUpperCase())} · ${p.page_type==="system"?"TRANG HỆ THỐNG":"TRANG MỞ RỘNG"} · v${E(p.version)}</span>
         <h2 style="margin:4px 0 0">${E(p.title)} <small class="muted">(${E(publicUrl)})</small></h2>
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-        <button type="button" class="${pbState.editLang==="vi"?"primary":"secondary"}" onclick="switchPbEditLang('vi')">🇻🇳 Khối VI (${(p.blocks||[]).length})</button>
-        <button type="button" class="${pbState.editLang==="en"?"primary":"secondary"}" onclick="switchPbEditLang('en')">🇬🇧 Khối EN (${(p.blocks_en||[]).length})</button>
+        <button type="button" class="${pbState.editLang==="vi"?"primary":"secondary"}" onclick="switchPbEditLang('vi')">🇻🇳 Khối Tiếng Việt (${(p.blocks||[]).length})</button>
+        <button type="button" class="${pbState.editLang==="en"?"primary":"secondary"}" onclick="switchPbEditLang('en')">🇬🇧 Khối Tiếng Anh (${(p.blocks_en||[]).length})</button>
         <button type="button" class="secondary" onclick="pbUndo()" ${pbState.history.length?"":"disabled"}>↶ Hoàn tác (${pbState.history.length})</button>
         <button type="button" class="secondary" onclick="pbRedo()" ${pbState.future.length?"":"disabled"}>↷ Làm lại (${pbState.future.length})</button>
         <select id="pbViewportSelect" aria-label="Chế độ màn hình">
-          <option value="desktop" ${pbState.viewport==="desktop"?"selected":""}>🖥️ Máy tính (Desktop)</option>
+          <option value="desktop" ${pbState.viewport==="desktop"?"selected":""}>🖥️ Máy tính (100%)</option>
           <option value="tablet" ${pbState.viewport==="tablet"?"selected":""}>📱 Máy tính bảng (768px)</option>
           <option value="mobile" ${pbState.viewport==="mobile"?"selected":""}>📱 Điện thoại (390px)</option>
         </select>
-        <button type="button" class="secondary" onclick="previewServerCmsPage('${E(p.id)}')">👁 Xem thử</button>
-        <button type="button" class="secondary" onclick="exportPageWordPress('${E(p.id)}')">⬇ Xuất Gutenberg</button>
+        <button type="button" class="secondary" onclick="previewServerCmsPage('${E(p.id)}')">👁 Xem thử trang</button>
+        <button type="button" class="secondary" onclick="exportPageWordPress('${E(p.id)}')">⬇ Xuất cấu trúc khối</button>
         <button type="button" class="primary" onclick="saveVisualPage()">💾 Lưu bản nháp</button>
       </div>
     </div>
 
     <div class="toolbar" style="background:var(--bg);padding:10px 14px;border-radius:12px;margin:14px 0;">
-      <b>Quy trình duyệt & xuất bản:</b>
-      <span class="status">${E(p.status)}</span>
-      ${p.scheduled_at?`<span class="pill">⏱ Lịch: ${fmt(p.scheduled_at)}</span>`:""}
+      <b>Quy trình phê duyệt & xuất bản:</b>
+      <span class="status">${E(p.status==="published"?"Đang công bố":p.status==="pending_review"?"Chờ duyệt":p.status==="approved"?"Đã duyệt":p.status==="scheduled"?"Đã lên lịch":"Bản nháp")}</span>
+      ${p.scheduled_at?`<span class="pill">⏱ Lịch xuất bản: ${fmt(p.scheduled_at)}</span>`:""}
       <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
         <button type="button" class="secondary" onclick="runCmsWorkflow('submit_review')">1. Gửi duyệt</button>
         <button type="button" class="secondary" onclick="runCmsWorkflow('approve')">2. Phê duyệt</button>
         <button type="button" class="danger" onclick="runCmsWorkflow('reject')">Từ chối duyệt</button>
-        <button type="button" class="secondary" onclick="runCmsWorkflow('schedule')">⏱ Lên lịch xuất bản</button>
-        <button type="button" class="primary" onclick="runCmsWorkflow('publish')">3. Xuất bản công khai</button>
-        ${p.status==="published"?`<button type="button" class="secondary" onclick="runCmsWorkflow('unpublish')">Gỡ xuất bản</button>`:""}
+        <button type="button" class="secondary" onclick="runCmsWorkflow('schedule')">⏱ Hẹn giờ công bố</button>
+        <button type="button" class="primary" onclick="runCmsWorkflow('publish')">3. Công bố chính thức</button>
+        ${p.status==="published"?`<button type="button" class="secondary" onclick="runCmsWorkflow('unpublish')">Gỡ công bố</button>`:""}
       </div>
     </div>
+
+    ${selBlock?`<div class="toolbar" style="background:#f0f6ff;border:1px solid #bfdbfe;padding:10px 14px;border-radius:12px;margin-bottom:14px;gap:10px;flex-wrap:wrap;">
+      <b>🎨 Định dạng khối đang chọn (#${pbState.selectedBlockIdx+1} — ${E(BLOCK_CATALOG.find(x=>x.type===selBlock.type)?.label||selBlock.type)}):</b>
+      <label class="small">Phông chữ:
+        <select id="pbStyleFont" style="margin-left:4px;">
+          <option value="" ${!selBlock.fontFamily?"selected":""}>Mặc định hệ thống</option>
+          <option value="'Be Vietnam Pro', Inter, sans-serif" ${selBlock.fontFamily?.includes("Be Vietnam Pro")?"selected":""}>Be Vietnam Pro</option>
+          <option value="Inter, system-ui, sans-serif" ${selBlock.fontFamily?.startsWith("Inter")?"selected":""}>Inter</option>
+          <option value="Georgia, serif" ${selBlock.fontFamily?.startsWith("Georgia")?"selected":""}>Georgia (Có chân)</option>
+          <option value="'JetBrains Mono', monospace" ${selBlock.fontFamily?.includes("JetBrains")?"selected":""}>JetBrains Mono</option>
+        </select>
+      </label>
+      <label class="small">Cỡ chữ:
+        <select id="pbStyleSize" style="margin-left:4px;">
+          <option value="" ${!selBlock.fontSize?"selected":""}>Mặc định</option>
+          <option value="14px" ${selBlock.fontSize==="14px"?"selected":""}>Nhỏ (14px)</option>
+          <option value="16px" ${selBlock.fontSize==="16px"?"selected":""}>Tiêu chuẩn (16px)</option>
+          <option value="18px" ${selBlock.fontSize==="18px"?"selected":""}>Vừa (18px)</option>
+          <option value="22px" ${selBlock.fontSize==="22px"?"selected":""}>Lớn (22px)</option>
+          <option value="28px" ${selBlock.fontSize==="28px"?"selected":""}>Tiêu đề (28px)</option>
+          <option value="34px" ${selBlock.fontSize==="34px"?"selected":""}>Nổi bật (34px)</option>
+        </select>
+      </label>
+      <label class="small">Căn lề:
+        <select id="pbStyleAlign" style="margin-left:4px;">
+          <option value="left" ${(selBlock.align||"left")==="left"?"selected":""}>Căn trái</option>
+          <option value="center" ${selBlock.align==="center"?"selected":""}>Căn giữa</option>
+          <option value="right" ${selBlock.align==="right"?"selected":""}>Căn phải</option>
+        </select>
+      </label>
+      <label class="small">Màu chữ: <input type="color" id="pbStyleColor" value="${E(selBlock.textColor||"#071b35")}" style="width:32px;height:26px;padding:0;vertical-align:middle;"></label>
+      <label class="small">Màu nền: <input type="color" id="pbStyleBg" value="${E(selBlock.bgColor||"#ffffff")}" style="width:32px;height:26px;padding:0;vertical-align:middle;"></label>
+      <button type="button" class="ghost small" onclick="resetPbBlockStyle(${pbState.selectedBlockIdx})">Đặt lại kiểu</button>
+    </div>`:""}
 
     <div class="admin-grid2" style="grid-template-columns:310px 1fr;gap:18px;align-items:start;">
       <aside class="card" style="position:sticky;top:90px;max-height:82vh;overflow:auto;">
         <h3>+ Thư viện Khối (${BLOCK_CATALOG.length} loại)</h3>
-        <p class="small muted">Đang sửa ngôn ngữ: <b>${pbState.editLang.toUpperCase()}</b>. Nhấn để thêm khối hoặc kéo thả ở khung bên phải.</p>
+        <p class="small muted">Đang sửa ngôn ngữ: <b>${pbState.editLang.toUpperCase()}</b>. Nhấp trực tiếp vào văn bản ở khung bên phải để sửa tại chỗ hoặc kéo thả để đổi vị trí khối.</p>
         <div style="display:grid;gap:6px;max-height:280px;overflow:auto;padding-right:4px;">
           ${BLOCK_CATALOG.map(b=>`<button type="button" class="secondary" style="text-align:left;padding:7px 10px;font-size:13px;" onclick="addPbBlock('${E(b.type)}')">＋ ${E(b.label)}</button>`).join("")}
         </div>
         <h3 style="margin-top:18px;">Thông tin trang & SEO (VI / EN)</h3>
         <div class="field"><label>Tiêu đề (VI)</label><input id="pbPageTitle" value="${E(p.title||"")}"></div>
-        <div class="field"><label>Tiêu đề (EN)</label><input id="pbPageTitleEn" value="${E(p.title_en||"")}" placeholder="English Title"></div>
-        <div class="field"><label>Slug đường dẫn</label><input id="pbPageSlug" value="${E(p.slug||"")}"></div>
-        ${p.page_type==="system"?`<div class="field"><label>System Route</label><input id="pbRoutePath" value="${E(p.route_path||"")}" readonly></div>`:""}
+        <div class="field"><label>Tiêu đề (EN)</label><input id="pbPageTitleEn" value="${E(p.title_en||"")}" placeholder="Tiêu đề tiếng Anh"></div>
+        <div class="field"><label>Đường dẫn định danh (Slug)</label><input id="pbPageSlug" value="${E(p.slug||"")}"></div>
+        ${p.page_type==="system"?`<div class="field"><label>Đường dẫn hệ thống cố định</label><input id="pbRoutePath" value="${E(p.route_path||"")}" readonly></div>`:""}
         <div class="field"><label>Mô tả SEO (VI)</label><textarea id="pbPageSummary" rows="2">${E(p.summary||"")}</textarea></div>
         <div class="field"><label>Mô tả SEO (EN)</label><textarea id="pbPageSummaryEn" rows="2">${E(p.summary_en||"")}</textarea></div>
         <h3 style="margin-top:18px;">Lịch sử phiên bản (${(pbState.revisions||[]).length})</h3>
@@ -2812,26 +3056,25 @@ function renderVisualBuilderWorkspace(){
       </aside>
 
       <div>
-        <div style="display:grid;gap:12px;margin-bottom:20px;" id="pbBlocksList">
-          ${blocks.map((b,idx)=>`<div class="card pb-block-item" draggable="true" data-pb-idx="${idx}" style="border-left:4px solid var(--blue);">
-            <div class="toolbar" style="margin:0 0 8px;">
-              <b>☰ Khối #${idx+1} [${pbState.editLang.toUpperCase()}]: ${E(BLOCK_CATALOG.find(x=>x.type===b.type)?.label||b.type)}</b>
-              <div style="margin-left:auto;display:flex;gap:6px;">
-                <button type="button" class="ghost" onclick="movePbBlock(${idx},-1)">↑</button>
-                <button type="button" class="ghost" onclick="movePbBlock(${idx},1)">↓</button>
-                <button type="button" class="secondary" onclick="duplicatePbBlock(${idx})">Nhân bản</button>
-                <button type="button" class="secondary" onclick="editPbBlock(${idx})">Sửa thuộc tính</button>
-                <button type="button" class="danger" onclick="removePbBlock(${idx})">×</button>
+        <div class="card" style="background:var(--bg);margin-bottom:18px;">
+          <div class="toolbar" style="margin-bottom:8px;">
+            <span class="eyebrow">KHUNG SOẠN THẢO TRỰC QUAN — NHẤP VÀO VĂN BẢN ĐỂ SỬA TRỰC TIẾP & KÉO THẢ KHỐI (${E(pbState.viewport.toUpperCase())} — ${vpWidth})</span>
+          </div>
+          <div id="pbLiveCanvas" style="width:${vpWidth};max-width:100%;margin:8px auto 0;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;display:grid;gap:14px;">
+            ${blocks.map((b,idx)=>`<div class="pb-canvas-block" draggable="true" data-pb-idx="${idx}" onclick="selectPbBlock(${idx},event)" style="position:relative;border:2px ${pbState.selectedBlockIdx===idx?"solid var(--blue)":"dashed transparent"};border-radius:14px;padding:10px;transition:border-color .15s;">
+              <div class="toolbar" style="margin:0 0 8px;padding:4px 8px;background:var(--bg);border-radius:8px;font-size:12px;">
+                <span style="cursor:grab;font-weight:700;">☰ Khối #${idx+1}: ${E(BLOCK_CATALOG.find(x=>x.type===b.type)?.label||b.type)}</span>
+                <span class="small muted" style="margin-left:8px;">(Nhấp vào chữ bên dưới để sửa trực tiếp)</span>
+                <div style="margin-left:auto;display:flex;gap:4px;">
+                  <button type="button" class="ghost" style="padding:2px 6px;" onclick="movePbBlock(${idx},-1)" title="Đưa lên">↑</button>
+                  <button type="button" class="ghost" style="padding:2px 6px;" onclick="movePbBlock(${idx},1)" title="Đưa xuống">↓</button>
+                  <button type="button" class="secondary" style="padding:2px 8px;font-size:11px;" onclick="duplicatePbBlock(${idx})">Nhân bản</button>
+                  <button type="button" class="secondary" style="padding:2px 8px;font-size:11px;" onclick="editPbBlock(${idx})">Thuộc tính nâng cao</button>
+                  <button type="button" class="danger" style="padding:2px 8px;font-size:11px;" onclick="removePbBlock(${idx})">×</button>
+                </div>
               </div>
-            </div>
-            <div class="small muted">${E(b.title||b.text||b.label||b.sharedKey||b.fileId||b.formId||"Khối bố cục")}</div>
-          </div>`).join("")||`<div class="notice">Ngôn ngữ <b>${pbState.editLang.toUpperCase()}</b> chưa có khối nội dung riêng. ${pbState.editLang==="en"?"Nếu để trống, hệ thống tự động dùng bố cục Tiếng Việt làm dự phòng an toàn.":""}</div>`}
-        </div>
-
-        <div class="card" style="background:var(--bg);">
-          <span class="eyebrow">KHUNG HIỂN THỊ TRỰC QUAN (${E(pbState.viewport.toUpperCase())} — ${vpWidth} — ${pbState.editLang.toUpperCase()})</span>
-          <div style="width:${vpWidth};max-width:100%;margin:12px auto 0;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;display:grid;gap:16px;">
-            ${blocks.map(b=>pbPreviewBlockHtml(b)).join("")}
+              <div class="pb-inline-surface">${pbEditableBlockHtml(b,idx)}</div>
+            </div>`).join("")||`<div class="notice">Ngôn ngữ <b>${pbState.editLang.toUpperCase()}</b> chưa có khối nội dung riêng. Hãy nhấn chọn một loại khối ở cột bên trái để thêm vào trang.</div>`}
           </div>
         </div>
       </div>
@@ -2845,9 +3088,39 @@ function renderVisualBuilderWorkspace(){
   document.getElementById("pbPageSummary")?.addEventListener("input",e=>{pbState.current.summary=e.target.value;pbState.dirty=true;});
   document.getElementById("pbPageSummaryEn")?.addEventListener("input",e=>{pbState.current.summary_en=e.target.value;pbState.dirty=true;});
 
+  if(selBlock){
+    document.getElementById("pbStyleFont")?.addEventListener("change",e=>{pushPbHistory();selBlock.fontFamily=e.target.value;renderVisualBuilderWorkspace();});
+    document.getElementById("pbStyleSize")?.addEventListener("change",e=>{pushPbHistory();selBlock.fontSize=e.target.value;renderVisualBuilderWorkspace();});
+    document.getElementById("pbStyleAlign")?.addEventListener("change",e=>{pushPbHistory();selBlock.align=e.target.value;renderVisualBuilderWorkspace();});
+    document.getElementById("pbStyleColor")?.addEventListener("change",e=>{pushPbHistory();selBlock.textColor=e.target.value;renderVisualBuilderWorkspace();});
+    document.getElementById("pbStyleBg")?.addEventListener("change",e=>{pushPbHistory();selBlock.bgColor=e.target.value;renderVisualBuilderWorkspace();});
+  }
+
+  // Bind inline contenteditable elements
+  mount.querySelectorAll("[data-pb-inline]").forEach(el=>{
+    el.addEventListener("focus",()=>{
+      const idx=Number(el.dataset.pbBlock);
+      pbState.selectedBlockIdx=idx;
+    });
+    el.addEventListener("blur",()=>{
+      const idx=Number(el.dataset.pbBlock);
+      const prop=el.dataset.pbInline;
+      const blk=activePbBlocks()[idx];
+      if(!blk)return;
+      const newVal=el.innerText.trim();
+      if(String(blk[prop]||"")!==newVal){
+        pushPbHistory();
+        blk[prop]=newVal;
+      }
+    });
+  });
+
   let dragFrom=null;
   mount.querySelectorAll("[data-pb-idx]").forEach(el=>{
-    el.addEventListener("dragstart",()=>{dragFrom=Number(el.dataset.pbIdx);el.classList.add("dragging");});
+    el.addEventListener("dragstart",e=>{
+      if(e.target.isContentEditable){e.preventDefault();return;}
+      dragFrom=Number(el.dataset.pbIdx);el.classList.add("dragging");
+    });
     el.addEventListener("dragend",()=>el.classList.remove("dragging"));
     el.addEventListener("dragover",e=>e.preventDefault());
     el.addEventListener("drop",e=>{
@@ -2858,36 +3131,97 @@ function renderVisualBuilderWorkspace(){
       const arr=activePbBlocks();
       const [moved]=arr.splice(dragFrom,1);
       arr.splice(dragTo,0,moved);
+      pbState.selectedBlockIdx=dragTo;
       renderVisualBuilderWorkspace();
     });
   });
 }
 
+window.selectPbBlock=(idx,ev)=>{
+  if(ev?.target?.closest("button,select,input,[contenteditable='true']")) return;
+  if(pbState.selectedBlockIdx!==idx){
+    pbState.selectedBlockIdx=idx;
+    renderVisualBuilderWorkspace();
+  }
+};
+
+window.resetPbBlockStyle=idx=>{
+  const b=activePbBlocks()[idx];if(!b)return;
+  pushPbHistory();
+  delete b.fontFamily;delete b.fontSize;delete b.textColor;delete b.bgColor;b.align="left";
+  renderVisualBuilderWorkspace();
+};
+
 window.switchPbEditLang=lang=>{
   pbState.editLang=lang==="en"?"en":"vi";
   if(pbState.editLang==="en"&&(!pbState.current.blocks_en||!pbState.current.blocks_en.length)&&(pbState.current.blocks||[]).length){
     pbState.current.blocks_en=JSON.parse(JSON.stringify(pbState.current.blocks));
-    toast("Đã sao chép cấu trúc khối VI sang EN để dịch nhanh.");
+    toast("Đã sao chép cấu trúc khối Tiếng Việt sang Tiếng Anh để biên tập nhanh.");
   }
   renderVisualBuilderWorkspace();
 };
+
+function pbCustomStyleStr(b){
+  const parts=[`text-align:${E(b.align||"left")}`];
+  if(b.fontFamily) parts.push(`font-family:${E(b.fontFamily)}`);
+  if(b.fontSize) parts.push(`font-size:${E(b.fontSize)}`);
+  if(b.textColor) parts.push(`color:${E(b.textColor)}`);
+  if(b.bgColor) parts.push(`background:${E(b.bgColor)};padding:12px 16px;border-radius:12px`);
+  return parts.join(";")+";";
+}
+
+function pbEditableBlockHtml(b,idx){
+  const style=pbCustomStyleStr(b);
+  if(b.type==="hero"){
+    return `<div style="padding:28px;border-radius:16px;background:${E(b.bgColor||"linear-gradient(125deg,#071b35,#0759b8)")};color:${E(b.textColor||"#fff")};text-align:${E(b.align||"center")};${b.fontFamily?`font-family:${E(b.fontFamily)};`:""}">
+      <h2 contenteditable="true" data-pb-block="${idx}" data-pb-inline="title" style="outline:1px dashed #ffffff66;padding:4px;border-radius:6px;${b.fontSize?`font-size:${E(b.fontSize)};`:""}">${E(b.title||"Tiêu đề khu vực nổi bật")}</h2>
+      <p contenteditable="true" data-pb-block="${idx}" data-pb-inline="subtitle" style="outline:1px dashed #ffffff44;padding:4px;border-radius:6px;">${E(b.subtitle||"Mô tả ngắn gọn")}</p>
+      ${b.ctaText?`<span class="pill white" contenteditable="true" data-pb-block="${idx}" data-pb-inline="ctaText">${E(b.ctaText)}</span>`:""}
+    </div>`;
+  }
+  if(b.type==="heading"){
+    const tag=["h1","h2","h3"].includes(b.level)?b.level:"h2";
+    return `<${tag} contenteditable="true" data-pb-block="${idx}" data-pb-inline="text" style="margin:0;outline:1px dashed var(--line);padding:6px 8px;border-radius:8px;${style}">${E(b.text||b.title||"Nhập tiêu đề...")}</${tag}>`;
+  }
+  if(b.type==="paragraph"){
+    return `<div contenteditable="true" data-pb-block="${idx}" data-pb-inline="text" style="margin:0;line-height:1.75;white-space:pre-line;outline:1px dashed var(--line);padding:8px 10px;border-radius:8px;${style}">${E(b.text||"Nhập nội dung đoạn văn bản...")}</div>`;
+  }
+  if(b.type==="callout"||b.type==="guide"){
+    return `<div class="notice ${E(b.tone||"")}" style="${style}">
+      <b contenteditable="true" data-pb-block="${idx}" data-pb-inline="title" style="display:block;outline:1px dashed var(--line);padding:2px 6px;border-radius:4px;">${E(b.title||"Tiêu đề thông báo")}</b>
+      <div contenteditable="true" data-pb-block="${idx}" data-pb-inline="text" style="margin-top:6px;white-space:pre-line;outline:1px dashed var(--line);padding:4px 6px;border-radius:4px;">${E(b.text||"Nội dung chi tiết...")}</div>
+    </div>`;
+  }
+  if(b.type==="cta"){
+    return `<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;${style}">
+      <div style="flex:1;">
+        <h3 contenteditable="true" data-pb-block="${idx}" data-pb-inline="title" style="margin:0 0 4px;outline:1px dashed var(--line);padding:2px 6px;">${E(b.title||"Tiêu đề kêu gọi hành động")}</h3>
+        <p contenteditable="true" data-pb-block="${idx}" data-pb-inline="text" class="muted" style="margin:0;outline:1px dashed var(--line);padding:2px 6px;">${E(b.text||"Mô tả ngắn gọn")}</p>
+      </div>
+      <span class="primary" contenteditable="true" data-pb-block="${idx}" data-pb-inline="ctaText" style="padding:8px 14px;border-radius:999px;">${E(b.ctaText||b.label||"Mở liên kết")}</span>
+    </div>`;
+  }
+  return pbPreviewBlockHtml(b);
+}
 
 function pbPreviewBlockHtml(b){
   if(window.SkyFirstDigital?.renderVisualBlock){
     return window.SkyFirstDigital.renderVisualBlock(b);
   }
-  const align=b.align||"left";
-  if(b.type==="hero") return `<div style="padding:28px;border-radius:16px;background:linear-gradient(125deg,#071b35,#0759b8);color:#fff;text-align:${E(align)}"><h2>${E(b.title||"")}</h2><p>${E(b.subtitle||"")}</p>${b.ctaText?`<span class="pill white">${E(b.ctaText)} →</span>`:""}</div>`;
-  if(b.type==="heading") return `<h2 style="margin:0;text-align:${E(align)}">${E(b.text||"")}</h2>`;
-  if(b.type==="paragraph") return `<p style="margin:0;line-height:1.7;text-align:${E(align)}">${E(b.text||"")}</p>`;
-  if(b.type==="callout") return `<div class="notice ${E(b.tone||"")}"><b>${E(b.title||"")}</b><p style="margin:4px 0 0">${E(b.text||"")}</p></div>`;
-  return `<div class="card"><b>${E(b.type)}</b>: ${E(b.title||b.text||b.label||"")}</div>`;
+  const style=pbCustomStyleStr(b);
+  if(b.type==="hero") return `<div style="padding:28px;border-radius:16px;background:linear-gradient(125deg,#071b35,#0759b8);color:#fff;${style}"><h2>${E(b.title||"")}</h2><p>${E(b.subtitle||"")}</p>${b.ctaText?`<span class="pill white">${E(b.ctaText)} →</span>`:""}</div>`;
+  if(b.type==="heading") return `<h2 style="margin:0;${style}">${E(b.text||"")}</h2>`;
+  if(b.type==="paragraph") return `<p style="margin:0;line-height:1.7;${style}">${E(b.text||"")}</p>`;
+  if(b.type==="callout") return `<div class="notice ${E(b.tone||"")}" style="${style}"><b>${E(b.title||"")}</b><p style="margin:4px 0 0">${E(b.text||"")}</p></div>`;
+  return `<div class="card" style="${style}"><b>${E(b.type)}</b>: ${E(b.title||b.text||b.label||"")}</div>`;
 }
 
 window.addPbBlock=type=>{
   const cat=BLOCK_CATALOG.find(x=>x.type===type);if(!cat)return;
   pushPbHistory();
-  activePbBlocks().push({id:uid("blk"),type,...JSON.parse(JSON.stringify(cat.defaults))});
+  const arr=activePbBlocks();
+  arr.push({id:uid("blk"),type,...JSON.parse(JSON.stringify(cat.defaults))});
+  pbState.selectedBlockIdx=arr.length-1;
   renderVisualBuilderWorkspace();
 };
 window.movePbBlock=(idx,dir)=>{
@@ -2895,6 +3229,7 @@ window.movePbBlock=(idx,dir)=>{
   if(target<0||target>=arr.length)return;
   pushPbHistory();
   [arr[idx],arr[target]]=[arr[target],arr[idx]];
+  pbState.selectedBlockIdx=target;
   renderVisualBuilderWorkspace();
 };
 window.duplicatePbBlock=idx=>{
@@ -2902,6 +3237,7 @@ window.duplicatePbBlock=idx=>{
   pushPbHistory();
   const copy=JSON.parse(JSON.stringify(b));copy.id=uid("blk");
   arr.splice(idx+1,0,copy);
+  pbState.selectedBlockIdx=idx+1;
   renderVisualBuilderWorkspace();
 };
 window.removePbBlock=idx=>{
@@ -2915,17 +3251,21 @@ window.editPbBlock=async idx=>{
   const fields=[
     {name:"title",label:"Tiêu đề / Nhãn chính",value:b.title||b.label||""},
     {name:"text",label:"Nội dung văn bản / Mô tả",type:"textarea",value:b.text||b.subtitle||(b.items&&Array.isArray(b.items)&&typeof b.items[0]==="string"?b.items.join("\n"):""),rows:3},
-    {name:"align",label:"Căn lề",type:"select",value:b.align||"left",options:["left","center","right"]},
-    {name:"ref",label:"Liên kết URL / Mã biểu mẫu / Mã tệp PDF / Khóa Khối dùng chung",value:b.ctaHref||b.href||b.formId||b.fileId||b.url||b.sharedKey||b.source||""}
+    {name:"align",label:"Căn lề",type:"select",value:b.align||"left",options:[{value:"left",label:"Căn trái"},{value:"center",label:"Căn giữa"},{value:"right",label:"Căn phải"}]},
+    {name:"fontFamily",label:"Phông chữ",type:"select",value:b.fontFamily||"",options:[{value:"",label:"Mặc định hệ thống"},{value:"'Be Vietnam Pro', Inter, sans-serif",label:"Be Vietnam Pro"},{value:"Inter, system-ui, sans-serif",label:"Inter"},{value:"Georgia, serif",label:"Georgia"},{value:"'JetBrains Mono', monospace",label:"JetBrains Mono"}]},
+    {name:"fontSize",label:"Cỡ chữ",type:"select",value:b.fontSize||"",options:[{value:"",label:"Mặc định"},{value:"14px",label:"14px"},{value:"16px",label:"16px"},{value:"18px",label:"18px"},{value:"22px",label:"22px"},{value:"28px",label:"28px"},{value:"34px",label:"34px"}]},
+    {name:"ref",label:"Liên kết URL / Mã biểu mẫu / Mã tệp PDF / Khóa khối dùng chung",value:b.ctaHref||b.href||b.formId||b.fileId||b.url||b.sharedKey||b.source||""}
   ];
   if(structuredTypes.includes(b.type)){
     const payloadKey=b.type==="columns"?"columns":b.type==="table"?"rows":b.type==="tabs"?"tabs":b.type==="timeline"||b.type==="guide"?"steps":"items";
     fields.push({name:"json_data",label:`Dữ liệu cấu trúc (${payloadKey} JSON)`,type:"textarea",rows:5,value:JSON.stringify(b[payloadKey]||[],null,2)});
   }
-  const v=await adminDialog({title:`Chỉnh sửa khối #${idx+1} (${b.type})`,confirmText:"Áp dụng",fields});
+  const v=await adminDialog({title:`Chỉnh sửa thuộc tính khối #${idx+1} (${b.type})`,confirmText:"Áp dụng",fields});
   if(!v)return;
   pushPbHistory();
   b.align=v.align;
+  if(v.fontFamily) b.fontFamily=v.fontFamily; else delete b.fontFamily;
+  if(v.fontSize) b.fontSize=v.fontSize; else delete b.fontSize;
   if(b.type==="hero"){b.title=v.title;b.subtitle=v.text;b.ctaHref=v.ref;}
   else if(b.type==="heading"){b.text=v.title||v.text;}
   else if(b.type==="paragraph"){b.text=v.text;}
@@ -2941,7 +3281,7 @@ window.editPbBlock=async idx=>{
   else if(structuredTypes.includes(b.type)){
     b.title=v.title;
     const payloadKey=b.type==="columns"?"columns":b.type==="table"?"rows":b.type==="tabs"?"tabs":b.type==="timeline"||b.type==="guide"?"steps":"items";
-    try{b[payloadKey]=JSON.parse(v.json_data||"[]");}catch{toast("JSON cấu trúc chưa hợp lệ, giữ nguyên cấu trúc cũ.","warn");}
+    try{b[payloadKey]=JSON.parse(v.json_data||"[]");}catch{toast("Cấu trúc dữ liệu JSON chưa hợp lệ, giữ nguyên cấu trúc cũ.","warn");}
   }
   renderVisualBuilderWorkspace();
 };
@@ -3125,7 +3465,7 @@ async function adminSite(main){
   ]);
   state.admin.settings=m;
   const ds=dsRes.design_system||{};
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">NHẬN DIỆN THƯƠNG HIỆU & DESIGN SYSTEM</span><h1>Cài đặt Nhận diện, Hero & Hệ thống Thiết kế (Design Tokens)</h1><p class="muted">Quản lý nhận diện thương hiệu, nội dung Hero song ngữ và bảng màu/kiểu chữ toàn cục mà không cần sửa mã nguồn.</p></div></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">NHẬN DIỆN THƯƠNG HIỆU & HỆ THỐNG THIẾT KẾ</span><h1>Cài đặt Nhận diện, Khu vực Mở đầu & Hệ thống Thiết kế</h1><p class="muted">Quản lý nhận diện thương hiệu, nội dung Hero song ngữ và bảng màu/kiểu chữ toàn cục mà không cần sửa mã nguồn.</p></div></div>
   <div class="admin-grid2">
     <div class="card">
       <h2>01 / Nhận diện thương hiệu</h2>
@@ -3146,7 +3486,7 @@ async function adminSite(main){
     </div>
   </div>
   <section class="card admin-card-premium" style="margin-top:18px;">
-    <div class="admin-card-heading"><div><span class="eyebrow">03 / DESIGN SYSTEM TOKENS</span><h2>Bảng màu, Typography, Bo góc & Mật độ giao diện</h2></div></div>
+    <div class="admin-card-heading"><div><span class="eyebrow">03 / THÔNG SỐ HỆ THỐNG THIẾT KẾ</span><h2>Bảng màu, Kiểu chữ, Bo góc & Mật độ giao diện</h2></div></div>
     <form id="designSystemForm">
       <div class="row2">
         <div class="field"><label>Màu chủ đạo (Primary Color)</label><input name="primary_color" value="${E(ds.primary_color||"#0759b8")}"></div>
@@ -3164,7 +3504,7 @@ async function adminSite(main){
         <div class="field"><label>Độ bo góc thẻ (Border Radius)</label><input name="border_radius" value="${E(ds.border_radius||"16px")}"></div>
         <div class="field"><label>Độ rộng khung trang (Container Max Width)</label><input name="container_width" value="${E(ds.container_width||"1240px")}"></div>
       </div>
-      <button type="submit" class="primary">Lưu Design System</button>
+      <button type="submit" class="primary">Lưu Hệ thống Thiết kế</button>
     </form>
   </section>`;
   document.getElementById("designSystemForm").onsubmit=async e=>{
@@ -3174,7 +3514,7 @@ async function adminSite(main){
       await api("/api/admin/design-system",{method:"PUT",body});
       await loadConfig();
       window.SkyFirstDigital?.applyDesignSystem?.(state.config?.design_system||body);
-      toast("Đã cập nhật Design System Tokens.");
+      toast("Đã cập nhật thông số Hệ thống Thiết kế.");
     }catch(err){toast(errorText(err),"bad")}
   };
 }
@@ -3305,7 +3645,7 @@ async function adminMaintenance(main){
   const preChecks=preRes.checks||[];
   const qaChecks=qaRes.checks||[];
 
-  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">ĐIỀU KHIỂN VẬN HÀNH MÁY CHỦ · SRE & RELEASE GATE</span><h1>6 Chế độ Vận hành, Bảo trì, Trang lỗi & Trung tâm Sự cố</h1><p class="muted">Mọi chế độ vận hành được cưỡng chế trực tiếp tại tầng Middleware/API của Worker. Hỗ trợ kiểm tra tự động trước khi mở lại website (Pre-reopen Check) và kiểm tra chất lượng phát hành (Release QA Gate).</p></div><span class="system-pill ${mc.mode==="normal"?"ok":"warn"}">Chế độ hiện hành: ${E(mc.mode)}</span></div>
+  main.innerHTML=`<div class="admin-page-head"><div><span class="eyebrow">ĐIỀU KHIỂN VẬN HÀNH MÁY CHỦ & KIỂM SOÁT PHÁT HÀNH</span><h1>6 Chế độ Vận hành, Bảo trì, Trang lỗi & Trung tâm Sự cố</h1><p class="muted">Mọi chế độ vận hành được cưỡng chế trực tiếp tại tầng Middleware/API của Worker. Hỗ trợ kiểm tra tự động trước khi mở lại website (Pre-reopen Check) và kiểm tra chất lượng phát hành (Release QA Gate).</p></div><span class="system-pill ${mc.mode==="normal"?"ok":"warn"}">Chế độ hiện hành: ${E(mc.mode)}</span></div>
 
   <div class="admin-grid2">
     <section class="card admin-card-premium">
@@ -3338,7 +3678,7 @@ async function adminMaintenance(main){
     </section>
 
     <section class="card admin-card-premium">
-      <div class="admin-card-heading"><div><span class="eyebrow">02 / PRE-REOPEN & RELEASE QA GATE</span><h2>Kiểm tra an toàn trước khi mở lại & Trang 404</h2></div></div>
+      <div class="admin-card-heading"><div><span class="eyebrow">02 / KIỂM TRA TRƯỚC KHI MỞ LẠI & CHẤT LƯỢNG PHÁT HÀNH</span><h2>Kiểm tra an toàn trước khi mở lại & Trang 404</h2></div></div>
       <div class="notice ${preRes.ready_to_reopen?"good":"warn"}" style="margin-bottom:12px;">
         <b>Trạng thái sẵn sàng mở lại (Pre-Reopen Check):</b> ${preRes.ready_to_reopen?"ĐẠT — Tất cả kiểm tra cốt lõi đều sẵn sàng":"CẦN KIỂM TRA"}
         <ul style="margin:6px 0 0 18px;">${preChecks.map(c=>`<li><b>${E(c.check)}:</b> ${c.ok?"✓ Đạt":"✕ Lỗi"} ${c.count!==undefined?`(${E(c.count)})`:""}</li>`).join("")}</ul>
@@ -3356,7 +3696,7 @@ async function adminMaintenance(main){
   </div>
 
   <section class="card admin-card-premium" style="margin-top:18px;">
-    <div class="toolbar"><div style="margin-right:auto"><span class="eyebrow">03 / NHẬT KÝ SỰ CỐ VẬN HÀNH (INCIDENT LOG)</span><h2 style="margin:4px 0 0">Danh sách sự cố & bảo trì kỹ thuật (${incidents.length})</h2></div><button type="button" class="primary" onclick="createSystemIncidentModal()">+ Ghi nhận sự cố / đợt bảo trì</button></div>
+    <div class="toolbar"><div style="margin-right:auto"><span class="eyebrow">03 / NHẬT KÝ SỰ CỐ VẬN HÀNH</span><h2 style="margin:4px 0 0">Danh sách sự cố & bảo trì kỹ thuật (${incidents.length})</h2></div><button type="button" class="primary" onclick="createSystemIncidentModal()">+ Ghi nhận sự cố / đợt bảo trì</button></div>
     <div class="table-scroll"><table><thead><tr><th>Mã</th><th>Tiêu đề & Mức độ</th><th>Chế độ kích hoạt</th><th>Trạng thái</th><th>Thời gian</th><th></th></tr></thead><tbody>
       ${incidents.map(inc=>`<tr><td><b>${E(inc.code)}</b></td><td><b>${E(inc.title)}</b><br><small class="muted">${E(inc.summary||"")}</small></td><td><code>${E(inc.operational_mode||"normal")}</code></td><td><span class="status ${inc.status==="resolved"?"":"status-warn"}">${E(inc.status)}</span></td><td>${fmt(inc.started_at)}</td><td>${inc.status!=="resolved"?`<button type="button" class="secondary" onclick="resolveSystemIncident('${E(inc.id)}')">Đóng sự cố & Mở lại</button>`:""}</td></tr>`).join("")||`<tr><td colspan="6" class="muted">Không có sự cố kỹ thuật nào đang mở.</td></tr>`}
     </tbody></table></div>
@@ -3424,7 +3764,7 @@ async function adminMedia(main){
     const u=usageMap[x.key]||{};
     const usedBy=u.used_by||[];
     const isPdf=String(x.mime||"").includes("pdf")||String(x.key||"").endsWith(".pdf");
-    return `<div class="media-card">${isPdf?`<div style="padding:28px;text-align:center;background:var(--bg);font-weight:700;">📄 PDF Resource</div>`:`<img src="${E(x.url)}" alt="${E(x.key.split('/').pop())}">`}<div class="media-meta"><b>${E(x.key.split('/').pop())}</b><small>${Math.round((x.size||0)/1024)} KB · ${usedBy.length?`Đang dùng (${usedBy.length})`:"Chưa gắn"}</small><div class="actions"><button class="secondary" onclick="copyMediaUrl('${E(x.url)}')">Sao chép URL</button><button class="danger" onclick="deleteSiteImage('${E(x.key)}')">Xóa</button></div></div></div>`;
+    return `<div class="media-card">${isPdf?`<div style="padding:28px;text-align:center;background:var(--bg);font-weight:700;">📄 Tài liệu PDF</div>`:`<img src="${E(x.url)}" alt="${E(x.key.split('/').pop())}">`}<div class="media-meta"><b>${E(x.key.split('/').pop())}</b><small>${Math.round((x.size||0)/1024)} KB · ${usedBy.length?`Đang dùng (${usedBy.length})`:"Chưa gắn"}</small><div class="actions"><button class="secondary" onclick="copyMediaUrl('${E(x.url)}')">Sao chép URL</button><button class="danger" onclick="deleteSiteImage('${E(x.key)}')">Xóa</button></div></div></div>`;
   }).join("")||`<div class="card muted">Chưa có tài nguyên tải lên.</div>`}</div>`;
 }
 window.uploadSiteImage=()=>{modal(`<div class="admin-dialog-head"><span class="eyebrow">THƯ VIỆN TÀI NGUYÊN SỐ</span><button type="button" class="admin-modal-close" onclick="closeModal()" aria-label="Đóng">×</button><h2>Tải ảnh / SVG / PDF lên Thư viện</h2><p class="muted">Hỗ trợ JPG, PNG, WEBP, GIF, SVG (được làm sạch script tự động) và PDF tối đa 15 MB.</p></div><form id="siteImageForm" class="admin-dialog-form"><div class="field"><label for="siteImageFile">Chọn tệp</label><input id="siteImageFile" name="file" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,application/pdf" required><small class="muted">Chỉ sử dụng tài nguyên thực tế có quyền sử dụng hợp lệ.</small></div><div class="admin-dialog-actions"><button type="button" class="secondary" onclick="closeModal()">Hủy</button><button class="primary" id="siteImageSubmit">Tải lên</button></div></form>`);document.getElementById("siteImageForm").onsubmit=async e=>{e.preventDefault();const form=e.currentTarget,file=form.elements.file.files?.[0],submit=document.getElementById("siteImageSubmit");if(!file)return;if(!["image/jpeg","image/png","image/webp","image/gif","image/svg+xml","application/pdf"].includes(file.type)){toast("Chỉ hỗ trợ JPG, PNG, WEBP, GIF, SVG hoặc PDF.","bad");return}if(file.size>15*1024*1024){toast("Tệp vượt quá giới hạn 15 MB.","bad");return}const fd=new FormData(form);submit.disabled=true;submit.textContent="Đang tải lên…";try{const r=await api("/api/admin/media",{method:"POST",body:fd});closeModal();toast("Đã tải tài nguyên lên thư viện. Đường dẫn: "+r.url);adminMedia(document.getElementById("adminMain"));}catch(err){toast(errorText(err),"bad");submit.disabled=false;submit.textContent="Thử tải lại"}}};
@@ -3435,7 +3775,7 @@ async function adminModules(main){
   const d=await api("/api/admin/modules");
   state.admin.modules=d.items||[];
 
-  main.innerHTML=`<h1>Quản lý Phân hệ (Modules)</h1><p class="muted">Bật/tắt chức năng theo nhu cầu vận hành. Khi tắt một phân hệ, cả giao diện công khai lẫn API máy chủ đều tự động khóa truy cập phân hệ đó.</p><div class="card">${state.admin.modules.map(m=>`<div class="check"><input type="checkbox" data-module="${E(m.key)}" ${m.enabled?"checked":""}><label><b>${E(m.name)}</b> — ${E(m.description||"")} <span class="small muted">(${E(m.category)})</span></label></div>`).join("")}<button class="primary" onclick="saveModules()">Lưu cấu hình Phân hệ</button></div>`;
+  main.innerHTML=`<h1>Quản lý Phân hệ Hệ thống</h1><p class="muted">Bật/tắt chức năng theo nhu cầu vận hành. Khi tắt một phân hệ, cả giao diện công khai lẫn API máy chủ đều tự động khóa truy cập phân hệ đó.</p><div class="card">${state.admin.modules.map(m=>`<div class="check"><input type="checkbox" data-module="${E(m.key)}" ${m.enabled?"checked":""}><label><b>${E(m.name)}</b> — ${E(m.description||"")} <span class="small muted">(${E(m.category)})</span></label></div>`).join("")}<button class="primary" onclick="saveModules()">Lưu cấu hình Phân hệ</button></div>`;
 }
 
 window.saveModules=()=>{
@@ -3534,7 +3874,13 @@ function errorText(err){
     OWNER_PROTECTED:"Tài khoản Chủ sở hữu hệ thống được bảo vệ.",
     OWNER_ROLE_NOT_ASSIGNABLE_HERE:"Vai trò Chủ sở hữu hệ thống không thể cấp từ màn hình này.",
     OWNER_CANNOT_BE_DISABLED:"Phải luôn duy trì ít nhất một Chủ sở hữu hệ thống đang hoạt động.",
-    FEATURE_TEMPORARILY_UNAVAILABLE:"Chức năng này tạm thời chưa tương thích với cấu trúc dữ liệu hiện tại."
+    FEATURE_TEMPORARILY_UNAVAILABLE:"Chức năng này tạm thời chưa tương thích với cấu trúc dữ liệu hiện tại.",
+    DUPLICATE_FORM_ID:"Mã định danh biểu mẫu đã tồn tại. Vui lòng chọn một mã khác.",
+    DUPLICATE_TERM_CODE:"Mã điều khoản đã tồn tại. Vui lòng chọn mã khác hoặc sửa điều khoản hiện có.",
+    BANK_CONFIG_INCOMPLETE:"Chương trình tài trợ chưa cấu hình đầy đủ thông tin ngân hàng thụ hưởng (mã BIN, số tài khoản, tên chủ tài khoản).",
+    INVALID_INPUT:"Dữ liệu gửi lên chưa đầy đủ hoặc chưa đúng định dạng. Vui lòng kiểm tra lại các trường bắt buộc.",
+    ASSET_IN_USE:"Tệp đang được tham chiếu bởi hồ sơ, tài liệu hoặc trang nội dung nên không thể xóa.",
+    SELF_APPROVAL_FORBIDDEN:"Nguyên tắc tách biệt nhiệm vụ: Người khởi tạo không được tự phê duyệt giao dịch do chính mình tạo."
   };
 
   return map[code]||code;
@@ -3615,7 +3961,7 @@ async function router(){
       return renderAdmin();
     }
     if(path==="/admin/login"||route==="login") return renderLogin();
-    if(path==="/admin"||route==="admin") return renderAdmin();
+    if(path==="/admin"||path.startsWith("/admin/")||route==="admin") return renderAdmin();
     if(route==="portal") return isAdmin(state.user)?renderAdmin():renderLogin();
     if(route==="form") return renderForm(decodeURIComponent(param||""));
     if(window.SkyFirstDigital?.canRender(path,route)) return window.SkyFirstDigital.render({app,path,route,param,state,api,escape:E,format:fmt});
@@ -3632,7 +3978,7 @@ window.addEventListener("hashchange",router);
   await loadMe();
   await handleQueryActions();
 
-  const adminEntry=location.pathname==="/admin"||location.pathname==="/admin/login"||location.hash.startsWith("#login")||location.hash.startsWith("#admin");
+  const adminEntry=location.pathname==="/admin"||location.pathname==="/admin/login"||location.pathname.startsWith("/admin/")||location.hash.startsWith("#login")||location.hash.startsWith("#admin");
   if(state.config.maintenance_mode&&!state.user&&!adminEntry){
     app.innerHTML=`<main class="system-state-shell"><section class="system-state"><img src="/assets/sfn-logo-tight.png" alt="Sky First"><span class="state-code">MAINTENANCE</span><h1>Hệ thống đang được cập nhật</h1><p>Một số dịch vụ đang tạm dừng để bảo trì. Dữ liệu đã gửi trước đó không cần gửi lại chỉ vì trạng thái này.</p><div class="actions"><a class="secondary" href="mailto:support@skyfirst.io.vn">Hỗ trợ</a></div></section></main>`;
     return;

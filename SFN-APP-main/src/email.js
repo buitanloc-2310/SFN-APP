@@ -504,6 +504,26 @@ function getUniversalDefaultsForKey(key = "", vars = {}, lang = "vi") {
       ACTION_URL: `${appUrl}/admin`,
       ACTION_LABEL: isEn ? "OPEN SUPER ADMIN" : "MỞ HỆ THỐNG QUẢN TRỊ"
     },
+    document_published: {
+      EMAIL_CATEGORY: isEn ? "DOCUMENT & LIBRARY RELEASE" : "PHÁT HÀNH TÀI LIỆU SỐ",
+      EMAIL_HEADING: isEn ? "Official Document Published" : "Thông báo phát hành tài liệu mới",
+      INTRO_TEXT: isEn
+        ? `Document "${vars.title || regType}" (${code}) has been published on the Sky First Digital Information System.`
+        : `Tài liệu "${vars.title || regType}" (Mã: ${code}) đã được phê duyệt và công bố trên Hệ thống Thông tin Số Sky First.`,
+      ADDITIONAL_INFO: vars.category || vars.doc_type || (isEn ? "Official Digital Resource" : "Tài liệu chính thức"),
+      BODY_HTML:
+        vars.BODY_HTML ||
+        `<p style="margin:0;"><strong>${isEn ? "Document:" : "Tên tài liệu:"}</strong> ${escapeHtml(
+          vars.title || regType
+        )}<br><strong>${isEn ? "Code:" : "Mã tài liệu:"}</strong> ${escapeHtml(code)}</p>`,
+      NEXT_STEPS:
+        vars.NEXT_STEPS ||
+        (isEn
+          ? "You can preview or download this document online via the Digital Library."
+          : "Bạn có thể xem trực tuyến hoặc tải xuống tài liệu tại Thư viện Tài liệu số."),
+      ACTION_URL: vars.document_url || `${appUrl}/tai-lieu`,
+      ACTION_LABEL: isEn ? "OPEN DIGITAL LIBRARY" : "MỞ THƯ VIỆN TÀI LIỆU"
+    },
     fundraising_update: {
       EMAIL_CATEGORY: isEn ? "SPONSORSHIP TRANSPARENCY" : "CẬP NHẬT MINH BẠCH TÀI TRỢ",
       EMAIL_HEADING: isEn ? "Sponsorship Campaign Update" : "Thông báo cập nhật chương trình tài trợ",

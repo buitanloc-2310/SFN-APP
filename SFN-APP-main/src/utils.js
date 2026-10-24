@@ -510,16 +510,66 @@ function tlv(id, val) {
   return `${id}${String(s.length).padStart(2, "0")}${s}`;
 }
 
+export const NAPAS_BANKS = [
+  { bin: "970436", code: "VCB", short_name: "Vietcombank", name: "Ngân hàng TMCP Ngoại thương Việt Nam (Vietcombank)" },
+  { bin: "970415", code: "ICB", short_name: "VietinBank", name: "Ngân hàng TMCP Công thương Việt Nam (VietinBank)" },
+  { bin: "970418", code: "BIDV", short_name: "BIDV", name: "Ngân hàng TMCP Đầu tư và Phát triển Việt Nam (BIDV)" },
+  { bin: "970405", code: "VBA", short_name: "Agribank", name: "Ngân hàng Nông nghiệp và Phát triển Nông thôn Việt Nam (Agribank)" },
+  { bin: "970422", code: "MB", short_name: "MBBank", name: "Ngân hàng TMCP Quân đội (MB Bank)" },
+  { bin: "970407", code: "TCB", short_name: "Techcombank", name: "Ngân hàng TMCP Kỹ thương Việt Nam (Techcombank)" },
+  { bin: "970416", code: "ACB", short_name: "ACB", name: "Ngân hàng TMCP Á Châu (ACB)" },
+  { bin: "970432", code: "VPB", short_name: "VPBank", name: "Ngân hàng TMCP Việt Nam Thịnh Vượng (VPBank)" },
+  { bin: "970423", code: "TPB", short_name: "TPBank", name: "Ngân hàng TMCP Tiên Phong (TPBank)" },
+  { bin: "970403", code: "STB", short_name: "Sacombank", name: "Ngân hàng TMCP Sài Gòn Thương Tín (Sacombank)" },
+  { bin: "970437", code: "HDB", short_name: "HDBank", name: "Ngân hàng TMCP Phát triển TP. Hồ Chí Minh (HDBank)" },
+  { bin: "970441", code: "VIB", short_name: "VIB", name: "Ngân hàng TMCP Quốc tế Việt Nam (VIB)" },
+  { bin: "970443", code: "SHB", short_name: "SHB", name: "Ngân hàng TMCP Sài Gòn - Hà Nội (SHB)" },
+  { bin: "970431", code: "EIB", short_name: "Eximbank", name: "Ngân hàng TMCP Xuất Nhập khẩu Việt Nam (Eximbank)" },
+  { bin: "970426", code: "MSB", short_name: "MSB", name: "Ngân hàng TMCP Hàng Hải Việt Nam (MSB)" },
+  { bin: "970448", code: "OCB", short_name: "OCB", name: "Ngân hàng TMCP Phương Đông (OCB)" },
+  { bin: "970440", code: "SEAB", short_name: "SeABank", name: "Ngân hàng TMCP Đông Nam Á (SeABank)" },
+  { bin: "970449", code: "LPB", short_name: "LPBank", name: "Ngân hàng TMCP Lộc Phát Việt Nam (LPBank)" }
+];
+
+export function resolveNapasBank({ bank_bin = "", bank_code = "", bank_name = "" } = {}) {
+  const rawBin = String(bank_bin || "").replace(/\D/g, "").trim();
+  const rawCode = String(bank_code || "").trim().toUpperCase();
+  const rawName = String(bank_name || "").trim().toLowerCase();
+  if (rawBin) {
+    const byBin = NAPAS_BANKS.find(b => b.bin === rawBin);
+    if (byBin) return byBin;
+    if (/^9704\d{2}$/.test(rawBin)) {
+      return { bin: rawBin, code: rawCode || "BANK", short_name: bank_name || rawCode || rawBin, name: bank_name || `Ngân hàng NAPAS (${rawBin})` };
+    }
+  }
+  if (rawCode) {
+    const byCode = NAPAS_BANKS.find(b => b.code === rawCode || b.short_name.toUpperCase() === rawCode);
+    if (byCode) return byCode;
+  }
+  if (rawName) {
+    const byName = NAPAS_BANKS.find(
+      b =>
+        b.short_name.toLowerCase() === rawName ||
+        b.code.toLowerCase() === rawName ||
+        b.name.toLowerCase().includes(rawName) ||
+        rawName.includes(b.short_name.toLowerCase())
+    );
+    if (byName) return byName;
+  }
+  return null;
+}
+
 /**
  * Generates an EMVCo / NAPAS 247 VietQR compliant payload string without any donor PII.
+ * Does NOT silently default to an arbitrary bank if bankBin or accountNo is missing.
  */
-export function buildVietQrPayload({ bankBin = "970422", accountNo = "", amount = 0, referenceCode = "" }) {
-  const cleanBin = String(bankBin || "970422").replace(/\D/g, "").slice(0, 6) || "970422";
+export function buildVietQrPayload({ bankBin = "", accountNo = "", amount = 0, referenceCode = "" }) {
+  const cleanBin = String(bankBin || "").replace(/\D/g, "").slice(0, 6);
   const cleanAcc = String(accountNo || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 24);
   const cleanRef = String(referenceCode || "").replace(/[^A-Za-z0-9 -]/g, "").slice(0, 50);
   const cleanAmt = Math.max(0, Math.round(Number(amount || 0)));
-  if (!cleanAcc) {
-    return `SKYFIRST-VIETQR|BIN:${cleanBin}|AMOUNT:${cleanAmt}|REF:${cleanRef}`;
+  if (!cleanBin || cleanBin.length !== 6 || !cleanAcc) {
+    return "";
   }
   const beneficiary = tlv("00", cleanBin) + tlv("01", cleanAcc);
   const merchantAccountInfo = tlv("00", "A000000727") + tlv("01", beneficiary) + tlv("02", "QRIBFTTA");
@@ -536,59 +586,312 @@ export function buildVietQrPayload({ bankBin = "970422", accountNo = "", amount 
   return bodyWithoutCrc + crc16CcittFalse(bodyWithoutCrc);
 }
 
-/**
- * Generates a self-contained SVG QR matrix data URI locally (zero external PII leak, works offline).
- */
-export function buildLocalQrSvgDataUrl(payloadText, label = "VIETQR SKY FIRST") {
-  const seedStr = String(payloadText || "");
-  const size = 21;
-  const grid = Array.from({ length: size }, () => Array(size).fill(0));
+// ISO/IEC 18004 Standard QR Code Matrix Generator (Byte mode, ECC Level L, Versions 1..10)
+const QR_CAP_L = [0, 17, 32, 53, 78, 106, 134, 154, 192, 230, 271];
+const QR_TOTAL_CW = [0, 26, 44, 70, 100, 134, 172, 196, 242, 292, 346];
+const QR_EC_PER_BLK_L = [0, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18];
+const QR_NUM_BLKS_L = [0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4];
+const QR_ALIGN_POS = [
+  [], [], [6, 18], [6, 22], [6, 26], [6, 30],
+  [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]
+];
+
+const GF_EXP = new Uint8Array(512);
+const GF_LOG = new Uint8Array(256);
+(() => {
+  let x = 1;
+  for (let i = 0; i < 255; i++) {
+    GF_EXP[i] = x;
+    GF_LOG[x] = i;
+    x <<= 1;
+    if (x & 0x100) x ^= 0x11d;
+  }
+  for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+})();
+
+function gfMul(a, b) {
+  return (a === 0 || b === 0) ? 0 : GF_EXP[GF_LOG[a] + GF_LOG[b]];
+}
+
+function rsGeneratorDivisor(degree) {
+  const result = new Uint8Array(degree);
+  result[degree - 1] = 1;
+  let root = 1;
+  for (let i = 0; i < degree; i++) {
+    for (let j = 0; j < degree; j++) {
+      result[j] = gfMul(result[j], root);
+      if (j + 1 < degree) result[j] ^= result[j + 1];
+    }
+    root = gfMul(root, 0x02);
+  }
+  return result;
+}
+
+function rsComputeEcc(data, degree) {
+  const divisor = rsGeneratorDivisor(degree);
+  const result = new Uint8Array(degree);
+  for (const b of data) {
+    const factor = b ^ result[0];
+    result.copyWithin(0, 1);
+    result[degree - 1] = 0;
+    for (let i = 0; i < degree; i++) {
+      result[i] ^= gfMul(divisor[i], factor);
+    }
+  }
+  return result;
+}
+
+export function encodeQrMatrix(text) {
+  const bytes = new TextEncoder().encode(String(text || ""));
+  let ver = 1;
+  while (ver <= 10 && bytes.length > QR_CAP_L[ver]) ver++;
+  if (ver > 10) ver = 10;
+  const maxCap = QR_CAP_L[ver];
+  const payload = bytes.length > maxCap ? bytes.slice(0, maxCap) : bytes;
+
+  const totalCw = QR_TOTAL_CW[ver];
+  const ecPerBlk = QR_EC_PER_BLK_L[ver];
+  const numBlks = QR_NUM_BLKS_L[ver];
+  const totalDataCw = totalCw - ecPerBlk * numBlks;
+
+  const bits = [];
+  const pushBits = (val, len) => {
+    for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1);
+  };
+  pushBits(0b0100, 4);
+  pushBits(payload.length, ver <= 9 ? 8 : 16);
+  for (const b of payload) pushBits(b, 8);
+  const maxBits = totalDataCw * 8;
+  for (let i = 0; i < 4 && bits.length < maxBits; i++) bits.push(0);
+  while (bits.length % 8 !== 0) bits.push(0);
+  const dataCw = new Uint8Array(totalDataCw);
+  for (let i = 0; i < bits.length / 8; i++) {
+    let b = 0;
+    for (let j = 0; j < 8; j++) b = (b << 1) | bits[i * 8 + j];
+    dataCw[i] = b;
+  }
+  let padIdx = bits.length / 8;
+  let toggle = true;
+  while (padIdx < totalDataCw) {
+    dataCw[padIdx++] = toggle ? 0xec : 0x11;
+    toggle = !toggle;
+  }
+
+  const dataBlocks = [];
+  const eccBlocks = [];
+  const baseBlkLen = Math.floor(totalDataCw / numBlks);
+  const extraBlks = totalDataCw % numBlks;
+  let offset = 0;
+  for (let b = 0; b < numBlks; b++) {
+    const len = baseBlkLen + (b >= numBlks - extraBlks ? 1 : 0);
+    const blk = dataCw.slice(offset, offset + len);
+    offset += len;
+    dataBlocks.push(blk);
+    eccBlocks.push(rsComputeEcc(blk, ecPerBlk));
+  }
+
+  const finalCw = [];
+  const maxDataLen = baseBlkLen + (extraBlks > 0 ? 1 : 0);
+  for (let i = 0; i < maxDataLen; i++) {
+    for (let b = 0; b < numBlks; b++) {
+      if (i < dataBlocks[b].length) finalCw.push(dataBlocks[b][i]);
+    }
+  }
+  for (let i = 0; i < ecPerBlk; i++) {
+    for (let b = 0; b < numBlks; b++) {
+      finalCw.push(eccBlocks[b][i]);
+    }
+  }
+
+  const size = ver * 4 + 17;
+  const grid = Array.from({ length: size }, () => new Uint8Array(size));
+  const isFunc = Array.from({ length: size }, () => new Uint8Array(size));
+
+  const setFunctionModule = (r, c, dark) => {
+    if (r < 0 || r >= size || c < 0 || c >= size) return;
+    grid[r][c] = dark ? 1 : 0;
+    isFunc[r][c] = 1;
+  };
+
+  for (let i = 0; i < size; i++) {
+    setFunctionModule(6, i, i % 2 === 0);
+    setFunctionModule(i, 6, i % 2 === 0);
+  }
+
   const drawFinder = (r0, c0) => {
-    for (let r = 0; r < 7; r++) {
-      for (let c = 0; c < 7; c++) {
-        const border = r === 0 || r === 6 || c === 0 || c === 6;
-        const inner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
-        grid[r0 + r][c0 + c] = border || inner ? 1 : 0;
+    for (let dr = -1; dr <= 7; dr++) {
+      for (let dc = -1; dc <= 7; dc++) {
+        const r = r0 + dr, c = c0 + dc;
+        if (r < 0 || r >= size || c < 0 || c >= size) continue;
+        const inOuter = dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6 && (dr === 0 || dr === 6 || dc === 0 || dc === 6);
+        const inInner = dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4;
+        setFunctionModule(r, c, inOuter || inInner);
       }
     }
   };
   drawFinder(0, 0);
   drawFinder(0, size - 7);
   drawFinder(size - 7, 0);
-  for (let i = 8; i < size - 8; i++) {
-    grid[6][i] = i % 2 === 0 ? 1 : 0;
-    grid[i][6] = i % 2 === 0 ? 1 : 0;
-  }
-  let h = 2166136261;
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      const inFinder =
-        (r < 8 && c < 8) ||
-        (r < 8 && c >= size - 8) ||
-        (r >= size - 8 && c < 8) ||
-        r === 6 ||
-        c === 6;
-      if (inFinder) continue;
-      const ch = seedStr.charCodeAt((r * size + c) % Math.max(1, seedStr.length)) || 0;
-      h ^= ch + r * 31 + c * 17;
-      h = Math.imul(h, 16777619);
-      grid[r][c] = (h >>> 0) & 1;
-    }
-  }
-  const cell = 10;
-  const pad = 20;
-  const totalW = size * cell + pad * 2;
-  const totalH = totalW + 26;
-  let rects = "";
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      if (grid[r][c]) {
-        rects += `<rect x="${pad + c * cell}" y="${pad + r * cell}" width="${cell}" height="${cell}" fill="#071b35" rx="1.5"/>`;
+
+  const alignCoords = QR_ALIGN_POS[ver];
+  for (let i = 0; i < alignCoords.length; i++) {
+    for (let j = 0; j < alignCoords.length; j++) {
+      if ((i === 0 && j === 0) || (i === 0 && j === alignCoords.length - 1) || (i === alignCoords.length - 1 && j === 0)) continue;
+      const rc = alignCoords[i], cc = alignCoords[j];
+      for (let dr = -2; dr <= 2; dr++) {
+        for (let dc = -2; dc <= 2; dc++) {
+          const dark = Math.max(Math.abs(dr), Math.abs(dc)) !== 1;
+          setFunctionModule(rc + dr, cc + dc, dark);
+        }
       }
     }
   }
-  const safeLabel = escapeHtml(String(label || "").slice(0, 32));
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" width="300" height="330"><rect width="100%" height="100%" rx="16" fill="#ffffff" stroke="#dbe6f3" stroke-width="2"/>${rects}<text x="${totalW / 2}" y="${totalH - 10}" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="11" font-weight="700" fill="#0759b8">${safeLabel}</text></svg>`;
+
+  setFunctionModule(size - 8, 8, true);
+  for (let i = 0; i <= 8; i++) {
+    if (!isFunc[8][i]) setFunctionModule(8, i, false);
+    if (!isFunc[i][8]) setFunctionModule(i, 8, false);
+  }
+  for (let i = 0; i < 8; i++) {
+    if (!isFunc[8][size - 1 - i]) setFunctionModule(8, size - 1 - i, false);
+    if (!isFunc[size - 1 - i][8]) setFunctionModule(size - 1 - i, 8, false);
+  }
+  if (ver >= 7) {
+    let rem = ver;
+    for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
+    const vBits = (ver << 12) | rem;
+    for (let i = 0; i < 18; i++) {
+      const bit = ((vBits >>> i) & 1) !== 0;
+      const a = size - 11 + (i % 3), b = Math.floor(i / 3);
+      setFunctionModule(a, b, bit);
+      setFunctionModule(b, a, bit);
+    }
+  }
+
+  const maskFns = [
+    (r, c) => (r + c) % 2 === 0,
+    (r, c) => r % 2 === 0,
+    (r, c) => c % 3 === 0,
+    (r, c) => (r + c) % 3 === 0,
+    (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+    (r, c) => ((r * c) % 2) + ((r * c) % 3) === 0,
+    (r, c) => (((r * c) % 2) + ((r * c) % 3)) % 2 === 0,
+    (r, c) => (((r + c) % 2) + ((r * c) % 3)) % 2 === 0
+  ];
+
+  const rawGrid = grid.map(row => new Uint8Array(row));
+  let bitIdx = 0;
+  const totalBits = finalCw.length * 8;
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    for (let vert = 0; vert < size; vert++) {
+      for (let j = 0; j < 2; j++) {
+        const c = right - j;
+        const upward = ((right + 1) & 2) === 0;
+        const r = upward ? size - 1 - vert : vert;
+        if (!isFunc[r][c]) {
+          let dark = false;
+          if (bitIdx < totalBits) {
+            dark = ((finalCw[bitIdx >>> 3] >>> (7 - (bitIdx & 7))) & 1) !== 0;
+            bitIdx++;
+          }
+          rawGrid[r][c] = dark ? 1 : 0;
+        }
+      }
+    }
+  }
+
+  const writeFormatBits = (targetGrid, maskIdx) => {
+    const fmtData = (0b01 << 3) | maskIdx;
+    let fmtRem = fmtData;
+    for (let i = 0; i < 10; i++) fmtRem = (fmtRem << 1) ^ ((fmtRem >>> 9) * 0x537);
+    const fmtBits = ((fmtData << 10) | fmtRem) ^ 0x5412;
+    const put = (r, c, dark) => { targetGrid[r][c] = dark ? 1 : 0; };
+    for (let i = 0; i <= 5; i++) put(i, 8, ((fmtBits >>> i) & 1) !== 0);
+    put(7, 8, ((fmtBits >>> 6) & 1) !== 0);
+    put(8, 8, ((fmtBits >>> 7) & 1) !== 0);
+    put(8, 7, ((fmtBits >>> 8) & 1) !== 0);
+    for (let i = 9; i < 15; i++) put(8, 14 - i, ((fmtBits >>> i) & 1) !== 0);
+    for (let i = 0; i < 8; i++) put(8, size - 1 - i, ((fmtBits >>> i) & 1) !== 0);
+    for (let i = 8; i < 15; i++) put(size - 15 + i, 8, ((fmtBits >>> i) & 1) !== 0);
+    put(size - 8, 8, true);
+  };
+
+  const penaltyScore = (g) => {
+    let score = 0;
+    for (let r = 0; r < size; r++) {
+      let runColor = g[r][0], runLen = 1;
+      for (let c = 1; c < size; c++) {
+        if (g[r][c] === runColor) {
+          runLen++;
+          if (runLen === 5) score += 3;
+          else if (runLen > 5) score += 1;
+        } else { runColor = g[r][c]; runLen = 1; }
+      }
+    }
+    for (let c = 0; c < size; c++) {
+      let runColor = g[0][c], runLen = 1;
+      for (let r = 1; r < size; r++) {
+        if (g[r][c] === runColor) {
+          runLen++;
+          if (runLen === 5) score += 3;
+          else if (runLen > 5) score += 1;
+        } else { runColor = g[r][c]; runLen = 1; }
+      }
+    }
+    for (let r = 0; r < size - 1; r++) {
+      for (let c = 0; c < size - 1; c++) {
+        const v = g[r][c];
+        if (v === g[r][c + 1] && v === g[r + 1][c] && v === g[r + 1][c + 1]) score += 3;
+      }
+    }
+    return score;
+  };
+
+  let bestScore = Infinity, bestGrid = null;
+  for (let m = 1; m < 8; m++) {
+    const cand = rawGrid.map(row => new Uint8Array(row));
+    const fn = maskFns[m];
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (!isFunc[r][c] && fn(r, c)) cand[r][c] ^= 1;
+      }
+    }
+    writeFormatBits(cand, m);
+    const sc = penaltyScore(cand);
+    if (sc < bestScore) { bestScore = sc; bestGrid = cand; }
+  }
+
+  return { size, grid: bestGrid };
+}
+
+/**
+ * Generates a real, ISO/IEC 18004 standard scannable SVG QR code data URI locally
+ * (zero external PII leak, works 100% offline, decodable by any banking app or QR scanner).
+ */
+export function buildLocalQrSvgDataUrl(payloadText, label = "VIETQR SKY FIRST") {
+  const seedStr = String(payloadText || "").trim();
+  if (!seedStr) return "";
+  const { size, grid } = encodeQrMatrix(seedStr);
+  const cell = 8;
+  const pad = 32;
+  const totalW = size * cell + pad * 2;
+  const totalH = totalW + (label ? 28 : 0);
+  let pathData = "";
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (grid[r][c]) {
+        const x = pad + c * cell;
+        const y = pad + r * cell;
+        pathData += `M${x},${y}h${cell}v${cell}h-${cell}z`;
+      }
+    }
+  }
+  const safeLabel = escapeHtml(String(label || "").slice(0, 42));
+  const labelSvg = safeLabel
+    ? `<text x="${totalW / 2}" y="${totalH - 12}" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="11" font-weight="700" fill="#0759b8">${safeLabel}</text>`
+    : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" width="320" height="${Math.round(320 * (totalH / totalW))}" shape-rendering="crispEdges"><rect width="100%" height="100%" rx="12" fill="#ffffff" stroke="#dbe6f3" stroke-width="2"/><path d="${pathData}" fill="#000000"/>${labelSvg}</svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 

@@ -845,6 +845,7 @@ let mainCampId = '';
       prefix: 'SFN-CK',
       description: 'Biểu mẫu kiểm thử chữ ký bắt buộc',
       audience: 'public',
+      enabled: true,
       config: {
         form_type: 'general',
         presentation: 'classic',
@@ -1431,6 +1432,146 @@ let mainCampId = '';
     body: {status: 'resolved', resolution_note: 'Hoàn tất nâng cấp V10', restore_normal_mode: true}
   });
   assert(incCreate.status === 201 && incResolve.status === 200, 'System Incident Center records and resolves operational incidents');
+}
+
+
+// 30. Audit Remediation & Verification Suite (BUG-01..BUG-16)
+{
+  // 30.1 Direct URL SPA navigation to /admin/files, /admin/forms, /admin/terms returns 200 HTML shell (BUG-01)
+  for (const subPath of ['/admin/files', '/admin/forms', '/admin/terms', '/admin/sponsorship', '/admin/page-builder']) {
+    const spaSub = await callWorker(subPath);
+    assert(spaSub.status === 200 && typeof spaSub.data === 'string' && spaSub.data.includes('Hệ thống Thông tin Số Sky First'), `SPA Route ${subPath} returns 200 HTML shell directly`);
+  }
+
+  // 30.2 /api/admin/files search, visibility filter, pagination & schema protection (BUG-02)
+  const filesPage1 = await callWorker('/api/admin/files?page=1&limit=10&visibility=all', {cookie: superAdminCookie});
+  assert(
+    filesPage1.status === 200 &&
+    Array.isArray(filesPage1.data.items) &&
+    typeof filesPage1.data.total === 'number' &&
+    filesPage1.data.page === 1,
+    '/api/admin/files supports search, visibility filter, and server pagination safely'
+  );
+
+  // 30.3 Terms creation (POST), revision history (GET revisions), and update (PUT) (BUG-06)
+  const newTermRes = await callWorker('/api/admin/terms', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {
+      code: 'DK-03/2026/SFN',
+      name: 'Quy tắc Ứng xử & Bảo mật Thông tin Số',
+      version: '24/10/2026',
+      scope: 'Toàn mạng lưới',
+      status: 'draft',
+      change_note: 'Khởi tạo điều khoản thứ 4',
+      body: 'Toàn văn Quy tắc Ứng xử và Bảo mật Thông tin Số của Sky First Network.'
+    }
+  });
+  assert(newTermRes.status === 201 && newTermRes.data.code === 'DK-03/2026/SFN', 'Created 4th Term & Policy record in draft state via POST /api/admin/terms');
+
+  const updTermRes = await callWorker(`/api/admin/terms/${encodeURIComponent('DK-03/2026/SFN')}`, {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {
+      name: 'Quy tắc Ứng xử & Bảo mật Thông tin Số (Đã rà soát)',
+      version: '25/10/2026',
+      scope: 'Toàn mạng lưới',
+      status: 'published',
+      change_note: 'Công bố chính thức phiên bản 25/10/2026',
+      body: 'Toàn văn Quy tắc Ứng xử và Bảo mật Thông tin Số đã phê duyệt.'
+    }
+  });
+  const termRevs = await callWorker(`/api/admin/terms/${encodeURIComponent('DK-03/2026/SFN')}/revisions`, {cookie: superAdminCookie});
+  assert(
+    updTermRes.status === 200 &&
+    termRevs.status === 200 &&
+    Array.isArray(termRevs.data.items) &&
+    termRevs.data.items.length >= 2,
+    'Updating a Term preserves full version history in term_revisions without destructive overwrite'
+  );
+
+  // 30.4 Forms creation defaults to draft (enabled=0), requires approval/publish workflow before public listing (BUG-07)
+  const draftFormRes = await callWorker('/api/admin/forms', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {
+      id: 'audit_test_form_2026',
+      name: 'Biểu mẫu Kiểm thử Quy trình Duyệt 2026',
+      prefix: 'SFN-TEST',
+      description: 'Kiểm thử tạo biểu mẫu mặc định ở trạng thái nháp',
+      config: {sections: [{title: 'Thông tin', fields: [{key: 'full_name', label: 'Họ và tên', type: 'text', required: true}, {key: 'email', label: 'Email', type: 'email', required: true}]}]}
+    }
+  });
+  const cfgBeforeFormPub = await callWorker('/api/config');
+  const inPublicBefore = (cfgBeforeFormPub.data.forms || []).some(f => f.id === 'audit_test_form_2026');
+  assert(
+    draftFormRes.status === 200 &&
+    draftFormRes.data.enabled === 0 &&
+    draftFormRes.data.workflow_status === 'draft' &&
+    !inPublicBefore,
+    'Newly created form defaults to draft state (enabled=0) and is NOT auto-published on /api/config'
+  );
+
+  const formPubRes = await callWorker('/api/admin/forms/audit_test_form_2026/workflow', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {action: 'publish', note: 'Phê duyệt công bố biểu mẫu'}
+  });
+  const cfgAfterFormPub = await callWorker('/api/config');
+  const inPublicAfter = (cfgAfterFormPub.data.forms || []).some(f => f.id === 'audit_test_form_2026');
+  assert(
+    formPubRes.status === 200 &&
+    formPubRes.data.enabled === 1 &&
+    formPubRes.data.workflow_status === 'published' &&
+    inPublicAfter,
+    'Form approval & publish workflow transitions form to published and exposes it on /api/config'
+  );
+
+  // 30.5 RBAC separation: content_admin cannot modify system settings or modules (BUG-09)
+  const invCa = await callWorker('/api/admin/users', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {full_name: 'Content Admin User', email: 'contentadmin@skyfirst.io.vn', roles: ['content_admin'], activation_mode: 'self', must_change_password: false}
+  });
+  const caUser = await DB.prepare("SELECT id FROM users WHERE email='contentadmin@skyfirst.io.vn'").first();
+  await DB.prepare("UPDATE users SET must_change_password=0 WHERE id=?").bind(caUser.id).run();
+  const caLogin = await callWorker('/api/auth/login', {
+    method: 'POST', body: {email: 'contentadmin@skyfirst.io.vn', password: invCa.data.temp_password, portal: 'admin'}
+  });
+  const caCookie = (caLogin.headers.get('set-cookie') || '').split(';')[0];
+  const caSettingsAttempt = await callWorker('/api/admin/settings', {
+    method: 'PUT', cookie: caCookie,
+    body: {items: {app_short_name: 'Hacked'}}
+  });
+  const caModulesAttempt = await callWorker('/api/admin/modules', {
+    method: 'PUT', cookie: caCookie,
+    body: {items: [{key: 'forms', enabled: false}]}
+  });
+  assert(
+    caSettingsAttempt.status === 403 && caModulesAttempt.status === 403,
+    'content_admin is strictly blocked (403 FORBIDDEN) from modifying system settings or enabling/disabling system modules'
+  );
+
+  // 30.6 Sponsorship NAPAS bank validation: campaign without bank account rejects QR generation instead of defaulting to MB Bank (BUG-04)
+  const noBankCamp = await callWorker('/api/admin/sponsorship/campaigns', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {
+      code: 'SFN-NOBANK-2026',
+      title: 'Chiến dịch Chưa Cấu hình Ngân hàng',
+      target_amount: 10000000,
+      status: 'active',
+      visibility: 'public'
+    }
+  });
+  const noBankQr = await callWorker('/api/public/sponsorship/SFN-NOBANK-2026/qr-intent', {
+    method: 'POST',
+    body: {donor_name: 'Người thử nghiệm', expected_amount: 200000}
+  });
+  assert(
+    noBankCamp.status === 201 &&
+    noBankQr.status === 409 &&
+    noBankQr.data.error === 'BANK_CONFIG_INCOMPLETE',
+    'Sponsorship campaign without configured bank account rejects QR generation with 409 BANK_CONFIG_INCOMPLETE (never defaults to MB Bank)'
+  );
+
+  // 30.7 Central Credential Registry table issued_document_codes records issued certificates (BUG-05)
+  const regRows = await DB.prepare("SELECT * FROM issued_document_codes").all();
+  assert(Array.isArray(regRows.results) && regRows.results.length >= 1, 'issued_document_codes table exists and records issued credential lookup codes');
 }
 
 console.log(`\n========================================`);

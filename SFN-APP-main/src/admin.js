@@ -1,4 +1,4 @@
-import {json, readJson, uid, sha256, sha256Hex, ipHash, escapeHtml, pbkdf2, newSalt, magicBytesOk, isSafeSvgText, csvEscape} from "./utils.js";
+import {json, readJson, uid, sha256, sha256Hex, ipHash, escapeHtml, pbkdf2, newSalt, magicBytesOk, isSafeSvgText, csvEscape, NAPAS_BANKS, resolveNapasBank} from "./utils.js";
 import {getAuthUser, requireAuth, requirePermission, createInvitedAccount} from "./auth.js";
 import {hasPermission, hasAnyPermission, highestRoleLevel, roleLevel, canAccessScope} from "./permissions.js";
 import {sendTemplatedEmail, renderEmailContent} from "./email.js";
@@ -270,7 +270,7 @@ export const BACKUP_TABLES=[
 
 export async function buildBackupSnapshot(env,kind="manual",actorId=null){
   const snapshot={
-    schema_version:"v10.0-enterprise",
+    schema_version:"skyfirst-enterprise-2026",
     kind,
     created_at:new Date().toISOString(),
     table_counts:{},
@@ -644,8 +644,9 @@ export async function adminRoute(request,env,url,ctx){
 
   if(p==="/api/admin/people"&&request.method==="GET"){
     const deny=requirePermission(user,"people.view");if(deny)return deny;
-    const rs=await env.DB.prepare("SELECT * FROM people ORDER BY id DESC LIMIT 1500").all();
-    return json({items:rs.results||[]});
+    const rs=await env.DB.prepare("SELECT * FROM people ORDER BY id DESC LIMIT 1000").all();
+    const items=(rs.results||[]).filter(row=>canAccessScope(user,row.unit_code||""));
+    return json({items});
   }
 
   if(p==="/api/admin/modules"&&request.method==="GET"){
@@ -1054,45 +1055,180 @@ export async function adminRoute(request,env,url,ctx){
   if(p==="/api/admin/forms"&&request.method==="GET"){
     const deny=requirePermission(user,"form.view");if(deny)return deny;
     const rs=await env.DB.prepare("SELECT id,name,prefix,description,audience,min_age,enabled,recipient_email,version,config_json,updated_at FROM forms ORDER BY rowid").all();
-    return json({items:(rs.results||[]).map(x=>({...x,config:JSON.parse(x.config_json),config_json:undefined}))});
+    return json({items:(rs.results||[]).map(x=>{
+      let cfg={}; try{cfg=JSON.parse(x.config_json||"{}")}catch{}
+      const wfStatus=cfg.workflow_status||(x.enabled?"published":"draft");
+      return {...x,workflow_status:wfStatus,config:{...cfg,workflow_status:wfStatus},config_json:undefined};
+    })});
   }
   if(p==="/api/admin/forms"&&request.method==="POST"){
     const deny=requirePermission(user,"form.manage");if(deny)return deny;
-    const body=await readJson(request)||{},idForm=String(body.id||uid("form")).replace(/[^a-zA-Z0-9_-]/g,"");
-    if(!body.name||!body.prefix||!body.config) return json({error:"INVALID_INPUT"},400);
+    const body=await readJson(request)||{},idForm=String(body.id||uid("form")).trim().toLowerCase().replace(/[^a-z0-9_-]/g,"");
+    if(!idForm||!body.name||!body.prefix||!body.config) return json({error:"INVALID_INPUT",message:"Vui lòng nhập đầy đủ mã định danh, tên biểu mẫu, tiền tố và cấu hình câu hỏi."},400);
+    const existing=await env.DB.prepare("SELECT id FROM forms WHERE id=?").bind(idForm).first();
+    if(existing) return json({error:"DUPLICATE_FORM_ID",message:`Biểu mẫu với mã "${idForm}" đã tồn tại.`},409);
+    const wantPublish=(body.publish===true || body.enabled===true || body.enabled===1) && (hasPermission(user,"form.approve")||hasPermission(user,"approval.decide"));
+    const enabledVal=wantPublish?1:0;
+    const wfStatus=wantPublish?"published":"draft";
     const cfg={...body.config};
     cfg.form_type=cfg.form_type||body.form_type||"general";
+    cfg.workflow_status=wfStatus;
     if(typeof cfg.profile_photo_required!=="boolean") cfg.profile_photo_required=false;
     if(typeof cfg.signature_required!=="boolean") cfg.signature_required=false;
     const cfgJson=JSON.stringify(cfg);
-    await env.DB.prepare("INSERT INTO forms(id,name,prefix,description,audience,min_age,enabled,recipient_email,version,config_json,updated_by) VALUES(?,?,?,?,?,?,1,?,1,?,?)")
-      .bind(idForm,body.name,body.prefix,body.description||"",body.audience||"public",body.min_age??null,body.recipient_email||"app@skyfirst.io.vn",cfgJson,user.id).run();
-    try{await env.DB.prepare("INSERT INTO form_revisions(form_id,version,config_json,status,created_by) VALUES(?,1,?,'published',?)").bind(idForm,cfgJson,user.id).run();}catch{}
-    await audit(env,request,user,"Tạo biểu mẫu","form",idForm,{name:body.name,version:1});invalidatePublicCache(url,["/api/config"],ctx);return json({ok:true,id:idForm});
+    await env.DB.prepare("INSERT INTO forms(id,name,prefix,description,audience,min_age,enabled,recipient_email,version,config_json,updated_by) VALUES(?,?,?,?,?,?,?,?,1,?,?)")
+      .bind(idForm,String(body.name).trim(),String(body.prefix).trim().toUpperCase(),body.description||"",body.audience||"public",body.min_age??null,enabledVal,body.recipient_email||"app@skyfirst.io.vn",cfgJson,user.id).run();
+    try{await env.DB.prepare("INSERT INTO form_revisions(form_id,version,config_json,status,created_by) VALUES(?,1,?,?,?)").bind(idForm,cfgJson,wfStatus,user.id).run();}catch{}
+    await audit(env,request,user,"Tạo biểu mẫu","form",idForm,{name:body.name,version:1,workflow_status:wfStatus,enabled:enabledVal});
+    invalidatePublicCache(url,["/api/config"],ctx);
+    return json({ok:true,id:idForm,version:1,workflow_status:wfStatus,enabled:enabledVal},200);
+  }
+  const formRevsMatch=p.match(/^\/api\/admin\/forms\/([^/]+)\/revisions$/);
+  if(formRevsMatch&&request.method==="GET"){
+    const deny=requirePermission(user,"form.view");if(deny)return deny;
+    const fid=decodeURIComponent(formRevsMatch[1]);
+    if(!(await adminTableExists(env,"form_revisions"))) return json({items:[]});
+    const rs=await env.DB.prepare("SELECT id,form_id,version,status,created_by,created_at FROM form_revisions WHERE form_id=? ORDER BY version DESC LIMIT 50").bind(fid).all();
+    return json({items:rs.results||[]});
+  }
+  const formWorkflowMatch=p.match(/^\/api\/admin\/forms\/([^/]+)\/workflow$/);
+  if(formWorkflowMatch&&request.method==="POST"){
+    const fid=decodeURIComponent(formWorkflowMatch[1]),body=await readJson(request)||{};
+    const action=String(body.action||"").trim();
+    const current=await env.DB.prepare("SELECT * FROM forms WHERE id=?").bind(fid).first();
+    if(!current) return json({error:"NOT_FOUND",message:"Không tìm thấy biểu mẫu."},404);
+    let cfg={}; try{cfg=JSON.parse(current.config_json||"{}")}catch{}
+    let nextWf=cfg.workflow_status||(current.enabled?"published":"draft");
+    let nextEnabled=Number(current.enabled||0);
+    if(action==="submit_review"){
+      const deny=requirePermission(user,"form.manage");if(deny)return deny;
+      nextWf="pending_review";
+      nextEnabled=0;
+    }else if(action==="approve"||action==="publish"){
+      if(!hasAnyPermission(user,["form.approve","approval.decide"])) return json({error:"FORBIDDEN",message:"Cần quyền phê duyệt biểu mẫu (form.approve) để công bố biểu mẫu ra cổng công khai."},403);
+      nextWf=action==="approve"?"approved":"published";
+      nextEnabled=action==="publish"?1:0;
+      cfg.approved_by=user.id;
+      cfg.approved_at=new Date().toISOString();
+      if(action==="publish") cfg.published_at=new Date().toISOString();
+    }else if(action==="pause"||action==="draft"){
+      const deny=requirePermission(user,"form.manage");if(deny)return deny;
+      nextWf=action==="pause"?"paused":"draft";
+      nextEnabled=0;
+    }else if(action==="restore_version"){
+      const deny=requirePermission(user,"form.manage");if(deny)return deny;
+      const targetVer=Number(body.version||0);
+      const rev=await env.DB.prepare("SELECT * FROM form_revisions WHERE form_id=? AND version=?").bind(fid,targetVer).first();
+      if(!rev) return json({error:"REVISION_NOT_FOUND",message:"Không tìm thấy phiên bản biểu mẫu yêu cầu."},404);
+      let revCfg={}; try{revCfg=JSON.parse(rev.config_json||"{}")}catch{}
+      revCfg.workflow_status="draft";
+      const nextVer=Number(current.version||1)+1;
+      const nextCfgJson=JSON.stringify(revCfg);
+      await env.DB.prepare("UPDATE forms SET enabled=0,version=?,config_json=?,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?")
+        .bind(nextVer,nextCfgJson,user.id,fid).run();
+      try{await env.DB.prepare("INSERT INTO form_revisions(form_id,version,config_json,status,created_by) VALUES(?,?,?,'draft',?)").bind(fid,nextVer,nextCfgJson,user.id).run();}catch{}
+      await audit(env,request,user,"Khôi phục phiên bản biểu mẫu","form",fid,{restored_from:targetVer,version:nextVer});
+      invalidatePublicCache(url,["/api/config"],ctx);
+      return json({ok:true,version:nextVer,workflow_status:"draft",enabled:0});
+    }else{
+      return json({error:"INVALID_ACTION",message:"Thao tác quy trình biểu mẫu không hợp lệ."},400);
+    }
+    cfg.workflow_status=nextWf;
+    if(body.note) cfg.review_note=String(body.note).trim();
+    const cfgJson=JSON.stringify(cfg);
+    await env.DB.prepare("UPDATE forms SET enabled=?,config_json=?,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?")
+      .bind(nextEnabled,cfgJson,user.id,fid).run();
+    try{await env.DB.prepare("UPDATE form_revisions SET status=? WHERE form_id=? AND version=?").bind(nextWf,fid,current.version).run();}catch{}
+    await audit(env,request,user,`Chuyển trạng thái biểu mẫu (${nextWf})`,"form",fid,{action,workflow_status:nextWf,enabled:nextEnabled,note:body.note||""});
+    invalidatePublicCache(url,["/api/config"],ctx);
+    return json({ok:true,workflow_status:nextWf,enabled:nextEnabled});
   }
   const formMatch=p.match(/^\/api\/admin\/forms\/([^/]+)$/);
   if(formMatch&&request.method==="PUT"){
     const deny=requirePermission(user,"form.manage");if(deny)return deny;
     const fid=decodeURIComponent(formMatch[1]),body=await readJson(request)||{};
     const current=await env.DB.prepare("SELECT * FROM forms WHERE id=?").bind(fid).first();if(!current)return json({error:"NOT_FOUND"},404);
-    const nextVersion=Number(current.version)+1,nextConfig=JSON.stringify(body.config||JSON.parse(current.config_json));
+    const curCfg=JSON.parse(current.config_json||"{}");
+    const mergedCfg={...curCfg,...(body.config||{})};
+    const wantEnabled = body.enabled !== undefined ? (body.enabled===false||body.enabled===0?0:1) : Number(current.enabled||0);
+    if(wantEnabled===1 && Number(current.enabled||0)===0 && !hasAnyPermission(user,["form.approve","approval.decide"])){
+      return json({error:"FORBIDDEN",message:"Cần quyền phê duyệt biểu mẫu (form.approve) để mở công khai biểu mẫu."},403);
+    }
+    mergedCfg.workflow_status = body.workflow_status || (wantEnabled===1 ? "published" : (mergedCfg.workflow_status==="published" ? "draft" : (mergedCfg.workflow_status||"draft")));
+    const nextVersion=Number(current.version)+1,nextConfig=JSON.stringify(mergedCfg);
     await env.DB.prepare("UPDATE forms SET name=?,prefix=?,description=?,audience=?,min_age=?,enabled=?,recipient_email=?,version=?,config_json=?,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?")
-      .bind(body.name||current.name,body.prefix||current.prefix,body.description??current.description,body.audience||current.audience,body.min_age??current.min_age,body.enabled===false?0:1,body.recipient_email||current.recipient_email,nextVersion,nextConfig,user.id,fid).run();
-    try{await env.DB.prepare("INSERT INTO form_revisions(form_id,version,config_json,status,created_by) VALUES(?,?,?,'published',?)").bind(fid,nextVersion,nextConfig,user.id).run();}catch{}
-    await audit(env,request,user,"Cập nhật biểu mẫu","form",fid,{version:nextVersion});invalidatePublicCache(url,["/api/config"],ctx);return json({ok:true,version:nextVersion});
+      .bind(body.name||current.name,body.prefix||current.prefix,body.description??current.description,body.audience||current.audience,body.min_age??current.min_age,wantEnabled,body.recipient_email||current.recipient_email,nextVersion,nextConfig,user.id,fid).run();
+    try{await env.DB.prepare("INSERT INTO form_revisions(form_id,version,config_json,status,created_by) VALUES(?,?,?,?,?)").bind(fid,nextVersion,nextConfig,mergedCfg.workflow_status,user.id).run();}catch{}
+    await audit(env,request,user,"Cập nhật biểu mẫu","form",fid,{version:nextVersion,workflow_status:mergedCfg.workflow_status,enabled:wantEnabled});
+    invalidatePublicCache(url,["/api/config"],ctx);
+    return json({ok:true,version:nextVersion,workflow_status:mergedCfg.workflow_status,enabled:wantEnabled});
   }
 
   if(p==="/api/admin/terms"&&request.method==="GET"){
-    const deny=requirePermission(user,"form.view");if(deny)return deny;
+    if(!hasAnyPermission(user,["term.view","form.view"])) return json({error:"FORBIDDEN",permission:"term.view"},403);
     const rs=await env.DB.prepare("SELECT * FROM terms ORDER BY code").all();return json({items:rs.results||[]});
+  }
+  if(p==="/api/admin/terms"&&request.method==="POST"){
+    if(!hasAnyPermission(user,["term.manage","form.manage"])) return json({error:"FORBIDDEN",permission:"term.manage"},403);
+    const body=await readJson(request)||{};
+    const code=String(body.code||"").trim().toUpperCase();
+    const name=String(body.name||"").trim();
+    const version=String(body.version||"01/2026").trim();
+    const scope=String(body.scope||"Toàn hệ thống").trim();
+    const content=String(body.body||"").trim();
+    const status=["draft","published","archived"].includes(body.status)?body.status:"draft";
+    if(!code||!name||!content) return json({error:"INVALID_INPUT",message:"Mã điều khoản, tên điều khoản và nội dung là bắt buộc."},400);
+    const existing=await env.DB.prepare("SELECT code FROM terms WHERE code=?").bind(code).first();
+    if(existing) return json({error:"DUPLICATE_TERM_CODE",message:`Điều khoản mã "${code}" đã tồn tại.`},409);
+    await env.DB.prepare("INSERT INTO terms(code,name,version,scope,body,status,updated_at,updated_by) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,?)")
+      .bind(code,name,version,scope,content,status,user.id).run();
+    if(await adminTableExists(env,"term_revisions")){
+      try{
+        await env.DB.prepare("INSERT INTO term_revisions(term_code,name,version,scope,body,status,change_note,created_by) VALUES(?,?,?,?,?,?,?,?)")
+          .bind(code,name,version,scope,content,status,String(body.change_note||"Tạo mới điều khoản"),user.id).run();
+      }catch{}
+    }
+    await audit(env,request,user,"Tạo điều khoản mới","term",code,{name,version,status});
+    return json({ok:true,code,version,status},201);
+  }
+  const termRevMatch=p.match(/^\/api\/admin\/terms\/(.+)\/revisions$/);
+  if(termRevMatch&&request.method==="GET"){
+    if(!hasAnyPermission(user,["term.view","form.view"])) return json({error:"FORBIDDEN",permission:"term.view"},403);
+    const code=decodeURIComponent(termRevMatch[1]);
+    if(!(await adminTableExists(env,"term_revisions"))) return json({items:[]});
+    const rs=await env.DB.prepare("SELECT * FROM term_revisions WHERE term_code=? ORDER BY id DESC LIMIT 50").bind(code).all();
+    return json({items:rs.results||[]});
   }
   const termMatch=p.match(/^\/api\/admin\/terms\/(.+)$/);
   if(termMatch&&request.method==="PUT"){
-    const deny=requirePermission(user,"form.manage");if(deny)return deny;
+    if(!hasAnyPermission(user,["term.manage","form.manage"])) return json({error:"FORBIDDEN",permission:"term.manage"},403);
     const code=decodeURIComponent(termMatch[1]),body=await readJson(request)||{};
+    const current=await env.DB.prepare("SELECT * FROM terms WHERE code=?").bind(code).first();
+    if(!current) return json({error:"NOT_FOUND",message:"Không tìm thấy điều khoản cần cập nhật."},404);
+    const nextName=String(body.name||current.name).trim();
+    const nextVersion=String(body.version||current.version).trim();
+    const nextScope=String(body.scope??current.scope??"").trim();
+    const nextBody=String(body.body??current.body??"");
+    const nextStatus=["draft","published","archived"].includes(body.status)?body.status:(current.status||"published");
+    if(await adminTableExists(env,"term_revisions")){
+      try{
+        const hasPrev=await env.DB.prepare("SELECT id FROM term_revisions WHERE term_code=? LIMIT 1").bind(code).first();
+        if(!hasPrev){
+          await env.DB.prepare("INSERT INTO term_revisions(term_code,name,version,scope,body,status,change_note,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)")
+            .bind(code,current.name,current.version,current.scope||"",current.body||"",current.status||"published","Phiên bản gốc trước khi cập nhật",current.updated_by||user.id,current.updated_at||new Date().toISOString()).run();
+        }
+      }catch{}
+    }
     await env.DB.prepare("UPDATE terms SET name=?,version=?,scope=?,body=?,status=?,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE code=?")
-      .bind(body.name,body.version,body.scope||"",body.body||"",body.status||"published",user.id,code).run();
-    await audit(env,request,user,"Cập nhật điều khoản","term",code,{version:body.version});return json({ok:true});
+      .bind(nextName,nextVersion,nextScope,nextBody,nextStatus,user.id,code).run();
+    if(await adminTableExists(env,"term_revisions")){
+      try{
+        await env.DB.prepare("INSERT INTO term_revisions(term_code,name,version,scope,body,status,change_note,created_by) VALUES(?,?,?,?,?,?,?,?)")
+          .bind(code,nextName,nextVersion,nextScope,nextBody,nextStatus,String(body.change_note||"Cập nhật nội dung điều khoản"),user.id).run();
+      }catch{}
+    }
+    await audit(env,request,user,"Cập nhật điều khoản","term",code,{version:nextVersion,status:nextStatus});
+    return json({ok:true,version:nextVersion,status:nextStatus});
   }
 
   const genericList=p.match(/^\/api\/admin\/content\/(news|classes|events|units|documents|tasks)$/);
@@ -1100,7 +1236,12 @@ export async function adminRoute(request,env,url,ctx){
     const type=genericList[1],g=GENERIC[type];
     const canView=hasPermission(user,g.permission)||(type==="documents"&&hasPermission(user,"document.view"))||(type==="units"&&hasPermission(user,"unit.view"));
     if(!canView) return json({error:"FORBIDDEN",permission:g.permission},403);
-    const rs=await env.DB.prepare(`SELECT * FROM ${g.table} ORDER BY rowid DESC LIMIT 1500`).all();return json({items:rs.results||[]});
+    const rs=await env.DB.prepare(`SELECT * FROM ${g.table} ORDER BY rowid DESC LIMIT 1500`).all();
+    const items=(rs.results||[]).filter(row=>{
+      const scopeCode = row.unit_code || (type==="units" ? row.code : "");
+      return !scopeCode || canAccessScope(user, scopeCode);
+    });
+    return json({items});
   }
   if(genericList&&request.method==="POST"){
     const type=genericList[1],g=GENERIC[type],deny=requirePermission(user,g.permission);if(deny)return deny;
@@ -1601,8 +1742,24 @@ export async function adminRoute(request,env,url,ctx){
 
   if(p==="/api/admin/files"&&request.method==="GET"){
     const deny=requirePermission(user,"file.manage");if(deny)return deny;
-    const rs=await env.DB.prepare("SELECT id,submission_code,field_key,filename,mime,size,visibility,created_at FROM files WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 1000").all();
-    return json({items:rs.results||[]});
+    const fileCols=await adminTableColumns(env,"files");
+    const hasDeletedAt=fileCols.has("deleted_at");
+    const hasSha256=fileCols.has("sha256");
+    const selectCols=["id","submission_code","field_key","filename","mime","size","visibility","created_at"];
+    if(hasSha256) selectCols.push("sha256");
+    if(hasDeletedAt) selectCols.push("deleted_at");
+    const q=String(url.searchParams.get("q")||"").trim().toLowerCase();
+    const vis=String(url.searchParams.get("visibility")||"all").trim();
+    const page=Math.max(1,Number(url.searchParams.get("page")||1));
+    const pageSize=Math.min(200,Math.max(10,Number(url.searchParams.get("limit")||50)));
+    const whereClause=hasDeletedAt?"WHERE deleted_at IS NULL":"";
+    const rs=await env.DB.prepare(`SELECT ${selectCols.join(",")} FROM files ${whereClause} ORDER BY created_at DESC LIMIT 1000`).all();
+    let allItems=rs.results||[];
+    if(vis==="public"||vis==="private") allItems=allItems.filter(f=>f.visibility===vis);
+    if(q) allItems=allItems.filter(f=>[f.id,f.filename,f.mime,f.submission_code,f.field_key].join(" ").toLowerCase().includes(q));
+    const total=allItems.length;
+    const paged=url.searchParams.has("page") ? allItems.slice((page-1)*pageSize, page*pageSize) : allItems;
+    return json({items:paged,total,page,page_size:pageSize,total_pages:Math.max(1,Math.ceil(total/pageSize))});
   }
 
   const fileMatch=p.match(/^\/api\/admin\/files\/([^/]+)$/);
@@ -1741,6 +1898,7 @@ export async function adminRoute(request,env,url,ctx){
       campaigns,
       transactions:batchRes[1].results||[],
       reports:batchRes[2].results||[],
+      napas_banks:NAPAS_BANKS,
       payment_intents:hasIntents?(batchRes[3]?.results||[]):[],
       audit_trail:hasAudit?(batchRes[hasIntents?4:3]?.results||[]):[]
     });
@@ -1755,10 +1913,15 @@ export async function adminRoute(request,env,url,ctx){
     const wantPublic=body.visibility==="public";
     if(wantPublic && !hasPermission(user,"sponsorship.approve")) return json({error:"FORBIDDEN",message:"Cần quyền phê duyệt tài trợ (sponsorship.approve) để công khai chương trình."},403);
     const id=uid("spcamp");
+    const resolvedBank=resolveNapasBank({bank_bin:body.bank_bin,bank_code:body.bank_code,bank_name:body.bank_name});
+    const finalBankBin=String(body.bank_bin||resolvedBank?.bin||"").replace(/\D/g,"");
+    const finalBankName=String(body.bank_name||resolvedBank?.short_name||resolvedBank?.name||"").trim();
+    const finalAccNo=String(body.bank_account_no||"").trim();
+    const finalAccName=String(body.bank_account_name||(finalAccNo?"SKY FIRST NETWORK":"")).trim();
     const campCols=await adminTableColumns(env,"sponsorship_campaigns");
     if(campCols.has("bank_account_no")){
       await env.DB.prepare("INSERT INTO sponsorship_campaigns(id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,visibility,bank_name,bank_bin,bank_account_no,bank_account_name,approved_by,approved_at,created_by) VALUES(?,?,?,?,?,?,?,0,0,0,'VND',?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(id,code,String(body.website_id||"app"),title,String(body.summary||""),String(body.purpose||""),target,body.start_at||null,body.end_at||null,body.status||"active",wantPublic?"public":"draft",String(body.bank_name||""),String(body.bank_bin||"970422"),String(body.bank_account_no||""),String(body.bank_account_name||"SKY FIRST NETWORK"),wantPublic?user.id:null,wantPublic?new Date().toISOString():null,user.id).run();
+        .bind(id,code,String(body.website_id||"app"),title,String(body.summary||""),String(body.purpose||""),target,body.start_at||null,body.end_at||null,body.status||"active",wantPublic?"public":"draft",finalBankName,finalBankBin,finalAccNo,finalAccName,wantPublic?user.id:null,wantPublic?new Date().toISOString():null,user.id).run();
     }else{
       await env.DB.prepare("INSERT INTO sponsorship_campaigns(id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,visibility,approved_by,approved_at,created_by) VALUES(?,?,?,?,?,?,?,0,0,0,'VND',?,?,?,?,?,?,?)")
         .bind(id,code,String(body.website_id||"app"),title,String(body.summary||""),String(body.purpose||""),target,body.start_at||null,body.end_at||null,body.status||"active",wantPublic?"public":"draft",wantPublic?user.id:null,wantPublic?new Date().toISOString():null,user.id).run();
@@ -1780,10 +1943,19 @@ export async function adminRoute(request,env,url,ctx){
       return json({error:"FORBIDDEN",message:"Chỉ người có quyền phê duyệt tài trợ mới được công khai chương trình."},403);
     }
     const target=body.target_amount!==undefined?Math.max(0,Math.round(Number(body.target_amount||0))):current.target_amount;
+    const resolvedBank=resolveNapasBank({
+      bank_bin:body.bank_bin??current.bank_bin,
+      bank_code:body.bank_code,
+      bank_name:body.bank_name??current.bank_name
+    });
+    const finalBankBin=body.bank_bin!==undefined ? String(body.bank_bin||resolvedBank?.bin||"").replace(/\D/g,"") : (resolvedBank?.bin||current.bank_bin||"");
+    const finalBankName=body.bank_name!==undefined ? String(body.bank_name||resolvedBank?.short_name||"").trim() : (current.bank_name||resolvedBank?.short_name||"");
+    const finalAccNo=body.bank_account_no!==undefined ? String(body.bank_account_no).trim() : (current.bank_account_no||"");
+    const finalAccName=body.bank_account_name!==undefined ? String(body.bank_account_name).trim() : (current.bank_account_name||"");
     const campCols=await adminTableColumns(env,"sponsorship_campaigns");
     if(campCols.has("bank_account_no")){
       await env.DB.prepare("UPDATE sponsorship_campaigns SET title=?,summary=?,purpose=?,target_amount=?,start_at=?,end_at=?,status=?,visibility=?,bank_name=?,bank_bin=?,bank_account_no=?,bank_account_name=?,approved_by=CASE WHEN ?='public' THEN ? ELSE approved_by END,approved_at=CASE WHEN ?='public' THEN CURRENT_TIMESTAMP ELSE approved_at END,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-        .bind(body.title||current.title,body.summary??current.summary,body.purpose??current.purpose,target,body.start_at??current.start_at,body.end_at??current.end_at,body.status||current.status,nextVis,body.bank_name??current.bank_name??"",body.bank_bin??current.bank_bin??"970422",body.bank_account_no??current.bank_account_no??"",body.bank_account_name??current.bank_account_name??"SKY FIRST NETWORK",nextVis,user.id,nextVis,id).run();
+        .bind(body.title||current.title,body.summary??current.summary,body.purpose??current.purpose,target,body.start_at??current.start_at,body.end_at??current.end_at,body.status||current.status,nextVis,finalBankName,finalBankBin,finalAccNo,finalAccName,nextVis,user.id,nextVis,id).run();
     }else{
       await env.DB.prepare("UPDATE sponsorship_campaigns SET title=?,summary=?,purpose=?,target_amount=?,start_at=?,end_at=?,status=?,visibility=?,approved_by=CASE WHEN ?='public' THEN ? ELSE approved_by END,approved_at=CASE WHEN ?='public' THEN CURRENT_TIMESTAMP ELSE approved_at END,updated_at=CURRENT_TIMESTAMP WHERE id=?")
         .bind(body.title||current.title,body.summary??current.summary,body.purpose??current.purpose,target,body.start_at??current.start_at,body.end_at??current.end_at,body.status||current.status,nextVis,nextVis,user.id,nextVis,id).run();

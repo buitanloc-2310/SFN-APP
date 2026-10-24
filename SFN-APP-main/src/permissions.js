@@ -2,8 +2,8 @@ export const ROLE_PERMISSIONS = {
   owner:["*"],
   super_admin:["*"],
   system_admin:[
-    "dashboard.view","submission.view","submission.manage","people.view","people.manage",
-    "form.view","form.manage","module.manage","settings.manage","user.view","user.manage",
+    "admin.access","dashboard.view","submission.view","submission.manage","people.view","people.manage",
+    "form.view","form.manage","form.approve","term.view","term.manage","module.manage","settings.manage","user.view","user.manage",
     "role.manage_lower","class.manage","event.manage","news.manage","unit.view","unit.manage",
     "document.view","document.manage","document.version_manage",
     "certificate.view","certificate.request","certificate.approve","certificate.issue",
@@ -16,57 +16,58 @@ export const ROLE_PERMISSIONS = {
     "website.view","website.manage"
   ],
   network_secretary:[
-    "dashboard.view","submission.view","people.view","certificate.view","certificate.approve",
+    "admin.access","dashboard.view","submission.view","people.view","certificate.view","certificate.approve",
+    "form.view","form.approve","term.view","term.manage",
     "approval.view","approval.decide","document.view","audit.view",
     "sponsorship.view","sponsorship.approve","cms.view","cms.approve","cms.publish","website.view"
   ],
   content_admin:[
-    "dashboard.view","news.manage","form.view","form.manage","settings.manage","module.manage",
+    "admin.access","dashboard.view","news.manage","form.view","form.manage","form.approve","term.view","term.manage",
     "document.view","document.manage","document.version_manage","file.manage","search.use",
     "cms.view","cms.edit","cms.submit_review","cms.approve","cms.publish","cms.template_manage",
     "website.view","email.view"
   ],
   certificate_manager:[
-    "dashboard.view","certificate.view","certificate.request","certificate.issue",
+    "admin.access","dashboard.view","certificate.view","certificate.request","certificate.issue",
     "approval.view","approval.request","file.manage","search.use"
   ],
   reviewer:[
-    "dashboard.view","submission.view","certificate.view","approval.view","approval.decide",
-    "audit.view","cms.view","cms.approve","sponsorship.view"
+    "admin.access","dashboard.view","submission.view","certificate.view","approval.view","approval.decide",
+    "form.view","form.approve","term.view","audit.view","cms.view","cms.approve","sponsorship.view"
   ],
   case_manager:[
-    "dashboard.view","submission.view","submission.manage","people.view","file.manage",
+    "admin.access","dashboard.view","submission.view","submission.manage","people.view","file.manage",
     "search.use","export.use","safety.view","safety.manage"
   ],
   editor:[
-    "dashboard.view","news.manage","document.view","document.manage","file.manage",
+    "admin.access","dashboard.view","news.manage","document.view","document.manage","file.manage",
     "cms.view","cms.edit","cms.submit_review"
   ],
   office:[
-    "dashboard.view","submission.view","submission.manage","people.view","people.manage",
+    "admin.access","dashboard.view","submission.view","submission.manage","people.view","people.manage",
     "document.view","document.manage","document.version_manage","certificate.view","certificate.issue",
     "approval.view","ticket.manage","file.manage","task.manage","export.use",
     "sponsorship.view","sponsorship.manage","safety.view","safety.manage","email.view"
   ],
   hr:[
-    "dashboard.view","submission.view","submission.manage","people.view","people.manage",
+    "admin.access","dashboard.view","submission.view","submission.manage","people.view","people.manage",
     "interview.manage","evaluation.manage","certificate.view","certificate.request",
     "approval.view","approval.request","file.manage","task.manage","export.use"
   ],
   communications:[
-    "dashboard.view","news.manage","file.manage","task.manage",
+    "admin.access","dashboard.view","news.manage","file.manage","task.manage",
     "cms.view","cms.edit","cms.submit_review","sponsorship.view"
   ],
   external_events:[
-    "dashboard.view","submission.view","event.manage","ticket.manage","unit.view","task.manage",
+    "admin.access","dashboard.view","submission.view","event.manage","ticket.manage","unit.view","task.manage",
     "file.manage","sponsorship.view","sponsorship.manage"
   ],
   unit_admin:[
-    "dashboard.view","submission.view","people.view","class.manage","event.manage","unit.view",
+    "admin.access","dashboard.view","submission.view","people.view","class.manage","event.manage","unit.view",
     "file.manage","task.manage","cms.view","cms.edit","cms.submit_review"
   ],
   handler:[
-    "dashboard.view","submission.view","submission.manage_assigned","ticket.manage_assigned",
+    "admin.access","dashboard.view","submission.view","submission.manage_assigned","ticket.manage_assigned",
     "task.manage","safety.view"
   ],
   member:["portal.member","file.own","request.internal","notification.own","certificate.own"],
@@ -100,6 +101,10 @@ export function hasPermission(user, permission){
 export function hasAnyPermission(user, permissions=[]){
   if(!user) return false;
   return permissions.some(p=>hasPermission(user,p));
+}
+
+export function hasAdminAccess(user){
+  return hasPermission(user, "admin.access");
 }
 
 export function highestRoleLevel(user){
