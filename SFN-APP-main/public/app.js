@@ -629,7 +629,7 @@ function renderLogin(){
   document.getElementById("loginForm").onsubmit=async e=>{
     e.preventDefault();const f=new FormData(e.target);const submit=e.currentTarget.querySelector('button[type="submit"]');
     if(submit){submit.disabled=true;submit.setAttribute('aria-busy','true');submit.dataset.label=submit.innerHTML;submit.innerHTML='<span>Đang xác thực…</span><span aria-hidden="true">…</span>';}
-    try{const d=await api("/api/auth/login",{method:"POST",body:{email:f.get("email"),password:f.get("password"),portal:"admin"}});if(d.needs_2fa)return show2FA(d.challenge);state.user=d.user;if(accountBtn)accountBtn.textContent=state.user.full_name||state.user.email;if(d.must_change_password)return forcePasswordChange(f.get("password"));location.hash="admin/dashboard"}catch(err){toast(errorText(err),"bad")}finally{if(submit&&document.body.classList.contains('admin-mode')){submit.disabled=false;submit.removeAttribute('aria-busy');if(submit.dataset.label)submit.innerHTML=submit.dataset.label;}}
+    try{const d=await api("/api/auth/login",{method:"POST",body:{email:f.get("email"),password:f.get("password"),portal:"admin"}});if(d.needs_2fa)return show2FA(d.challenge);state.user=d.user;if(accountBtn)accountBtn.textContent=state.user.full_name||state.user.email;if(d.must_change_password)return forcePasswordChange(f.get("password"));if(location.pathname==="/admin/login")history.replaceState(null,"","/admin#admin/dashboard");location.hash="admin/dashboard";await router();}catch(err){toast(errorText(err),"bad")}finally{if(submit&&document.body.classList.contains('admin-mode')){submit.disabled=false;submit.removeAttribute('aria-busy');if(submit.dataset.label)submit.innerHTML=submit.dataset.label;}}
   };
 }
 window.showForgot=function(){
@@ -682,7 +682,10 @@ function show2FA(challenge){
 
       if(d.must_change_password)return forcePasswordChange("");
 
-      location.hash=isAdmin(state.user)?"admin/dashboard":"portal";
+      const nextHash2fa=isAdmin(state.user)?"admin/dashboard":"portal";
+      if(location.pathname==="/admin/login")history.replaceState(null,"",`/admin#${nextHash2fa}`);
+      location.hash=nextHash2fa;
+      await router();
     }catch(err){
       toast(errorText(err),"bad");
     }
@@ -698,14 +701,19 @@ function forcePasswordChange(currentPassword=""){
     const f=new FormData(e.target);
 
     try{
-      await api("/api/auth/change-password",{
+      const chgRes=await api("/api/auth/change-password",{
         method:"POST",
         body:Object.fromEntries(f)
       });
+      if(chgRes?.user)state.user=chgRes.user;
+      else if(state.user)state.user.must_change_password=0;
 
       closeModal();
       toast("Đã đổi mật khẩu.");
-      location.hash=isAdmin(state.user)?"admin/dashboard":"portal";
+      const nextHash=isAdmin(state.user)?"admin/dashboard":"portal";
+      if(location.pathname==="/admin/login")history.replaceState(null,"",`/admin#${nextHash}`);
+      location.hash=nextHash;
+      await router();
     }catch(err){
       toast(errorText(err),"bad");
     }
@@ -3033,6 +3041,14 @@ async function router(){
   const path=location.pathname.replace(/\/+$/,"/")||"/";
 
   try{
+    if((path==="/admin/login"||route==="login")&&state.user&&isAdmin(state.user)&&route==="admin"){
+      if(path==="/admin/login")history.replaceState(null,"","/admin"+(location.hash||"#admin/dashboard"));
+      return renderAdmin();
+    }
+    if(path==="/admin/login"&&state.user&&isAdmin(state.user)&&!Number(state.user.must_change_password||0)){
+      history.replaceState(null,"","/admin#admin/dashboard");
+      return renderAdmin();
+    }
     if(path==="/admin/login"||route==="login") return renderLogin();
     if(path==="/admin"||route==="admin") return renderAdmin();
     if(route==="portal") return isAdmin(state.user)?renderAdmin():renderLogin();
