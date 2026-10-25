@@ -4,25 +4,563 @@ import {hasPermission, hasAnyPermission, highestRoleLevel, roleLevel, canAccessS
 import {sendTemplatedEmail, renderEmailContent} from "./email.js";
 import {resolveOperationalState} from "./index.js";
 
+let runtimeSchemaHealed = false;
+let lastUsedDbRef = null;
+
+export async function ensureAdminRuntimeSchema(env, force = false) {
+  if (!env?.DB) return;
+  if (runtimeSchemaHealed && lastUsedDbRef === env.DB && !force) return;
+  try {
+    // 1. Ensure all core and V5..V14 tables exist if migrations were not run on production D1
+    const createTableddls = [
+      `CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor_user_id INTEGER,
+        actor_email TEXT,
+        action TEXT NOT NULL DEFAULT 'Thao tác quản trị',
+        entity_type TEXT,
+        entity_id TEXT,
+        details_json TEXT NOT NULL DEFAULT '{}',
+        ip_hash TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_by INTEGER
+      )`,
+      `CREATE TABLE IF NOT EXISTS counters (
+        key TEXT PRIMARY KEY,
+        value INTEGER NOT NULL DEFAULT 0
+      )`,
+      `CREATE TABLE IF NOT EXISTS case_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        submission_code TEXT NOT NULL,
+        event_type TEXT NOT NULL DEFAULT 'status',
+        public_label TEXT NOT NULL,
+        public_note TEXT,
+        status TEXT,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS upload_sessions (
+        id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL,
+        field_key TEXT,
+        filename TEXT NOT NULL,
+        mime TEXT,
+        size INTEGER NOT NULL DEFAULT 0,
+        client_sha256 TEXT,
+        r2_key TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'created',
+        submission_code TEXT,
+        finalized_at TEXT,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS form_revisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        form_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        config_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'published',
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS term_revisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        term_code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        version TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT '',
+        body TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'published',
+        change_note TEXT NOT NULL DEFAULT '',
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS issued_document_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_id TEXT NOT NULL,
+        document_type TEXT NOT NULL DEFAULT 'GCN',
+        lookup_code TEXT NOT NULL UNIQUE,
+        random_digits TEXT,
+        code_version TEXT NOT NULL DEFAULT 'v3',
+        is_primary INTEGER NOT NULL DEFAULT 1,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS sponsorship_campaigns (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        website_id TEXT NOT NULL DEFAULT 'app',
+        title TEXT NOT NULL,
+        summary TEXT,
+        purpose TEXT,
+        target_amount INTEGER NOT NULL DEFAULT 0,
+        pledged_amount INTEGER NOT NULL DEFAULT 0,
+        received_amount INTEGER NOT NULL DEFAULT 0,
+        disbursed_amount INTEGER NOT NULL DEFAULT 0,
+        pending_amount INTEGER NOT NULL DEFAULT 0,
+        refunded_amount INTEGER NOT NULL DEFAULT 0,
+        adjusted_amount INTEGER NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'VND',
+        start_at TEXT,
+        end_at TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        visibility TEXT NOT NULL DEFAULT 'internal',
+        bank_name TEXT NOT NULL DEFAULT '',
+        bank_bin TEXT NOT NULL DEFAULT '',
+        bank_account_no TEXT NOT NULL DEFAULT '',
+        bank_account_name TEXT NOT NULL DEFAULT '',
+        approved_by INTEGER,
+        approved_at TEXT,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS sponsorship_transactions (
+        id TEXT PRIMARY KEY,
+        campaign_id TEXT NOT NULL,
+        tx_code TEXT NOT NULL UNIQUE,
+        tx_type TEXT NOT NULL,
+        amount INTEGER NOT NULL DEFAULT 0,
+        expected_amount INTEGER NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'VND',
+        public_party_label TEXT NOT NULL,
+        private_donor_info_json TEXT NOT NULL DEFAULT '{}',
+        purpose TEXT,
+        voucher_file_id TEXT,
+        occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        verification_status TEXT NOT NULL DEFAULT 'pending',
+        payment_state TEXT NOT NULL DEFAULT 'pending',
+        is_public INTEGER NOT NULL DEFAULT 0,
+        provider_tx_id TEXT,
+        reference_code TEXT NOT NULL DEFAULT '',
+        recipient_account TEXT NOT NULL DEFAULT '',
+        reconciliation_note TEXT NOT NULL DEFAULT '',
+        verified_by INTEGER,
+        verified_at TEXT,
+        created_by INTEGER,
+        updated_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS sponsorship_reports (
+        id TEXT PRIMARY KEY,
+        campaign_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        report_period TEXT,
+        file_id TEXT,
+        summary TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        approved_by INTEGER,
+        published_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS sponsorship_payment_intents (
+        id TEXT PRIMARY KEY,
+        campaign_id TEXT NOT NULL,
+        reference_code TEXT NOT NULL UNIQUE,
+        expected_amount INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'VND',
+        donor_label TEXT NOT NULL DEFAULT 'Nhà tài trợ ẩn danh',
+        donor_email TEXT NOT NULL DEFAULT '',
+        purpose TEXT NOT NULL DEFAULT '',
+        recipient_bank_bin TEXT NOT NULL DEFAULT '',
+        recipient_account_no TEXT NOT NULL DEFAULT '',
+        recipient_account_name TEXT NOT NULL DEFAULT '',
+        qr_payload TEXT NOT NULL DEFAULT '',
+        payment_state TEXT NOT NULL DEFAULT 'qr_generated',
+        linked_tx_id TEXT,
+        reported_at TEXT,
+        webhook_received_at TEXT,
+        verified_at TEXT,
+        reconciled_at TEXT,
+        expires_at TEXT,
+        ip_hash TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS sponsorship_audit_trail (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id TEXT,
+        transaction_id TEXT,
+        action TEXT NOT NULL,
+        previous_state_json TEXT NOT NULL DEFAULT '{}',
+        new_state_json TEXT NOT NULL DEFAULT '{}',
+        reason TEXT NOT NULL DEFAULT '',
+        actor_user_id INTEGER,
+        actor_email TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS safety_reports (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        category TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'Trung bình',
+        reporter_name TEXT,
+        reporter_email TEXT,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        affected_url TEXT,
+        evidence_file_id TEXT,
+        status TEXT NOT NULL DEFAULT 'Đã tiếp nhận',
+        resolution_note TEXT,
+        assigned_to INTEGER,
+        ip_hash TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS websites (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        domain TEXT NOT NULL UNIQUE,
+        description TEXT,
+        logo_url TEXT DEFAULT '/assets/sfn-logo-tight.png',
+        primary_color TEXT DEFAULT '#0759b8',
+        navy_color TEXT DEFAULT '#071b35',
+        status TEXT NOT NULL DEFAULT 'active',
+        maintenance_mode TEXT NOT NULL DEFAULT 'normal',
+        maintenance_title TEXT NOT NULL DEFAULT '',
+        maintenance_message TEXT NOT NULL DEFAULT '',
+        maintenance_eta TEXT,
+        config_json TEXT NOT NULL DEFAULT '{}',
+        theme_json TEXT NOT NULL DEFAULT '{}',
+        seo_json TEXT NOT NULL DEFAULT '{}',
+        i18n_json TEXT NOT NULL DEFAULT '{}',
+        updated_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS cms_pages (
+        id TEXT PRIMARY KEY,
+        website_id TEXT NOT NULL DEFAULT 'app',
+        slug TEXT NOT NULL,
+        page_type TEXT NOT NULL DEFAULT 'custom',
+        route_path TEXT,
+        locale TEXT NOT NULL DEFAULT 'vi',
+        translation_group_id TEXT,
+        title TEXT NOT NULL,
+        title_en TEXT NOT NULL DEFAULT '',
+        summary TEXT,
+        summary_en TEXT NOT NULL DEFAULT '',
+        cover_file_id TEXT,
+        category TEXT DEFAULT 'general',
+        tags_json TEXT NOT NULL DEFAULT '[]',
+        seo_json TEXT NOT NULL DEFAULT '{}',
+        seo_en_json TEXT NOT NULL DEFAULT '{}',
+        blocks_json TEXT NOT NULL DEFAULT '[]',
+        blocks_en_json TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'draft',
+        version INTEGER NOT NULL DEFAULT 1,
+        author_id INTEGER,
+        submitted_by INTEGER,
+        submitted_at TEXT,
+        reviewed_by INTEGER,
+        reviewed_at TEXT,
+        review_note TEXT,
+        published_by INTEGER,
+        published_at TEXT,
+        scheduled_at TEXT,
+        unpublished_at TEXT,
+        wp_post_id INTEGER,
+        wp_sync_meta_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(website_id, slug)
+      )`,
+      `CREATE TABLE IF NOT EXISTS cms_page_revisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        page_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        blocks_json TEXT NOT NULL DEFAULT '[]',
+        seo_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL,
+        note TEXT,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS cms_shared_blocks (
+        id TEXT PRIMARY KEY,
+        website_id TEXT NOT NULL DEFAULT 'app',
+        key TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        block_type TEXT NOT NULL,
+        config_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'active',
+        updated_by INTEGER,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS cms_templates (
+        id TEXT PRIMARY KEY,
+        key TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        category TEXT DEFAULT 'general',
+        description TEXT,
+        blocks_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS document_versions (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL,
+        version_number INTEGER NOT NULL DEFAULT 1,
+        file_id TEXT NOT NULL,
+        filename TEXT,
+        mime TEXT,
+        size INTEGER DEFAULT 0,
+        sha256 TEXT,
+        change_note TEXT,
+        is_current INTEGER NOT NULL DEFAULT 1,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS email_template_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_key TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        subject_template TEXT NOT NULL,
+        html_template TEXT NOT NULL,
+        text_template TEXT,
+        updated_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS menus (
+        id TEXT PRIMARY KEY,
+        website_id TEXT NOT NULL DEFAULT 'app',
+        location TEXT NOT NULL,
+        name TEXT NOT NULL,
+        items_json TEXT NOT NULL DEFAULT '[]',
+        updated_by INTEGER,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(website_id, location)
+      )`,
+      `CREATE TABLE IF NOT EXISTS system_incidents (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        website_id TEXT NOT NULL DEFAULT 'app',
+        severity TEXT NOT NULL DEFAULT 'warning',
+        category TEXT NOT NULL DEFAULT 'system',
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        resolution_note TEXT,
+        created_by INTEGER,
+        resolved_by INTEGER,
+        resolved_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS xanh_external_submissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL DEFAULT 'xanh-sky-first',
+        external_code TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        form_name TEXT,
+        external_status TEXT NOT NULL DEFAULT 'Đã tiếp nhận',
+        source_submitted_at TEXT,
+        source_tracking_url TEXT,
+        payload_hash TEXT,
+        received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(source, external_code)
+      )`
+    ];
+    for (const ddl of createTableddls) {
+      try { await env.DB.prepare(ddl).run(); } catch {}
+    }
+
+    // 2. Ensure all additive columns exist across existing tables
+    const additiveColumns = {
+      audit_log: [
+        ["actor_user_id", "INTEGER"],
+        ["actor_email", "TEXT"],
+        ["action", "TEXT NOT NULL DEFAULT 'Thao tác quản trị'"],
+        ["entity_type", "TEXT"],
+        ["entity_id", "TEXT"],
+        ["details_json", "TEXT NOT NULL DEFAULT '{}'"],
+        ["ip_hash", "TEXT"],
+        ["created_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"]
+      ],
+      settings: [
+        ["updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
+        ["updated_by", "INTEGER"]
+      ],
+      forms: [
+        ["description", "TEXT"],
+        ["audience", "TEXT NOT NULL DEFAULT 'public'"],
+        ["min_age", "INTEGER"],
+        ["enabled", "INTEGER NOT NULL DEFAULT 1"],
+        ["recipient_email", "TEXT NOT NULL DEFAULT 'app@skyfirst.io.vn'"],
+        ["version", "INTEGER NOT NULL DEFAULT 1"],
+        ["config_json", "TEXT NOT NULL DEFAULT '{}'"],
+        ["updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
+        ["updated_by", "INTEGER"]
+      ],
+      terms: [
+        ["scope", "TEXT"],
+        ["status", "TEXT NOT NULL DEFAULT 'published'"],
+        ["updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
+        ["updated_by", "INTEGER"]
+      ],
+      submissions: [
+        ["next_action", "TEXT"],
+        ["result_summary", "TEXT"],
+        ["public_meta_json", "TEXT NOT NULL DEFAULT '{}'"]
+      ],
+      files: [
+        ["email_token", "TEXT"],
+        ["sha256", "TEXT"],
+        ["upload_state", "TEXT NOT NULL DEFAULT 'ready'"],
+        ["replaced_by_file_id", "TEXT"],
+        ["deleted_at", "TEXT"]
+      ],
+      certificates: [
+        ["email", "TEXT NOT NULL DEFAULT ''"],
+        ["phone", "TEXT NOT NULL DEFAULT ''"],
+        ["public_id", "TEXT"],
+        ["legacy_code", "TEXT"],
+        ["supersedes_id", "TEXT"],
+        ["superseded_by_id", "TEXT"],
+        ["revoked_at", "TEXT"],
+        ["revocation_reason", "TEXT"],
+        ["immutable_snapshot_json", "TEXT"]
+      ],
+      backups: [
+        ["sha256", "TEXT"],
+        ["table_counts_json", "TEXT NOT NULL DEFAULT '{}'"],
+        ["kind", "TEXT NOT NULL DEFAULT 'manual'"],
+        ["verified_at", "TEXT"]
+      ],
+      auth_tokens: [
+        ["attempt_count", "INTEGER NOT NULL DEFAULT 0"]
+      ],
+      sponsorship_campaigns: [
+        ["bank_name", "TEXT NOT NULL DEFAULT ''"],
+        ["bank_bin", "TEXT NOT NULL DEFAULT '970422'"],
+        ["bank_account_no", "TEXT NOT NULL DEFAULT ''"],
+        ["bank_account_name", "TEXT NOT NULL DEFAULT 'SKY FIRST NETWORK'"],
+        ["pending_amount", "INTEGER NOT NULL DEFAULT 0"],
+        ["refunded_amount", "INTEGER NOT NULL DEFAULT 0"],
+        ["adjusted_amount", "INTEGER NOT NULL DEFAULT 0"]
+      ],
+      sponsorship_transactions: [
+        ["expected_amount", "INTEGER NOT NULL DEFAULT 0"],
+        ["payment_state", "TEXT NOT NULL DEFAULT 'pending'"],
+        ["provider_tx_id", "TEXT"],
+        ["reference_code", "TEXT NOT NULL DEFAULT ''"],
+        ["recipient_account", "TEXT NOT NULL DEFAULT ''"],
+        ["reconciliation_note", "TEXT NOT NULL DEFAULT ''"],
+        ["updated_by", "INTEGER"],
+        ["updated_at", "TEXT"]
+      ],
+      websites: [
+        ["maintenance_mode", "TEXT NOT NULL DEFAULT 'normal'"],
+        ["maintenance_title", "TEXT NOT NULL DEFAULT ''"],
+        ["maintenance_message", "TEXT NOT NULL DEFAULT ''"],
+        ["maintenance_eta", "TEXT"],
+        ["theme_json", "TEXT NOT NULL DEFAULT '{}'"],
+        ["seo_json", "TEXT NOT NULL DEFAULT '{}'"],
+        ["i18n_json", "TEXT NOT NULL DEFAULT '{}'"]
+      ],
+      cms_pages: [
+        ["page_type", "TEXT NOT NULL DEFAULT 'custom'"],
+        ["route_path", "TEXT"],
+        ["locale", "TEXT NOT NULL DEFAULT 'vi'"],
+        ["translation_group_id", "TEXT"],
+        ["title_en", "TEXT NOT NULL DEFAULT ''"],
+        ["summary_en", "TEXT NOT NULL DEFAULT ''"],
+        ["blocks_en_json", "TEXT NOT NULL DEFAULT '[]'"],
+        ["seo_en_json", "TEXT NOT NULL DEFAULT '{}'"],
+        ["scheduled_at", "TEXT"],
+        ["unpublished_at", "TEXT"],
+        ["wp_post_id", "INTEGER"],
+        ["wp_sync_meta_json", "TEXT NOT NULL DEFAULT '{}'"]
+      ]
+    };
+
+    for (const [tbl, colSpecs] of Object.entries(additiveColumns)) {
+      let existingCols = new Set();
+      try {
+        const rs = await env.DB.prepare(`PRAGMA table_info(${tbl})`).all();
+        existingCols = new Set((rs.results || []).map(x => String(x.name || "")));
+      } catch {}
+      if (!existingCols.size) continue;
+      for (const [colName, colDef] of colSpecs) {
+        if (!existingCols.has(colName)) {
+          try {
+            await env.DB.prepare(`ALTER TABLE ${tbl} ADD COLUMN ${colName} ${colDef}`).run();
+          } catch {}
+        }
+      }
+    }
+
+    // 3. Ensure default website 'app' and core system pages exist in cms_pages so sys_programs / sys_forms / sys_credentials never 404 on unmigrated DBs
+    try {
+      await env.DB.prepare("INSERT OR IGNORE INTO websites(id,code,name,domain,description,status) VALUES('app','APP','Hệ thống Thông tin Số Sky First','app.skyfirst.io.vn','Hệ thống thông tin và dịch vụ số trung tâm Sky First','active')").run();
+      const defaultSysPages = [
+        ["sys_home", "system-home", "/", "Hệ thống Thông tin Số Sky First", "Sky First Digital Information System"],
+        ["sys_about", "gioi-thieu", "/gioi-thieu", "Giới thiệu Hệ thống Thông tin Số Sky First", "About Sky First Digital Information System"],
+        ["sys_programs", "system-programs", "/chuong-trinh", "Chương trình & Lớp học Cộng đồng", "Community Programs & Classes"],
+        ["sys_events", "system-events", "/su-kien", "Sự kiện & Hoạt động", "Events & Activities"],
+        ["sys_sponsorship", "system-sponsorship", "/tai-tro", "Minh bạch Tài trợ & Đối soát Tài chính", "Sponsorship Transparency & Financial Reconciliation"],
+        ["sys_resources", "system-resources", "/tai-lieu", "Thư viện Tài liệu & Văn bản PDF", "Document & PDF Library"],
+        ["sys_forms", "system-forms", "/bieu-mau", "Biểu mẫu Điện tử Trực tuyến", "Online Electronic Forms"],
+        ["sys_cases", "system-cases", "/ho-so", "Tra cứu Tiến trình Hồ sơ", "Application Status Lookup"],
+        ["sys_lookup", "system-lookup", "/tra-cuu", "Trung tâm Tra cứu & Xác thực Tập trung", "Central Verification & Lookup Hub"],
+        ["sys_credentials", "system-credentials", "/gcn", "Xác thực Chứng nhận, Xác nhận & Bằng khen", "Credential Verification (GCN / GXN / BK)"],
+        ["sys_safety", "system-safety", "/an-toan", "An toàn Thông tin & Báo cáo Sự cố Số", "Digital Safety & Incident Reporting"],
+        ["sys_support", "ho-tro", "/ho-tro", "Trung tâm Hỗ trợ & Liên hệ Công tác", "Support & Official Contact Center"],
+        ["sys_login", "system-admin-login", "/admin/login", "Đăng nhập Cổng Quản trị Hệ thống", "System Administration Portal Sign In"]
+      ];
+      for (const [id, slug, routePath, titleVi, titleEn] of defaultSysPages) {
+        await env.DB.prepare(
+          "INSERT OR IGNORE INTO cms_pages(id,website_id,slug,page_type,route_path,title,title_en,status,version,blocks_json,blocks_en_json,seo_json,seo_en_json) VALUES(?,'app',?,'system',?,?,?,'published',1,'[]','[]','{}','{}')"
+        ).bind(id, slug, routePath, titleVi, titleEn).run();
+      }
+    } catch {}
+
+    adminSchemaCache.clear();
+    runtimeSchemaHealed = true;
+    lastUsedDbRef = env.DB;
+  } catch (err) {
+    console.warn("ENSURE_ADMIN_RUNTIME_SCHEMA_WARN", err);
+  }
+}
+
 async function audit(env,request,user,action,entityType="",entityId="",details={}){
-  // Keep audit writes compatible with production databases that may predate optional audit columns.
-  // Never silently skip the audit: the core action column must exist and the insert must succeed.
-  const cols=await adminTableColumns(env,"audit_log");
-  if(!cols.has("action")) throw new Error("AUDIT_LOG_SCHEMA_UNAVAILABLE");
-  const values={
-    actor_user_id:user?.id??null,
-    actor_email:user?.email||"",
-    action:String(action||"Thao tác quản trị"),
-    entity_type:String(entityType||""),
-    entity_id:String(entityId||""),
-    details_json:JSON.stringify(details??{}),
-    ip_hash:await ipHash(request)
-  };
-  const fields=Object.keys(values).filter(key=>cols.has(key));
-  if(!fields.includes("action")) throw new Error("AUDIT_LOG_ACTION_COLUMN_UNAVAILABLE");
-  const placeholders=fields.map(()=>"?").join(",");
-  await env.DB.prepare(`INSERT INTO audit_log(${fields.join(",")}) VALUES(${placeholders})`)
-    .bind(...fields.map(key=>values[key])).run();
+  // Fault-tolerant audit writer: auto-heals audit_log if needed and NEVER crashes Admin mutations with 500
+  try{
+    if(!env?.DB) return;
+    let cols=await adminTableColumns(env,"audit_log");
+    if(!cols.has("action")){
+      adminSchemaCache.delete("cols:audit_log");
+      adminSchemaCache.delete("table:audit_log");
+      await ensureAdminRuntimeSchema(env, true);
+      cols=await adminTableColumns(env,"audit_log");
+    }
+    const validActorId=await resolveValidUserId(env,user?.id);
+    const values={
+      actor_user_id:validActorId,
+      actor_email:String(user?.email||""),
+      action:String(action||"Thao tác quản trị"),
+      entity_type:String(entityType||""),
+      entity_id:String(entityId||""),
+      details_json:JSON.stringify(details??{}),
+      ip_hash:await ipHash(request)
+    };
+    const fields=Object.keys(values).filter(key=>cols.has(key));
+    if(!fields.length) return;
+    const placeholders=fields.map(()=>"?").join(",");
+    await env.DB.prepare(`INSERT INTO audit_log(${fields.join(",")}) VALUES(${placeholders})`)
+      .bind(...fields.map(key=>values[key])).run();
+  }catch(err){
+    console.warn("ADMIN_AUDIT_NON_FATAL_WARN",String(err?.message||err));
+  }
 }
 async function setting(env,key,fallback=null){
   const r=await env.DB.prepare("SELECT value_json FROM settings WHERE key=?").bind(key).first();
@@ -275,10 +813,15 @@ async function listUserRoles(env,userId){
 
 const PUBLIC_CACHE_PATH={news:"/api/public/news",classes:"/api/public/classes",events:"/api/public/events",units:"/api/public/units",documents:"/api/public/resources",sponsorship:"/api/public/sponsorship",pages:"/api/public/pages"};
 function invalidatePublicCache(url,paths,ctx){
-  if(typeof caches==="undefined") return;
-  const unique=[...new Set((paths||[]).filter(Boolean))];if(!unique.length)return;
-  const work=Promise.all(unique.map(path=>caches.default.delete(new Request(new URL(path,url.origin),{method:"GET"}))));
-  if(ctx?.waitUntil)ctx.waitUntil(work);else return work;
+  try{
+    if(typeof caches==="undefined" || !caches?.default?.delete) return;
+    const unique=[...new Set((paths||[]).filter(Boolean))];if(!unique.length)return;
+    const work=Promise.allSettled(unique.map(path=>{
+      try{return caches.default.delete(new Request(new URL(path,url.origin),{method:"GET"}));}
+      catch{return Promise.resolve(false);}
+    }));
+    if(ctx?.waitUntil)ctx.waitUntil(work);else return work;
+  }catch{}
 }
 
 const GENERIC = {
@@ -314,17 +857,41 @@ const GENERIC = {
   }
 };
 
-function makeInsert(table,idField,idValue,fields,data){
+async function makeInsert(env,table,idField,idValue,fields,data){
+  const liveCols=await adminTableColumns(env,table);
   const cols=[idField],vals=[idValue],qs=["?"];
-  for(const f of fields){cols.push(f);vals.push(data[f]??null);qs.push("?");}
+  for(const f of fields){
+    if(liveCols.size && !liveCols.has(f)) continue;
+    cols.push(f);vals.push(data[f]??null);qs.push("?");
+  }
   return {sql:`INSERT INTO ${table}(${cols.join(",")}) VALUES(${qs.join(",")})`,vals};
 }
-function makeUpdate(table,idField,idValue,fields,data){
+async function makeUpdate(env,table,idField,idValue,fields,data){
+  const liveCols=await adminTableColumns(env,table);
   const sets=[],vals=[];
-  for(const f of fields) if(f in data){sets.push(`${f}=?`);vals.push(data[f]);}
+  for(const f of fields){
+    if(liveCols.size && !liveCols.has(f)) continue;
+    if(f in data){sets.push(`${f}=?`);vals.push(data[f]);}
+  }
   if(!sets.length) return null;
   vals.push(idValue);
-  return {sql:`UPDATE ${table} SET ${sets.join(",")}${["news","classes","events","units","documents","tasks"].includes(table)?",updated_at=CURRENT_TIMESTAMP":""} WHERE ${idField}=?`,vals};
+  const hasUpdatedAt=!liveCols.size||liveCols.has("updated_at");
+  return {sql:`UPDATE ${table} SET ${sets.join(",")}${hasUpdatedAt&&["news","classes","events","units","documents","tasks"].includes(table)?",updated_at=CURRENT_TIMESTAMP":""} WHERE ${idField}=?`,vals};
+}
+async function upsertSettingRow(env,key,valObj,userId=null){
+  const jsonStr=typeof valObj==="string"?valObj:JSON.stringify(valObj);
+  const sCols=await adminTableColumns(env,"settings");
+  const validUid=await resolveValidUserId(env,userId);
+  if(sCols.has("updated_by")&&sCols.has("updated_at")){
+    await env.DB.prepare("INSERT INTO settings(key,value_json,updated_by) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP,updated_by=excluded.updated_by")
+      .bind(key,jsonStr,validUid).run();
+  }else if(sCols.has("updated_at")){
+    await env.DB.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP")
+      .bind(key,jsonStr).run();
+  }else{
+    await env.DB.prepare("INSERT OR REPLACE INTO settings(key,value_json) VALUES(?,?)")
+      .bind(key,jsonStr).run();
+  }
 }
 
 // Danh sách bảng theo thứ tự phụ thuộc cha -> con (Topological Order) phục vụ sao lưu và phục hồi nguyên tử
@@ -430,6 +997,7 @@ async function findPagesUsingSharedBlock(env, sharedKey, sharedId) {
 
 export async function adminRoute(request,env,url,ctx){
   if(!url.pathname.startsWith("/api/admin/")) return null;
+  await ensureAdminRuntimeSchema(env);
   const user=await getAuthUser(request,env);
   const authDeny=requireAuth(user);
   if(authDeny) return authDeny;
@@ -437,24 +1005,26 @@ export async function adminRoute(request,env,url,ctx){
 
   if(p==="/api/admin/dashboard"&&request.method==="GET"){
     const deny=requirePermission(user,"dashboard.view");if(deny)return deny;
-    const [subs,pending,approvedSubs,rejectedSubs,formsCount,people,certs,revokedCerts,supersededCerts,docsCount,pubDocsCount,tickets,approvals,tasks,emailStats,recentAudit,timeSeries]=await env.DB.batch([
-      env.DB.prepare("SELECT COUNT(*) c FROM submissions"),
-      env.DB.prepare("SELECT COUNT(*) c FROM submissions WHERE status IN ('Đã tiếp nhận','Đang xem xét','Cần bổ sung','Mời phỏng vấn','Đang đánh giá')"),
-      env.DB.prepare("SELECT COUNT(*) c FROM submissions WHERE status IN ('Đã duyệt','Hoàn tất','Đã hoàn tất')"),
-      env.DB.prepare("SELECT COUNT(*) c FROM submissions WHERE status IN ('Không phù hợp','Từ chối','Đã lưu trữ')"),
-      env.DB.prepare("SELECT COUNT(*) c FROM forms WHERE enabled=1"),
-      env.DB.prepare("SELECT COUNT(*) c FROM people WHERE status='Đang hoạt động'"),
-      env.DB.prepare("SELECT COUNT(*) c FROM certificates WHERE status='issued'"),
-      env.DB.prepare("SELECT COUNT(*) c FROM certificates WHERE status='revoked'"),
-      env.DB.prepare("SELECT COUNT(*) c FROM certificates WHERE status='superseded'"),
-      env.DB.prepare("SELECT COUNT(*) c FROM documents"),
-      env.DB.prepare("SELECT COUNT(*) c FROM documents WHERE visibility='public' AND status='Có hiệu lực'"),
-      env.DB.prepare("SELECT COUNT(*) c FROM tickets WHERE status NOT IN ('Đã đóng','Đã giải quyết')"),
-      env.DB.prepare("SELECT COUNT(*) c FROM approvals WHERE status='pending'"),
-      env.DB.prepare("SELECT COUNT(*) c FROM tasks WHERE status NOT IN ('Hoàn thành','Đã hủy')"),
-      env.DB.prepare("SELECT status, COUNT(*) c FROM email_logs GROUP BY status"),
-      env.DB.prepare("SELECT id,actor_email,action,entity_type,entity_id,created_at FROM audit_log ORDER BY id DESC LIMIT 12"),
-      env.DB.prepare("SELECT substr(created_at,1,10) AS day, COUNT(*) AS c FROM submissions GROUP BY substr(created_at,1,10) ORDER BY day DESC LIMIT 14")
+    const safeCount=async(sql)=>{try{const r=await env.DB.prepare(sql).first();return {results:[{c:Number(r?.c||0)}]};}catch{return {results:[{c:0}]};}};
+    const safeAll=async(sql)=>{try{const r=await env.DB.prepare(sql).all();return {results:r.results||[]};}catch{return {results:[]};}};
+    const [subs,pending,approvedSubs,rejectedSubs,formsCount,people,certs,revokedCerts,supersededCerts,docsCount,pubDocsCount,tickets,approvals,tasks,emailStats,recentAudit,timeSeries]=await Promise.all([
+      safeCount("SELECT COUNT(*) c FROM submissions"),
+      safeCount("SELECT COUNT(*) c FROM submissions WHERE status IN ('Đã tiếp nhận','Đang xem xét','Cần bổ sung','Mời phỏng vấn','Đang đánh giá')"),
+      safeCount("SELECT COUNT(*) c FROM submissions WHERE status IN ('Đã duyệt','Hoàn tất','Đã hoàn tất')"),
+      safeCount("SELECT COUNT(*) c FROM submissions WHERE status IN ('Không phù hợp','Từ chối','Đã lưu trữ')"),
+      safeCount("SELECT COUNT(*) c FROM forms WHERE enabled=1"),
+      safeCount("SELECT COUNT(*) c FROM people WHERE status='Đang hoạt động'"),
+      safeCount("SELECT COUNT(*) c FROM certificates WHERE status='issued'"),
+      safeCount("SELECT COUNT(*) c FROM certificates WHERE status='revoked'"),
+      safeCount("SELECT COUNT(*) c FROM certificates WHERE status='superseded'"),
+      safeCount("SELECT COUNT(*) c FROM documents"),
+      safeCount("SELECT COUNT(*) c FROM documents WHERE visibility='public' AND status='Có hiệu lực'"),
+      safeCount("SELECT COUNT(*) c FROM tickets WHERE status NOT IN ('Đã đóng','Đã giải quyết')"),
+      safeCount("SELECT COUNT(*) c FROM approvals WHERE status='pending'"),
+      safeCount("SELECT COUNT(*) c FROM tasks WHERE status NOT IN ('Hoàn thành','Đã hủy')"),
+      safeAll("SELECT status, COUNT(*) c FROM email_logs GROUP BY status"),
+      safeAll("SELECT id,actor_email,action,entity_type,entity_id,created_at FROM audit_log ORDER BY id DESC LIMIT 12"),
+      safeAll("SELECT substr(created_at,1,10) AS day, COUNT(*) AS c FROM submissions GROUP BY substr(created_at,1,10) ORDER BY day DESC LIMIT 14")
     ]);
     let cmsTotal=0,cmsPublished=0,safetyOpen=0,incidentsOpen=0;
     if(await adminTableExists(env,"cms_pages")){
@@ -870,8 +1440,7 @@ export async function adminRoute(request,env,url,ctx){
     const body=await readJson(request)||{};
     const curr=await setting(env,"design_system",{});
     const next={...curr,...(body.design_system||body)};
-    await env.DB.prepare("INSERT INTO settings(key,value_json,updated_by) VALUES('design_system',?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP,updated_by=excluded.updated_by")
-      .bind(JSON.stringify(next),user.id).run();
+    await upsertSettingRow(env,"design_system",next,user.id);
     await audit(env,request,user,"Cập nhật Hệ thống Thiết kế (Design System)","settings","design_system",next);
     invalidatePublicCache(url,["/api/config"],ctx);
     return json({ok:true,design_system:next});
@@ -938,13 +1507,11 @@ export async function adminRoute(request,env,url,ctx){
       bypass_roles:Array.isArray(body.bypass_roles)?body.bypass_roles:(currCfg.bypass_roles||["owner","super_admin","system_admin"])
     };
     const isMaint=["manual_maintenance","scheduled_maintenance","emergency_maintenance"].includes(nextMode);
-    await env.DB.batch([
-      env.DB.prepare("INSERT INTO settings(key,value_json,updated_by) VALUES('system_operational_mode',?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP,updated_by=excluded.updated_by").bind(JSON.stringify(nextMode),user.id),
-      env.DB.prepare("INSERT INTO settings(key,value_json,updated_by) VALUES('maintenance_mode',?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP,updated_by=excluded.updated_by").bind(JSON.stringify(isMaint),user.id),
-      env.DB.prepare("INSERT INTO settings(key,value_json,updated_by) VALUES('maintenance_config',?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP,updated_by=excluded.updated_by").bind(JSON.stringify(nextCfg),user.id),
-      env.DB.prepare("INSERT INTO settings(key,value_json,updated_by) VALUES('maintenance_title',?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP,updated_by=excluded.updated_by").bind(JSON.stringify(nextCfg.title_vi),user.id),
-      env.DB.prepare("INSERT INTO settings(key,value_json,updated_by) VALUES('maintenance_text',?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP,updated_by=excluded.updated_by").bind(JSON.stringify(nextCfg.message_vi),user.id)
-    ]);
+    await upsertSettingRow(env,"system_operational_mode",nextMode,user.id);
+    await upsertSettingRow(env,"maintenance_mode",isMaint,user.id);
+    await upsertSettingRow(env,"maintenance_config",nextCfg,user.id);
+    await upsertSettingRow(env,"maintenance_title",nextCfg.title_vi,user.id);
+    await upsertSettingRow(env,"maintenance_text",nextCfg.message_vi,user.id);
     await audit(env,request,user,`Chuyển trạng thái vận hành hệ thống: ${nextMode}`,"system_state",nextMode,nextCfg);
     invalidatePublicCache(url,["/api/config"],ctx);
     const nextState=await resolveOperationalState(env,"app");
@@ -1116,8 +1683,7 @@ export async function adminRoute(request,env,url,ctx){
     const deny=requirePermission(user,"settings.manage");if(deny)return deny;
     const body=await readJson(request)||{},items=body.items||{};
     for(const [k,v] of Object.entries(items)){
-      await env.DB.prepare("INSERT INTO settings(key,value_json,updated_by) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP,updated_by=excluded.updated_by")
-        .bind(k,JSON.stringify(v),user.id).run();
+      await upsertSettingRow(env,k,v,user.id);
     }
     await audit(env,request,user,"Cập nhật cài đặt hệ thống","settings","*",{keys:Object.keys(items)});
     invalidatePublicCache(url,["/api/config"],ctx);
@@ -1320,7 +1886,7 @@ export async function adminRoute(request,env,url,ctx){
     const body=await readJson(request)||{},data={...g.defaults,...body};
     const idValue=body[g.id]|| (g.id==="code"?String(body.code||"").trim():uid(type.slice(0,3)));
     if(!idValue) return json({error:"MISSING_ID"},400);
-    const ins=makeInsert(g.table,g.id,idValue,g.fields,data);
+    const ins=await makeInsert(env,g.table,g.id,idValue,g.fields,data);
     await env.DB.prepare(ins.sql).bind(...ins.vals).run();
     if(type==="documents" && data.file_id && await adminTableExists(env,"document_versions")){
       try{
@@ -1334,7 +1900,7 @@ export async function adminRoute(request,env,url,ctx){
   const genericOne=p.match(/^\/api\/admin\/content\/(news|classes|events|units|documents|tasks)\/([^/]+)$/);
   if(genericOne&&request.method==="PUT"){
     const [_,type,idRaw]=genericOne,g=GENERIC[type],deny=requirePermission(user,g.permission);if(deny)return deny;
-    const idValue=decodeURIComponent(idRaw),body=await readJson(request)||{},upd=makeUpdate(g.table,g.id,idValue,g.fields,body);
+    const idValue=decodeURIComponent(idRaw),body=await readJson(request)||{},upd=await makeUpdate(env,g.table,g.id,idValue,g.fields,body);
     if(upd) await env.DB.prepare(upd.sql).bind(...upd.vals).run();
     await audit(env,request,user,`Cập nhật ${type}`,type,idValue,body);invalidatePublicCache(url,[PUBLIC_CACHE_PATH[type]],ctx);return json({ok:true});
   }
@@ -2501,13 +3067,13 @@ export async function adminRoute(request,env,url,ctx){
     try{await runScheduledCmsPublishing(env);}catch{}
     const site=String(url.searchParams.get("website_id")||"").trim();
     if(site && !canAccessScope(user,site)) return json({error:"FORBIDDEN",message:"Bạn không có quyền truy cập phạm vi website này."},403);
-    const [pagesRs,tplRs,sbRs]=await env.DB.batch([
-      site
-        ? env.DB.prepare("SELECT * FROM cms_pages WHERE website_id=? ORDER BY CASE WHEN page_type='system' THEN 0 ELSE 1 END, updated_at DESC LIMIT 300").bind(site)
-        : env.DB.prepare("SELECT * FROM cms_pages ORDER BY CASE WHEN page_type='system' THEN 0 ELSE 1 END, updated_at DESC LIMIT 300"),
-      env.DB.prepare("SELECT * FROM cms_templates ORDER BY name"),
-      env.DB.prepare("SELECT * FROM cms_shared_blocks ORDER BY name")
-    ]);
+    const pgCols=await adminTableColumns(env,"cms_pages");
+    const orderExpr=pgCols.has("page_type")?"CASE WHEN page_type='system' THEN 0 ELSE 1 END, updated_at DESC":"updated_at DESC";
+    const pagesRs=site
+      ? await env.DB.prepare(`SELECT * FROM cms_pages WHERE website_id=? ORDER BY ${orderExpr} LIMIT 300`).bind(site).all()
+      : await env.DB.prepare(`SELECT * FROM cms_pages ORDER BY ${orderExpr} LIMIT 300`).all();
+    const tplRs=(await adminTableExists(env,"cms_templates")) ? await env.DB.prepare("SELECT * FROM cms_templates ORDER BY name").all() : {results:[]};
+    const sbRs=(await adminTableExists(env,"cms_shared_blocks")) ? await env.DB.prepare("SELECT * FROM cms_shared_blocks ORDER BY name").all() : {results:[]};
     const pages=(pagesRs.results||[]).filter(pg=>canAccessScope(user,pg.website_id));
     const sharedBlocks=[];
     for(const sb of sbRs.results||[]){

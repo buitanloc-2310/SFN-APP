@@ -606,14 +606,28 @@ export default {
     catch(err){
       const requestId=crypto.randomUUID();
       const url=new URL(request.url),accept=request.headers.get("accept")||"";
-      console.error("REQUEST_ERROR",{request_id:requestId,method:request.method,path:url.pathname,message:String(err?.message||err),stack:String(err?.stack||"").slice(0,4000)});
+      const rawErrMsg=String(err?.message||err||"UNKNOWN_ERROR").slice(0,300);
+      console.error("REQUEST_ERROR",{request_id:requestId,method:request.method,path:url.pathname,message:rawErrMsg,stack:String(err?.stack||"").slice(0,4000)});
+      if(env?.DB){
+        try{
+          await env.DB.prepare("INSERT INTO audit_log(action,entity_type,entity_id,details_json) VALUES('LỖI HỆ THỐNG 500','request_error',?,?)")
+            .bind(requestId,JSON.stringify({method:request.method,path:url.pathname,error:rawErrMsg})).run();
+        }catch{}
+      }
       if(request.method==="GET"&&!url.pathname.startsWith("/api/")&&accept.includes("text/html")){
         try{
           const page=await env.ASSETS.fetch(new Request(new URL("/error.html",url.origin),{headers:request.headers}));
           if(page.ok)return secure(new Response(page.body,{status:500,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}}));
         }catch{}
       }
-      return secure(json({error:"INTERNAL_ERROR",message:"Hệ thống đang gặp sự cố khi xử lý yêu cầu. Vui lòng thử lại sau hoặc liên hệ bộ phận hỗ trợ.",request_id:requestId},500,{"Cache-Control":"no-store","X-SFN-Request-ID":requestId}));
+      const isAdminPath=url.pathname.startsWith("/api/admin/");
+      const safeDiagnostic=isAdminPath?rawErrMsg.replace(/Bearer\s+[^\s]+/gi,"[REDACTED]"):undefined;
+      return secure(json({
+        error:"INTERNAL_ERROR",
+        message:"Hệ thống đang gặp sự cố khi xử lý yêu cầu. Vui lòng thử lại sau hoặc liên hệ bộ phận hỗ trợ.",
+        request_id:requestId,
+        ...(safeDiagnostic?{diagnostic_hint:safeDiagnostic,failed_path:url.pathname}:{})
+      },500,{"Cache-Control":"no-store","X-SFN-Request-ID":requestId}));
     }
   },
 

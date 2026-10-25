@@ -3916,7 +3916,8 @@ function errorText(err){
 
   const friendly=map[code]||err?.data?.message||code;
   const requestId=err?.data?.request_id||err?.requestId||"";
-  return requestId?`${friendly} · Mã tham chiếu: ${requestId}`:friendly;
+  const hint=err?.data?.diagnostic_hint?` (${err.data.diagnostic_hint})`:"";
+  return requestId?`${friendly}${hint} · Mã tham chiếu: ${requestId}`:`${friendly}${hint}`;
 }
 
 async function handleQueryActions(){

@@ -1891,7 +1891,26 @@ let mainCampId = '';
     !portalJsText.includes('Kết quả tra cứu phản ánh trạng thái của bản ghi trong cơ sở dữ liệu Hệ thống Thông tin Số Sky First tại thời điểm thực hiện truy vấn.'),
     'Phase VII (7.6) & Phase VIII (8.1–8.3): Footer citation notice updated and lookup policy/timestamp strings completely removed from UI & API'
   );
+
+  // 31.6 Zero-500 Admin Self-Healing Schema & Fault-Tolerant Audit Test (Production Legacy D1 Simulation)
+  await DB.prepare("DROP TABLE IF EXISTS audit_log").run();
+  await DB.prepare("DROP TABLE IF EXISTS issued_document_codes").run();
+  await DB.prepare("DROP TABLE IF EXISTS term_revisions").run();
+  const healSettingsPut = await callWorker('/api/admin/settings', {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {items: {app_short_name: 'Sky First'}}
+  });
+  const healDashGet = await callWorker('/api/admin/dashboard', {cookie: superAdminCookie});
+  const healHealthGet = await callWorker('/api/admin/system/health', {cookie: superAdminCookie});
+  assert(
+    healSettingsPut.status === 200 &&
+    healDashGet.status === 200 &&
+    healHealthGet.status === 200 &&
+    healHealthGet.data.services?.schema?.ok === true,
+    'Admin Runtime Auto-Healing Schema: Even if audit_log / issued_document_codes / term_revisions are missing on D1, Admin automatically heals schema and completes mutations with 200 OK (Zero 500 INTERNAL_ERROR)'
+  );
 }
+
 
 console.log(`\n========================================`);
 console.log(`TOTAL E2E & REGRESSION TESTS: ${passed + failed} | PASSED: ${passed} | FAILED: ${failed}`);
