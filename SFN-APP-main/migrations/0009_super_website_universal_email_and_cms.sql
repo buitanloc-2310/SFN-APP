@@ -4,10 +4,8 @@ PRAGMA foreign_keys = ON;
 INSERT INTO settings(key, value_json, updated_at) VALUES
   ('footer_copyright', '"© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền."', CURRENT_TIMESTAMP),
   ('footer_copyright_en', '"© 2026 Sky First Digital Information System. All rights reserved."', CURRENT_TIMESTAMP),
-  ('footer_citation_notice', '"Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân."', CURRENT_TIMESTAMP),
-  ('footer_citation_notice_en', '"All cited information must clearly state the source and link to the original content where possible; content must not be distorted and must comply with copyright, intellectual property, and personal data protection regulations."', CURRENT_TIMESTAMP),
-  ('lookup_data_policy_notice', '"Hệ thống chỉ cung cấp các thông tin được phép công khai theo chính sách dữ liệu của Sky First Network. Thông tin cá nhân và dữ liệu nội bộ không thuộc phạm vi công khai phải được bảo vệ, không trả về trong phản hồi tra cứu hoặc hiển thị trên giao diện người dùng."', CURRENT_TIMESTAMP),
-  ('lookup_timestamp_notice', '"Kết quả tra cứu phản ánh trạng thái của bản ghi trong cơ sở dữ liệu Hệ thống Thông tin Số Sky First tại thời điểm thực hiện truy vấn."', CURRENT_TIMESTAMP),
+  ('footer_citation_notice', '"Mọi nội dung trích dẫn phải bảo đảm tính chính xác, trung thực và đầy đủ về ngữ cảnh; ghi rõ nguồn tham khảo và đính kèm liên kết đến tài liệu gốc khi có thể. Việc sử dụng, trích dẫn và chia sẻ thông tin phải tuân thủ quy định về bản quyền, quyền sở hữu trí tuệ và bảo vệ dữ liệu cá nhân."', CURRENT_TIMESTAMP),
+  ('footer_citation_notice_en', '"All cited content must ensure accuracy, truthfulness, and full context; clearly state reference sources and attach links to original documents when possible. Use, citation, and sharing of information must comply with copyright, intellectual property, and personal data protection regulations."', CURRENT_TIMESTAMP),
   ('hotline', '"0924 910 210"', CURRENT_TIMESTAMP),
   ('allow_auto_password_reset', 'false', CURRENT_TIMESTAMP)
 ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = CURRENT_TIMESTAMP;

@@ -44,7 +44,7 @@ async function adminSchemaDiagnostics(env){
     settings:["key","value_json"],
     users:["id","email","status"],
     forms:["id","name","enabled"],
-    certificates:["id","cert_type","full_name","content","status"],
+    certificates:["id","cert_type","full_name","email","phone","content","status"],
     certificate_history:["certificate_id","action"],
     approvals:["id","entity_type","entity_id","status"],
     files:["id","r2_key","visibility","deleted_at"],
@@ -199,15 +199,32 @@ export function exportSkyFirstBlocksToGutenberg(page){
   };
 }
 
-function credentialKind(certType=""){
-  const t=String(certType||"").toLowerCase();
+export function credentialKind(certType="", customPrefix=""){
+  const explicit=String(customPrefix||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if(explicit.length>=2&&explicit.length<=8) return explicit;
+  const raw=String(certType||"").trim();
+  const upper=raw.toUpperCase();
+  if(/^[A-Z0-9]{2,8}$/.test(upper)) return upper;
+  const t=raw.toLowerCase();
   if(t.includes("bằng khen")||t.includes("bang khen")||t==="bk") return "BK";
   if(t.includes("xác nhận")||t.includes("xac nhan")||t==="gxn") return "GXN";
+  if(t.includes("chứng nhận")||t.includes("chung nhan")||t==="gcn") return "GCN";
+  if(t.includes("quyết định")||t.includes("quyet dinh")||t==="qd") return "QD";
+  if(t.includes("chứng chỉ")||t.includes("chung chi")||t==="cc") return "CC";
+  if(t.includes("thư khen")||t.includes("thu khen")||t==="tk") return "TK";
+  if(t.includes("thư cảm ơn")||t.includes("thu cam on")||t==="tco") return "TCO";
+  if(t.includes("công nhận")||t.includes("cong nhan")||t==="cn") return "CN";
+  const words=raw.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/g,"d").replace(/Đ/g,"D").replace(/[^A-Za-z0-9\s]/g," ").trim().split(/\s+/).filter(Boolean);
+  if(words.length>=2){
+    const initials=words.map(w=>w[0].toUpperCase()).join("").slice(0,6);
+    if(initials.length>=2) return initials;
+  }
+  if(words.length===1 && words[0].length>=2) return words[0].toUpperCase().slice(0,6);
   return "GCN";
 }
 
-async function generateCredentialCode(env,certType){
-  const kind=credentialKind(certType),cols=await adminTableColumns(env,"certificates");
+async function generateCredentialCode(env,certType,customPrefix=""){
+  const kind=credentialKind(certType,customPrefix),cols=await adminTableColumns(env,"certificates");
   const identifiers=["code","public_id","legacy_code"].filter(x=>cols.has(x));
   const hasRegistry=await adminTableExists(env,"issued_document_codes");
   for(let attempt=0;attempt<64;attempt++){
@@ -223,8 +240,19 @@ async function generateCredentialCode(env,certType){
   }
   throw new Error("CREDENTIAL_ID_COLLISION_RETRY_EXHAUSTED");
 }
-function parseBodyJson(row,key){
-  try{return JSON.parse(row?.[key]||"{}")}catch{return {}}
+function parseBodyJson(row,key,fallback={}){
+  try{
+    const val=row?.[key];
+    if(val===undefined||val===null||val==="") return fallback;
+    return typeof val==="string"?JSON.parse(val):val;
+  }catch{return fallback}
+}
+async function resolveValidUserId(env,userId){
+  if(!userId||!env?.DB) return null;
+  try{
+    const u=await env.DB.prepare("SELECT id FROM users WHERE id=? LIMIT 1").bind(userId).first();
+    return u?u.id:null;
+  }catch{return null;}
 }
 async function notifyUser(env,userId,title,body,type="",link=""){
   if(!userId) return;
@@ -535,7 +563,7 @@ export async function adminRoute(request,env,url,ctx){
       return json({error:"FORBIDDEN",message:"Bạn chỉ được xem hồ sơ được phân công xử lý."},403);
     }
     const files=await env.DB.prepare("SELECT id,field_key,filename,mime,size,created_at FROM files WHERE submission_code=? AND (deleted_at IS NULL)").bind(row.code).all();
-    return json({item:{...row,answers:parseBodyJson(row,"answers_json"),terms:JSON.parse(row.terms_snapshot_json||"[]")},files:files.results||[]});
+    return json({item:{...row,answers:parseBodyJson(row,"answers_json"),terms:parseBodyJson(row,"terms_snapshot_json",[])},files:files.results||[]});
   }
 
   if(subMatch&&request.method==="PATCH"){
@@ -1082,7 +1110,7 @@ export async function adminRoute(request,env,url,ctx){
   if(p==="/api/admin/settings"&&request.method==="GET"){
     const deny=requirePermission(user,"settings.manage");if(deny)return deny;
     const rs=await env.DB.prepare("SELECT key,value_json,updated_at FROM settings ORDER BY key").all();
-    return json({items:(rs.results||[]).map(x=>({...x,value:JSON.parse(x.value_json)}))});
+    return json({items:(rs.results||[]).map(x=>({...x,value:parseBodyJson(x,"value_json",x.value_json)}))});
   }
   if(p==="/api/admin/settings"&&request.method==="PUT"){
     const deny=requirePermission(user,"settings.manage");if(deny)return deny;
@@ -1192,7 +1220,7 @@ export async function adminRoute(request,env,url,ctx){
     const deny=requirePermission(user,"form.manage");if(deny)return deny;
     const fid=decodeURIComponent(formMatch[1]),body=await readJson(request)||{};
     const current=await env.DB.prepare("SELECT * FROM forms WHERE id=?").bind(fid).first();if(!current)return json({error:"NOT_FOUND"},404);
-    const curCfg=JSON.parse(current.config_json||"{}");
+    const curCfg=parseBodyJson(current,"config_json",{});
     const mergedCfg={...curCfg,...(body.config||{})};
     const wantEnabled = body.enabled !== undefined ? (body.enabled===false||body.enabled===0?0:1) : Number(current.enabled||0);
     if(wantEnabled===1 && Number(current.enabled||0)===0 && !hasAnyPermission(user,["form.approve","approval.decide"])){
@@ -1391,44 +1419,204 @@ export async function adminRoute(request,env,url,ctx){
 
   if(p==="/api/admin/certificates"&&request.method==="GET"){
     const deny=requirePermission(user,"certificate.view");if(deny)return deny;
-    const rs=await env.DB.prepare("SELECT * FROM certificates ORDER BY created_at DESC LIMIT 1000").all();return json({items:rs.results||[]});
+    const rs=await env.DB.prepare("SELECT * FROM certificates ORDER BY created_at DESC LIMIT 1000").all();
+    const items=(rs.results||[]).map(c=>{
+      const meta=parseBodyJson(c,"metadata_json",{});
+      return {...c,phone:c.phone||meta.phone||meta.phone_number||"",metadata:meta};
+    });
+    return json({items});
   }
   if(p==="/api/admin/certificates"&&request.method==="POST"){
     const deny=requirePermission(user,"certificate.request");if(deny)return deny;
     const body=await readJson(request)||{};
-    if(!body.full_name||!body.content||!body.cert_type)return json({error:"INVALID_INPUT"},400);
+    const fullName=String(body.full_name||"").trim();
+    const content=String(body.content||"").trim();
+    const certType=String(body.cert_type||"").trim();
+    if(!fullName||!content||!certType)return json({error:"INVALID_INPUT",message:"Họ tên người được cấp, loại tài liệu/chứng nhận và nội dung là bắt buộc."},400);
+    const email=String(body.email||"").trim().toLowerCase();
+    const rawMeta=(body.metadata&&typeof body.metadata==="object")?{...body.metadata}:{};
+    const phone=String(body.phone??rawMeta.phone??rawMeta.phone_number??"").trim();
+    if(phone) rawMeta.phone=phone;
+    const customPrefix=String(body.prefix||body.type_prefix||body.doc_prefix||"").trim().toUpperCase();
+    if(customPrefix) rawMeta.type_prefix=customPrefix;
+    if(body.legacy_code) rawMeta.legacy_code=String(body.legacy_code).trim();
     const idC=uid("cert"),token=uid("verify");
-    await env.DB.prepare("INSERT INTO certificates(id,cert_type,full_name,email,content,status,requested_by,verification_token,metadata_json) VALUES(?,?,?,?,?,'pending_approval',?,?,?)")
-      .bind(idC,body.cert_type,body.full_name,body.email||"",body.content,user.id,token,JSON.stringify(body.metadata||{})).run();
+    const certCols=await adminTableColumns(env,"certificates");
+    const insCols=["id","cert_type","full_name","email","content","status","requested_by","verification_token","metadata_json"];
+    const insVals=[idC,certType,fullName,email,content,body.status==="draft"?"draft":"pending_approval",user.id,token,JSON.stringify(rawMeta)];
+    if(certCols.has("phone")){insCols.push("phone");insVals.push(phone);}
+    if(certCols.has("legacy_code")&&body.legacy_code){insCols.push("legacy_code");insVals.push(String(body.legacy_code).trim());}
+    if(certCols.has("file_id")&&body.file_id){insCols.push("file_id");insVals.push(String(body.file_id).trim());}
+    await env.DB.prepare(`INSERT INTO certificates(${insCols.join(",")}) VALUES(${insCols.map(()=>"?").join(",")})`)
+      .bind(...insVals).run();
+    await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Khởi tạo bản ghi',?,?)")
+      .bind(idC,body.note||`Tạo đề nghị cấp ${certType}`,user.id).run();
     const idA=uid("approval");
-    await env.DB.prepare("INSERT INTO approvals(id,entity_type,entity_id,action,requested_by,assigned_role,status,due_at) VALUES(?,'certificate',?,'Phê duyệt cấp GCN/GXN',?,'network_secretary','pending',datetime('now','+7 days'))")
+    await env.DB.prepare("INSERT INTO approvals(id,entity_type,entity_id,action,requested_by,assigned_role,status,due_at) VALUES(?,'certificate',?,'Phê duyệt cấp chứng nhận/văn bản',?,'network_secretary','pending',datetime('now','+7 days'))")
       .bind(idA,idC,user.id).run();
-    await audit(env,request,user,"Đề nghị cấp GCN/GXN","certificate",idC,{approval:idA});return json({ok:true,id:idC,approval_id:idA});
+    await audit(env,request,user,"Đề nghị cấp chứng nhận/văn bản","certificate",idC,{cert_type:certType,approval:idA});
+    return json({ok:true,id:idC,approval_id:idA,prefix:credentialKind(certType,customPrefix)});
   }
   const certHistoryMatch=p.match(/^\/api\/admin\/certificates\/([^/]+)\/history$/);
   if(certHistoryMatch&&request.method==="GET"){
     const deny=requirePermission(user,"certificate.view");if(deny)return deny;
     const idC=decodeURIComponent(certHistoryMatch[1]);
     const [cert,history]=await env.DB.batch([
-      env.DB.prepare("SELECT * FROM certificates WHERE id=?").bind(idC),
+      env.DB.prepare("SELECT * FROM certificates WHERE id=? OR code=?").bind(idC,idC),
       env.DB.prepare("SELECT action,note,actor_id,created_at FROM certificate_history WHERE certificate_id=? ORDER BY created_at DESC,id DESC").bind(idC)
     ]);
     const item=cert.results?.[0];if(!item)return json({error:"NOT_FOUND"},404);
-    return json({item,history:history.results||[]});
+    const histRows=item.id!==idC
+      ? (await env.DB.prepare("SELECT action,note,actor_id,created_at FROM certificate_history WHERE certificate_id=? ORDER BY created_at DESC,id DESC").bind(item.id).all()).results||[]
+      : (history.results||[]);
+    const meta=parseBodyJson(item,"metadata_json",{});
+    return json({item:{...item,phone:item.phone||meta.phone||"",metadata:meta},history:histRows});
   }
 
   const certMatch=p.match(/^\/api\/admin\/certificates\/([^/]+)$/);
+  if(certMatch&&request.method==="GET"){
+    const deny=requirePermission(user,"certificate.view");if(deny)return deny;
+    const idC=decodeURIComponent(certMatch[1]);
+    const item=await env.DB.prepare("SELECT * FROM certificates WHERE id=? OR code=?").bind(idC,idC).first();
+    if(!item)return json({error:"NOT_FOUND"},404);
+    const meta=parseBodyJson(item,"metadata_json",{});
+    const history=await env.DB.prepare("SELECT action,note,actor_id,created_at FROM certificate_history WHERE certificate_id=? ORDER BY created_at DESC,id DESC").bind(item.id).all();
+    return json({item:{...item,phone:item.phone||meta.phone||"",metadata:meta},history:history.results||[]});
+  }
+
+  if(certMatch&&request.method==="PUT"){
+    if(!hasAnyPermission(user,["certificate.request","certificate.issue","certificate.approve"])) return json({error:"FORBIDDEN"},403);
+    const idC=decodeURIComponent(certMatch[1]),body=await readJson(request)||{};
+    const current=await env.DB.prepare("SELECT * FROM certificates WHERE id=?").bind(idC).first();
+    if(!current)return json({error:"NOT_FOUND"},404);
+    if(["revoked","superseded"].includes(current.status)){
+      return json({error:"IMMUTABLE_RECORD_STATE",message:"Không được phép chỉnh sửa trực tiếp bản ghi đã thu hồi hoặc đã được thay thế."},409);
+    }
+    const certCols=await adminTableColumns(env,"certificates");
+    const curMeta=parseBodyJson(current,"metadata_json",{});
+    const nextMeta={...curMeta,...(body.metadata&&typeof body.metadata==="object"?body.metadata:{})};
+    const nextPhone=body.phone!==undefined?String(body.phone||"").trim():(current.phone||curMeta.phone||"");
+    if(nextPhone) nextMeta.phone=nextPhone;
+    const nextEmail=body.email!==undefined?String(body.email||"").trim().toLowerCase():(current.email||"");
+
+    if(current.status==="issued"){
+      // Issued records: core identity (code, full_name, cert_type, content) is immutable (must use supersede to change); only contact/file/supplementary metadata can be updated.
+      if((body.full_name&&String(body.full_name).trim()!==current.full_name) || (body.content&&String(body.content).trim()!==current.content) || (body.cert_type&&String(body.cert_type).trim()!==current.cert_type)){
+        return json({error:"ISSUED_CORE_FIELDS_IMMUTABLE",message:"Chứng nhận đã phát hành không được sửa trực tiếp họ tên, loại hoặc nội dung ghi nhận. Vui lòng sử dụng chức năng Thay thế (Supersede) để cấp mã mới."},409);
+      }
+      const sets=["email=?","metadata_json=?","updated_at=CURRENT_TIMESTAMP"],vals=[nextEmail,JSON.stringify(nextMeta)];
+      if(certCols.has("phone")){sets.push("phone=?");vals.push(nextPhone);}
+      if(certCols.has("file_id")&&body.file_id!==undefined){sets.push("file_id=?");vals.push(body.file_id||null);}
+      vals.push(idC);
+      await env.DB.prepare(`UPDATE certificates SET ${sets.join(",")} WHERE id=?`).bind(...vals).run();
+      await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Cập nhật thông tin liên hệ/đính kèm',?,?)")
+        .bind(idC,String(body.note||"Cập nhật thông tin bổ sung"),user.id).run();
+      await audit(env,request,user,"Cập nhật thông tin bổ sung chứng nhận","certificate",idC,{email:nextEmail,phone:nextPhone});
+      return json({ok:true,id:idC,status:current.status});
+    }
+
+    // Draft / pending_approval / approved records before issuance
+    const nextName=String(body.full_name||current.full_name).trim();
+    const nextType=String(body.cert_type||current.cert_type).trim();
+    const nextContent=String(body.content||current.content).trim();
+    if(!nextName||!nextType||!nextContent) return json({error:"INVALID_INPUT"},400);
+    const sets=["cert_type=?","full_name=?","email=?","content=?","metadata_json=?","updated_at=CURRENT_TIMESTAMP"];
+    const vals=[nextType,nextName,nextEmail,nextContent,JSON.stringify(nextMeta)];
+    if(certCols.has("phone")){sets.push("phone=?");vals.push(nextPhone);}
+    if(certCols.has("file_id")&&body.file_id!==undefined){sets.push("file_id=?");vals.push(body.file_id||null);}
+    if(certCols.has("legacy_code")&&body.legacy_code!==undefined){sets.push("legacy_code=?");vals.push(body.legacy_code?String(body.legacy_code).trim():null);}
+    vals.push(idC);
+    await env.DB.prepare(`UPDATE certificates SET ${sets.join(",")} WHERE id=?`).bind(...vals).run();
+    await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Chỉnh sửa thông tin',?,?)")
+      .bind(idC,String(body.note||"Chỉnh sửa thông tin trước khi phát hành"),user.id).run();
+    await audit(env,request,user,"Chỉnh sửa đề nghị chứng nhận","certificate",idC,{cert_type:nextType,full_name:nextName});
+    return json({ok:true,id:idC,status:current.status});
+  }
+
+  if(certMatch&&request.method==="DELETE"){
+    if(!hasAnyPermission(user,["certificate.issue","certificate.approve","certificate.request"])) return json({error:"FORBIDDEN"},403);
+    const idC=decodeURIComponent(certMatch[1]);
+    const current=await env.DB.prepare("SELECT * FROM certificates WHERE id=?").bind(idC).first();
+    if(!current)return json({error:"NOT_FOUND"},404);
+    // Strict lifecycle rule: Issued, revoked, or superseded records must NEVER be deleted (audit & verification integrity)
+    if(["issued","revoked","superseded"].includes(current.status) || current.code || current.issued_at){
+      return json({
+        error:"CANNOT_DELETE_ISSUED_CREDENTIAL",
+        message:"Không được phép xóa bản ghi chứng nhận đã phát hành, đã thu hồi hoặc đã thay thế để bảo toàn lịch sử đối soát. Vui lòng sử dụng thao tác Thu hồi (Revoke) hoặc Thay thế (Supersede)."
+      },409);
+    }
+    const isRoot=(user.roles||[]).some(r=>["owner","super_admin","system_admin"].includes(r.role_id));
+    if(current.status==="approved" && !isRoot && !hasPermission(user,"certificate.issue")){
+      return json({error:"FORBIDDEN",message:"Chỉ người có thẩm quyền phát hành hoặc Quản trị viên hệ thống mới được hủy đề nghị đã duyệt."},403);
+    }
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM approvals WHERE entity_type='certificate' AND entity_id=?").bind(idC),
+      env.DB.prepare("DELETE FROM certificate_history WHERE certificate_id=?").bind(idC),
+      env.DB.prepare("DELETE FROM certificates WHERE id=?").bind(idC)
+    ]);
+    await audit(env,request,user,"Xóa bản ghi đề nghị chứng nhận chưa phát hành","certificate",idC,{full_name:current.full_name,cert_type:current.cert_type,previous_status:current.status});
+    return json({ok:true,deleted_id:idC});
+  }
+
   if(certMatch&&request.method==="PATCH"){
     const idC=decodeURIComponent(certMatch[1]),body=await readJson(request)||{};
     const current=await env.DB.prepare("SELECT * FROM certificates WHERE id=?").bind(idC).first();if(!current)return json({error:"NOT_FOUND"},404);
+
+    if(body.action==="update"||body.action==="edit"){
+      if(!hasAnyPermission(user,["certificate.request","certificate.issue","certificate.approve"])) return json({error:"FORBIDDEN"},403);
+      if(["revoked","superseded"].includes(current.status)){
+        return json({error:"IMMUTABLE_RECORD_STATE",message:"Không được phép chỉnh sửa bản ghi đã thu hồi hoặc đã thay thế."},409);
+      }
+      if(current.status==="issued" && ((body.full_name&&String(body.full_name).trim()!==current.full_name) || (body.content&&String(body.content).trim()!==current.content) || (body.cert_type&&String(body.cert_type).trim()!==current.cert_type))){
+        return json({error:"ISSUED_CORE_FIELDS_IMMUTABLE",message:"Chứng nhận đã phát hành không được sửa trực tiếp họ tên, loại hoặc nội dung ghi nhận."},409);
+      }
+      const certCols=await adminTableColumns(env,"certificates");
+      const curMeta=parseBodyJson(current,"metadata_json",{});
+      const nextMeta={...curMeta,...(body.metadata&&typeof body.metadata==="object"?body.metadata:{})};
+      const nextPhone=body.phone!==undefined?String(body.phone||"").trim():(current.phone||curMeta.phone||"");
+      if(nextPhone) nextMeta.phone=nextPhone;
+      const nextEmail=body.email!==undefined?String(body.email||"").trim().toLowerCase():(current.email||"");
+      const nextName=current.status==="issued"?current.full_name:String(body.full_name||current.full_name).trim();
+      const nextType=current.status==="issued"?current.cert_type:String(body.cert_type||current.cert_type).trim();
+      const nextContent=current.status==="issued"?current.content:String(body.content||current.content).trim();
+      const sets=["cert_type=?","full_name=?","email=?","content=?","metadata_json=?","updated_at=CURRENT_TIMESTAMP"];
+      const vals=[nextType,nextName,nextEmail,nextContent,JSON.stringify(nextMeta)];
+      if(certCols.has("phone")){sets.push("phone=?");vals.push(nextPhone);}
+      if(certCols.has("file_id")&&body.file_id!==undefined){sets.push("file_id=?");vals.push(body.file_id||null);}
+      vals.push(idC);
+      await env.DB.prepare(`UPDATE certificates SET ${sets.join(",")} WHERE id=?`).bind(...vals).run();
+      await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Chỉnh sửa thông tin',?,?)").bind(idC,String(body.note||"Cập nhật thông tin"),user.id).run();
+      await audit(env,request,user,"Chỉnh sửa chứng nhận","certificate",idC,{cert_type:nextType,full_name:nextName});
+      return json({ok:true,id:idC});
+    }
+
+    if(body.action==="approve"){
+      if(!hasAnyPermission(user,["certificate.approve","approval.decide"])) return json({error:"FORBIDDEN",permission:"certificate.approve"},403);
+      if(!["pending_approval","draft"].includes(current.status)){
+        return json({error:"INVALID_STATE_TRANSITION",message:`Không thể phê duyệt bản ghi đang ở trạng thái "${current.status}".`},409);
+      }
+      const isRoot=(user.roles||[]).some(r=>["owner","super_admin"].includes(r.role_id));
+      if(current.requested_by && Number(current.requested_by)===Number(user.id) && !isRoot){
+        return json({error:"SELF_APPROVAL_FORBIDDEN",message:"Nguyên tắc kiểm soát hai bước: Người tạo đề nghị không được tự phê duyệt yêu cầu do chính mình gửi."},403);
+      }
+      await env.DB.batch([
+        env.DB.prepare("UPDATE certificates SET status='approved',approved_by=?,approved_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(user.id,idC),
+        env.DB.prepare("UPDATE approvals SET status='approved',note=?,decided_by=?,decided_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE entity_type='certificate' AND entity_id=? AND status='pending'").bind(String(body.note||"Đã phê duyệt"),user.id,idC),
+        env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Phê duyệt',?,?)").bind(idC,String(body.note||"Đã phê duyệt đủ điều kiện phát hành"),user.id)
+      ]);
+      await audit(env,request,user,"Phê duyệt đề nghị chứng nhận","certificate",idC,{note:body.note||""});
+      return json({ok:true,status:"approved"});
+    }
+
     if(body.action==="issue"){
       const deny=requirePermission(user,"certificate.issue");if(deny)return deny;
-      if(current.status!=="approved")return json({error:"NOT_APPROVED"},409);
+      if(current.status!=="approved")return json({error:"NOT_APPROVED",message:"Bản ghi phải được phê duyệt trước khi phát hành chính thức."},409);
       if(current.code||current.issued_at)return json({error:"ALREADY_ISSUED"},409);
-      const code=await generateCredentialCode(env,current.cert_type);
+      const curMeta=parseBodyJson(current,"metadata_json",{});
+      const code=await generateCredentialCode(env,current.cert_type,body.prefix||body.type_prefix||curMeta.type_prefix||"");
       const immutableSnapshot={
-        code,cert_type:current.cert_type,full_name:current.full_name,email:current.email||"",
-        content:current.content,metadata:parseBodyJson(current,"metadata_json")
+        code,cert_type:current.cert_type,full_name:current.full_name,email:current.email||"",phone:current.phone||curMeta.phone||"",
+        content:current.content,metadata:curMeta
       };
       const certCols=await adminTableColumns(env,"certificates"),sets=["code=?","status='issued'","issued_by=?","issued_at=CURRENT_TIMESTAMP","updated_at=CURRENT_TIMESTAMP"],vals=[code,user.id];
       if(certCols.has("public_id")){sets.splice(1,0,"public_id=?");vals.splice(1,0,code)}
@@ -1437,12 +1625,15 @@ export async function adminRoute(request,env,url,ctx){
       await env.DB.prepare(`UPDATE certificates SET ${sets.join(",")} WHERE id=?`).bind(...vals).run();
       if(await adminTableExists(env,"issued_document_codes")){
         try{await env.DB.prepare("INSERT OR IGNORE INTO issued_document_codes(document_id,document_type,lookup_code,random_digits,code_version,is_primary,is_active) VALUES(?,?,?,?, 'v3',1,1)")
-          .bind(idC,credentialKind(current.cert_type),code,code.split("-").pop()).run()}catch(err){console.error("CREDENTIAL_REGISTRY_SYNC",err)}
+          .bind(idC,credentialKind(current.cert_type,body.type_prefix||curMeta.type_prefix||""),code,code.split("-").pop()).run()}catch(err){console.error("CREDENTIAL_REGISTRY_SYNC",err)}
       }
       await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Phát hành',?,?)").bind(idC,body.note||"",user.id).run();
       if(current.supersedes_id){
         await env.DB.prepare("UPDATE certificates SET status='superseded',superseded_by_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('issued','revoked')")
           .bind(idC,current.supersedes_id).run();
+        if(await adminTableExists(env,"issued_document_codes")){
+          try{await env.DB.prepare("UPDATE issued_document_codes SET is_active=0 WHERE document_id=?").bind(current.supersedes_id).run()}catch{}
+        }
         await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Được thay thế',?,?)")
           .bind(current.supersedes_id,`Thay thế bởi ${code}`,user.id).run();
       }
@@ -1494,13 +1685,24 @@ export async function adminRoute(request,env,url,ctx){
       const certCols=await adminTableColumns(env,"certificates");
       if(!certCols.has("supersedes_id")) return json({error:"FEATURE_TEMPORARILY_UNAVAILABLE",message:"Chức năng thay thế giấy chưa tương thích với cấu trúc dữ liệu hiện tại."},503);
       const replacementId=uid("cert"),token=uid("verify");
-      const meta={...parseBodyJson(current,"metadata_json"),replacement_reason:String(body.note||"").trim()};
-      await env.DB.prepare("INSERT INTO certificates(id,cert_type,full_name,email,content,status,requested_by,verification_token,metadata_json,supersedes_id) VALUES(?,?,?,?,?,'pending_approval',?,?,?,?)")
-        .bind(replacementId,current.cert_type,current.full_name,current.email||"",current.content,user.id,token,JSON.stringify(meta),idC).run();
+      const curMeta=parseBodyJson(current,"metadata_json",{});
+      const meta={...curMeta,...(body.metadata&&typeof body.metadata==="object"?body.metadata:{}),replacement_reason:String(body.note||body.reason||"").trim(),replaces_code:current.public_id||current.code||idC};
+      const nextName=String(body.full_name||current.full_name).trim();
+      const nextType=String(body.cert_type||current.cert_type).trim();
+      const nextContent=String(body.content||current.content).trim();
+      const nextEmail=String(body.email??current.email??"").trim().toLowerCase();
+      const nextPhone=String(body.phone??current.phone??curMeta.phone??"").trim();
+      if(nextPhone) meta.phone=nextPhone;
+      const insCols=["id","cert_type","full_name","email","content","status","requested_by","verification_token","metadata_json","supersedes_id"];
+      const insVals=[replacementId,nextType,nextName,nextEmail,nextContent,"pending_approval",user.id,token,JSON.stringify(meta),idC];
+      if(certCols.has("phone")){insCols.push("phone");insVals.push(nextPhone);}
+      await env.DB.prepare(`INSERT INTO certificates(${insCols.join(",")}) VALUES(${insCols.map(()=>"?").join(",")})`)
+        .bind(...insVals).run();
       const idA=uid("approval");
       await env.DB.prepare("INSERT INTO approvals(id,entity_type,entity_id,action,requested_by,assigned_role,status,due_at) VALUES(?,'certificate',?,'Phê duyệt credential thay thế',?,'network_secretary','pending',datetime('now','+7 days'))")
         .bind(idA,replacementId,user.id).run();
       await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Khởi tạo thay thế',?,?)").bind(idC,body.note||"",user.id).run();
+      await env.DB.prepare("INSERT INTO certificate_history(certificate_id,action,note,actor_id) VALUES(?,'Bản ghi thay thế được tạo',?,?)").bind(replacementId,`Thay thế cho ${current.code||idC}`,user.id).run();
       await audit(env,request,user,"Khởi tạo Credential thay thế","certificate",idC,{replacement_id:replacementId,approval:idA});
       return json({ok:true,replacement_id:replacementId,approval_id:idA});
     }
@@ -2356,67 +2558,100 @@ export async function adminRoute(request,env,url,ctx){
     if(!hasAnyPermission(user,["cms.view","cms.edit","cms.approve","cms.publish","news.manage"])) return json({error:"FORBIDDEN",permission:"cms.view"},403);
     const id=decodeURIComponent(cmsPageMatch[1]);
     const page=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=? OR slug=?").bind(id,id).first();
-    if(!page) return json({error:"NOT_FOUND"},404);
+    if(!page) return json({error:"NOT_FOUND",message:"Không tìm thấy trang nội dung yêu cầu."},404);
     if(!canAccessScope(user,page.website_id)) return json({error:"FORBIDDEN"},403);
-    const revs=await env.DB.prepare("SELECT id,version,title,status,note,created_by,created_at FROM cms_page_revisions WHERE page_id=? ORDER BY version DESC LIMIT 50").bind(page.id).all();
+    let revsList=[];
+    if(await adminTableExists(env,"cms_page_revisions")){
+      try{
+        const revs=await env.DB.prepare("SELECT id,version,title,status,note,created_by,created_at FROM cms_page_revisions WHERE page_id=? ORDER BY version DESC LIMIT 50").bind(page.id).all();
+        revsList=revs.results||[];
+      }catch{}
+    }
+    const isSys=page.page_type==="system"||String(page.id||"").startsWith("sys_");
     return json({
       item:{
         ...page,
-        blocks:JSON.parse(page.blocks_json||"[]"),
-        blocks_en:JSON.parse(page.blocks_en_json||"[]"),
-        seo:JSON.parse(page.seo_json||"{}"),
-        seo_en:JSON.parse(page.seo_en_json||"{}"),
-        tags:JSON.parse(page.tags_json||"[]")
+        page_type:isSys?"system":(page.page_type||"custom"),
+        blocks:parseBodyJson(page,"blocks_json",[]),
+        blocks_en:parseBodyJson(page,"blocks_en_json",[]),
+        seo:parseBodyJson(page,"seo_json",{}),
+        seo_en:parseBodyJson(page,"seo_en_json",{}),
+        tags:parseBodyJson(page,"tags_json",[])
       },
-      revisions:revs.results||[]
+      revisions:revsList
     });
   }
 
   if(cmsPageMatch&&request.method==="PUT"){
     if(!hasAnyPermission(user,["cms.edit","news.manage"])) return json({error:"FORBIDDEN",permission:"cms.edit"},403);
     const id=decodeURIComponent(cmsPageMatch[1]),body=await readJson(request)||{};
-    const curr=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=?").bind(id).first();
-    if(!curr) return json({error:"NOT_FOUND"},404);
+    const curr=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=? OR slug=?").bind(id,id).first();
+    if(!curr) return json({error:"NOT_FOUND",message:"Không tìm thấy trang nội dung cần cập nhật."},404);
+    const targetId=curr.id;
     if(!canAccessScope(user,curr.website_id)) return json({error:"FORBIDDEN"},403);
+    const isSys=curr.page_type==="system"||String(targetId||"").startsWith("sys_");
     const nextVersion=Number(curr.version||1)+1;
-    const title=String(body.title||curr.title).trim();
-    const slug=curr.page_type==="system"?curr.slug:(body.slug?String(body.slug).trim().toLowerCase().replace(/[^a-z0-9-]+/g,"-").replace(/^-+|-+$/g,""):curr.slug);
-    const blocksJson=body.blocks!==undefined?JSON.stringify(body.blocks):curr.blocks_json;
-    const blocksEnJson=body.blocks_en!==undefined?JSON.stringify(body.blocks_en):(curr.blocks_en_json||"[]");
-    const seoJson=body.seo!==undefined?JSON.stringify(body.seo):curr.seo_json;
-    const seoEnJson=body.seo_en!==undefined?JSON.stringify(body.seo_en):(curr.seo_en_json||"{}");
-    const tagsJson=body.tags!==undefined?JSON.stringify(body.tags):curr.tags_json;
+    const title=String(body.title||curr.title||"").trim();
+    if(!title) return json({error:"INVALID_INPUT",message:"Tiêu đề trang không được để trống."},400);
+    const slug=isSys?curr.slug:(body.slug?String(body.slug).trim().toLowerCase().replace(/[^a-z0-9-]+/g,"-").replace(/^-+|-+$/g,""):curr.slug);
+    if(!slug) return json({error:"INVALID_INPUT",message:"Đường dẫn (slug) không hợp lệ."},400);
+    if(slug!==curr.slug){
+      const dup=await env.DB.prepare("SELECT id FROM cms_pages WHERE website_id=? AND slug=? AND id!=? LIMIT 1").bind(curr.website_id,slug,targetId).first();
+      if(dup) return json({error:"SLUG_EXISTS",message:"Đường dẫn (slug) này đã tồn tại trên website hiện tại."},409);
+    }
+    const normalizeJsonArr=(val,fallback)=>{
+      if(val===undefined) return fallback||"[]";
+      if(Array.isArray(val)) return JSON.stringify(val);
+      if(typeof val==="string"){try{const p=JSON.parse(val);return Array.isArray(p)?JSON.stringify(p):"[]";}catch{return "[]";}}
+      return "[]";
+    };
+    const normalizeJsonObj=(val,fallback)=>{
+      if(val===undefined) return fallback||"{}";
+      if(val&&typeof val==="object"&&!Array.isArray(val)) return JSON.stringify(val);
+      if(typeof val==="string"){try{const p=JSON.parse(val);return (p&&typeof p==="object"&&!Array.isArray(p))?JSON.stringify(p):"{}";}catch{return "{}";}}
+      return "{}";
+    };
+    const blocksJson=normalizeJsonArr(body.blocks,curr.blocks_json);
+    const blocksEnJson=normalizeJsonArr(body.blocks_en,curr.blocks_en_json);
+    const seoJson=normalizeJsonObj(body.seo,curr.seo_json);
+    const seoEnJson=normalizeJsonObj(body.seo_en,curr.seo_en_json);
+    const tagsJson=normalizeJsonArr(body.tags,curr.tags_json);
     const nextStatus=(["approved","published"].includes(curr.status)&&!hasPermission(user,"cms.publish"))?"draft":curr.status;
     const pgCols=await adminTableColumns(env,"cms_pages");
-    if(pgCols.has("title_en")){
-      await env.DB.batch([
-        env.DB.prepare("UPDATE cms_pages SET slug=?,title=?,title_en=?,summary=?,summary_en=?,cover_file_id=?,category=?,tags_json=?,seo_json=?,seo_en_json=?,blocks_json=?,blocks_en_json=?,scheduled_at=?,unpublished_at=?,status=?,version=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-          .bind(slug,title,body.title_en??curr.title_en??"",body.summary??curr.summary,body.summary_en??curr.summary_en??"",body.cover_file_id??curr.cover_file_id,body.category||curr.category,tagsJson,seoJson,seoEnJson,blocksJson,blocksEnJson,body.scheduled_at!==undefined?body.scheduled_at:curr.scheduled_at,body.unpublished_at!==undefined?body.unpublished_at:curr.unpublished_at,nextStatus,nextVersion,id),
-        env.DB.prepare("INSERT INTO cms_page_revisions(page_id,version,title,blocks_json,seo_json,status,note,created_by) VALUES(?,?,?,?,?,?,?,?)")
-          .bind(id,nextVersion,title,blocksJson,seoJson,nextStatus,String(body.note||`Lưu phiên bản v${nextVersion}`),user.id)
-      ]);
-    }else{
-      await env.DB.batch([
-        env.DB.prepare("UPDATE cms_pages SET slug=?,title=?,summary=?,cover_file_id=?,category=?,tags_json=?,seo_json=?,blocks_json=?,status=?,version=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-          .bind(slug,title,body.summary??curr.summary,body.cover_file_id??curr.cover_file_id,body.category||curr.category,tagsJson,seoJson,blocksJson,nextStatus,nextVersion,id),
-        env.DB.prepare("INSERT INTO cms_page_revisions(page_id,version,title,blocks_json,seo_json,status,note,created_by) VALUES(?,?,?,?,?,?,?,?)")
-          .bind(id,nextVersion,title,blocksJson,seoJson,nextStatus,String(body.note||`Lưu phiên bản v${nextVersion}`),user.id)
-      ]);
+    const validActorId=await resolveValidUserId(env,user?.id);
+
+    const updSets=["slug=?","title=?","summary=?","cover_file_id=?","category=?","tags_json=?","seo_json=?","blocks_json=?","status=?","version=?","updated_at=CURRENT_TIMESTAMP"];
+    const updVals=[slug,title,String(body.summary??curr.summary??""),body.cover_file_id??curr.cover_file_id??null,String(body.category||curr.category||"general"),tagsJson,seoJson,blocksJson,nextStatus,nextVersion];
+    if(pgCols.has("title_en")){updSets.push("title_en=?");updVals.push(String(body.title_en??curr.title_en??""));}
+    if(pgCols.has("summary_en")){updSets.push("summary_en=?");updVals.push(String(body.summary_en??curr.summary_en??""));}
+    if(pgCols.has("seo_en_json")){updSets.push("seo_en_json=?");updVals.push(seoEnJson);}
+    if(pgCols.has("blocks_en_json")){updSets.push("blocks_en_json=?");updVals.push(blocksEnJson);}
+    if(pgCols.has("scheduled_at")){updSets.push("scheduled_at=?");updVals.push(body.scheduled_at!==undefined?body.scheduled_at:(curr.scheduled_at??null));}
+    if(pgCols.has("unpublished_at")){updSets.push("unpublished_at=?");updVals.push(body.unpublished_at!==undefined?body.unpublished_at:(curr.unpublished_at??null));}
+    if(pgCols.has("page_type")&&isSys){updSets.push("page_type='system'");}
+    updVals.push(targetId);
+
+    await env.DB.prepare(`UPDATE cms_pages SET ${updSets.join(",")} WHERE id=?`).bind(...updVals).run();
+    if(await adminTableExists(env,"cms_page_revisions")){
+      try{
+        await env.DB.prepare("INSERT INTO cms_page_revisions(page_id,version,title,blocks_json,seo_json,status,note,created_by) VALUES(?,?,?,?,?,?,?,?)")
+          .bind(targetId,nextVersion,title,blocksJson,seoJson,nextStatus,String(body.note||`Lưu phiên bản v${nextVersion}`),validActorId).run();
+      }catch(revErr){console.warn("CMS_REVISION_INSERT_WARN",revErr);}
     }
-    await audit(env,request,user,"Cập nhật trang CMS","cms_page",id,{version:nextVersion,status:nextStatus});
+    await audit(env,request,user,"Cập nhật trang CMS","cms_page",targetId,{version:nextVersion,status:nextStatus});
     if(nextStatus==="published") invalidatePublicCache(url,["/api/public/pages","/api/config"],ctx);
-    return json({ok:true,version:nextVersion,status:nextStatus});
+    return json({ok:true,id:targetId,version:nextVersion,status:nextStatus});
   }
 
   if(cmsPageMatch&&request.method==="DELETE"){
     if(!hasAnyPermission(user,["cms.publish","cms.template_manage"])) return json({error:"FORBIDDEN"},403);
     const id=decodeURIComponent(cmsPageMatch[1]);
-    const curr=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=?").bind(id).first();
+    const curr=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=? OR slug=?").bind(id,id).first();
     if(!curr) return json({error:"NOT_FOUND"},404);
     if(!canAccessScope(user,curr.website_id)) return json({error:"FORBIDDEN"},403);
-    if(curr.page_type==="system") return json({error:"SYSTEM_PAGE_PROTECTED",message:"Trang hệ thống cốt lõi không được phép xóa (chỉ được phép chỉnh sửa nội dung/bố cục)."},409);
-    await env.DB.prepare("DELETE FROM cms_pages WHERE id=?").bind(id).run();
-    await audit(env,request,user,"Xóa trang CMS","cms_page",id,{slug:curr.slug});
+    if(curr.page_type==="system"||String(curr.id||"").startsWith("sys_")) return json({error:"SYSTEM_PAGE_PROTECTED",message:"Trang hệ thống cốt lõi không được phép xóa (chỉ được phép chỉnh sửa nội dung/bố cục)."},409);
+    await env.DB.prepare("DELETE FROM cms_pages WHERE id=?").bind(curr.id).run();
+    await audit(env,request,user,"Xóa trang CMS","cms_page",curr.id,{slug:curr.slug});
     invalidatePublicCache(url,["/api/public/pages"],ctx);
     return json({ok:true});
   }
@@ -2425,29 +2660,39 @@ export async function adminRoute(request,env,url,ctx){
   if(cmsDuplicateMatch&&request.method==="POST"){
     if(!hasAnyPermission(user,["cms.edit","news.manage"])) return json({error:"FORBIDDEN"},403);
     const id=decodeURIComponent(cmsDuplicateMatch[1]),body=await readJson(request)||{};
-    const curr=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=?").bind(id).first();
-    if(!curr) return json({error:"NOT_FOUND"},404);
+    const curr=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=? OR slug=?").bind(id,id).first();
+    if(!curr) return json({error:"NOT_FOUND",message:"Không tìm thấy trang gốc để nhân bản."},404);
     if(!canAccessScope(user,curr.website_id)) return json({error:"FORBIDDEN"},403);
     const newId=uid("page");
-    const newSlug=String(body.slug||`${curr.slug}-ban-sao-${Math.floor(100+Math.random()*900)}`).toLowerCase().replace(/[^a-z0-9-]+/g,"-");
+    let baseSlug=String(body.slug||`${curr.slug}-ban-sao`).trim().toLowerCase().replace(/[^a-z0-9-]+/g,"-").replace(/^-+|-+$/g,"")||"trang-ban-sao";
+    let newSlug=body.slug?baseSlug:`${baseSlug}-${Math.floor(100+Math.random()*900)}`;
+    for(let attempt=0;attempt<20;attempt++){
+      const exists=await env.DB.prepare("SELECT id FROM cms_pages WHERE website_id=? AND slug=? LIMIT 1").bind(curr.website_id,newSlug).first();
+      if(!exists) break;
+      newSlug=`${baseSlug}-${Math.floor(1000+Math.random()*9000)}-${attempt+1}`;
+    }
     const newTitle=String(body.title||`${curr.title} (Bản sao)`).trim();
     const pgCols=await adminTableColumns(env,"cms_pages");
-    if(pgCols.has("page_type")){
-      await env.DB.batch([
-        env.DB.prepare("INSERT INTO cms_pages(id,website_id,slug,page_type,route_path,locale,title,title_en,summary,summary_en,cover_file_id,category,tags_json,seo_json,seo_en_json,blocks_json,blocks_en_json,status,version,author_id) VALUES(?,?,?,'custom',?,?,?,?,?,?,?,?,?,?,?,?,?,'draft',1,?)")
-          .bind(newId,curr.website_id,newSlug,`/trang/${newSlug}`,curr.locale||"vi",newTitle,curr.title_en?`${curr.title_en} (Copy)`:"",curr.summary||"",curr.summary_en||"",curr.cover_file_id||null,curr.category||"general",curr.tags_json||"[]",curr.seo_json||"{}",curr.seo_en_json||"{}",curr.blocks_json||"[]",curr.blocks_en_json||"[]",user.id),
-        env.DB.prepare("INSERT INTO cms_page_revisions(page_id,version,title,blocks_json,seo_json,status,note,created_by) VALUES(?,1,?,?,?,'draft',?,?)")
-          .bind(newId,newTitle,curr.blocks_json||"[]",curr.seo_json||"{}",`Nhân bản từ trang ${curr.slug}`,user.id)
-      ]);
-    }else{
-      await env.DB.batch([
-        env.DB.prepare("INSERT INTO cms_pages(id,website_id,slug,title,summary,cover_file_id,category,tags_json,seo_json,blocks_json,status,version,author_id) VALUES(?,?,?,?,?,?,?,?,?,?,'draft',1,?)")
-          .bind(newId,curr.website_id,newSlug,newTitle,curr.summary||"",curr.cover_file_id||null,curr.category||"general",curr.tags_json||"[]",curr.seo_json||"{}",curr.blocks_json||"[]",user.id),
-        env.DB.prepare("INSERT INTO cms_page_revisions(page_id,version,title,blocks_json,seo_json,status,note,created_by) VALUES(?,1,?,?,?,'draft',?,?)")
-          .bind(newId,newTitle,curr.blocks_json||"[]",curr.seo_json||"{}",`Nhân bản từ trang ${curr.slug}`,user.id)
-      ]);
+    const validActorId=await resolveValidUserId(env,user?.id);
+    const safeWebsiteId=(await env.DB.prepare("SELECT id FROM websites WHERE id=? LIMIT 1").bind(curr.website_id).first())?.id || "app";
+    const insCols=["id","website_id","slug","title","summary","cover_file_id","category","tags_json","seo_json","blocks_json","status","version","author_id"];
+    const insVals=[newId,safeWebsiteId,newSlug,newTitle,curr.summary||"",curr.cover_file_id||null,curr.category||"general",curr.tags_json||"[]",curr.seo_json||"{}",curr.blocks_json||"[]","draft",1,validActorId];
+    if(pgCols.has("page_type")){insCols.push("page_type");insVals.push("custom");}
+    if(pgCols.has("route_path")){insCols.push("route_path");insVals.push(`/trang/${newSlug}`);}
+    if(pgCols.has("locale")){insCols.push("locale");insVals.push(curr.locale||"vi");}
+    if(pgCols.has("title_en")){insCols.push("title_en");insVals.push(curr.title_en?`${curr.title_en} (Copy)`:"");}
+    if(pgCols.has("summary_en")){insCols.push("summary_en");insVals.push(curr.summary_en||"");}
+    if(pgCols.has("seo_en_json")){insCols.push("seo_en_json");insVals.push(curr.seo_en_json||"{}");}
+    if(pgCols.has("blocks_en_json")){insCols.push("blocks_en_json");insVals.push(curr.blocks_en_json||"[]");}
+
+    await env.DB.prepare(`INSERT INTO cms_pages(${insCols.join(",")}) VALUES(${insCols.map(()=>"?").join(",")})`).bind(...insVals).run();
+    if(await adminTableExists(env,"cms_page_revisions")){
+      try{
+        await env.DB.prepare("INSERT INTO cms_page_revisions(page_id,version,title,blocks_json,seo_json,status,note,created_by) VALUES(?,1,?,?,?,'draft',?,?)")
+          .bind(newId,newTitle,curr.blocks_json||"[]",curr.seo_json||"{}",`Nhân bản từ trang ${curr.slug}`,validActorId).run();
+      }catch(revErr){console.warn("CMS_DUPLICATE_REVISION_WARN",revErr);}
     }
-    await audit(env,request,user,"Nhân bản trang CMS","cms_page",newId,{source_id:id,slug:newSlug});
+    await audit(env,request,user,"Nhân bản trang CMS","cms_page",newId,{source_id:curr.id,slug:newSlug});
     return json({ok:true,id:newId,slug:newSlug,title:newTitle},201);
   }
 
@@ -2506,17 +2751,20 @@ export async function adminRoute(request,env,url,ctx){
 
   const cmsWorkflowMatch=p.match(/^\/api\/admin\/cms\/pages\/([^/]+)\/workflow$/);
   if(cmsWorkflowMatch&&request.method==="POST"){
-    const id=decodeURIComponent(cmsWorkflowMatch[1]),body=await readJson(request)||{};
+    const rawId=decodeURIComponent(cmsWorkflowMatch[1]),body=await readJson(request)||{};
     const action=String(body.action||"").trim();
-    const curr=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=?").bind(id).first();
-    if(!curr) return json({error:"NOT_FOUND"},404);
+    const curr=await env.DB.prepare("SELECT * FROM cms_pages WHERE id=? OR slug=?").bind(rawId,rawId).first();
+    if(!curr) return json({error:"NOT_FOUND",message:"Không tìm thấy trang CMS."},404);
+    const id=curr.id;
     if(!canAccessScope(user,curr.website_id)) return json({error:"FORBIDDEN"},403);
     const isRoot=(user.roles||[]).some(r=>["owner","super_admin"].includes(r.role_id));
+    const isSys=curr.page_type==="system"||String(id||"").startsWith("sys_");
     const opState=await resolveOperationalState(env,curr.website_id);
+    const validActorId=await resolveValidUserId(env,user?.id);
 
     if(action==="submit_review"){
       if(!hasAnyPermission(user,["cms.submit_review","cms.edit","news.manage"])) return json({error:"FORBIDDEN"},403);
-      await env.DB.prepare("UPDATE cms_pages SET status='pending_review',submitted_by=?,submitted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(user.id,id).run();
+      await env.DB.prepare("UPDATE cms_pages SET status='pending_review',submitted_by=?,submitted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(validActorId,id).run();
       await audit(env,request,user,"Gửi duyệt trang CMS","cms_page",id,{website_id:curr.website_id});
       return json({ok:true,status:"pending_review"});
     }
@@ -2527,14 +2775,14 @@ export async function adminRoute(request,env,url,ctx){
         return json({error:"SELF_APPROVAL_FORBIDDEN",message:"Người biên tập không mặc nhiên được tự duyệt trang do chính mình gửi."},403);
       }
       await env.DB.prepare("UPDATE cms_pages SET status='approved',reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP,review_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-        .bind(user.id,String(body.note||"Đã phê duyệt nội dung"),id).run();
+        .bind(validActorId,String(body.note||"Đã phê duyệt nội dung"),id).run();
       await audit(env,request,user,"Phê duyệt trang CMS","cms_page",id,{website_id:curr.website_id,note:body.note||""});
       return json({ok:true,status:"approved"});
     }
     if(action==="reject"){
       if(!hasPermission(user,"cms.approve")) return json({error:"FORBIDDEN",permission:"cms.approve"},403);
       await env.DB.prepare("UPDATE cms_pages SET status='draft',reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP,review_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-        .bind(user.id,String(body.note||"Yêu cầu chỉnh sửa lại"),id).run();
+        .bind(validActorId,String(body.note||"Yêu cầu chỉnh sửa lại"),id).run();
       await audit(env,request,user,"Từ chối duyệt trang CMS","cms_page",id,{website_id:curr.website_id,note:body.note||""});
       return json({ok:true,status:"draft"});
     }
@@ -2543,15 +2791,15 @@ export async function adminRoute(request,env,url,ctx){
       if(opState.is_publishing_paused){
         return json({error:"PUBLISHING_PAUSED",message:"Hệ thống đang ở chế độ Tạm khóa xuất bản (Publishing Paused). Không thể xuất bản trang mới lúc này."},423);
       }
-      if(curr.status!=="approved" && !isRoot){
+      if(!["approved","published"].includes(curr.status) && !isRoot && !isSys){
         return json({error:"MUST_BE_APPROVED_FIRST",message:"Trang phải được phê duyệt trước khi xuất bản ra công khai."},409);
       }
       let blocks=[]; try{blocks=JSON.parse(curr.blocks_json||"[]")}catch{}
-      if(!curr.title || (!blocks.length && curr.page_type!=="system")){
+      if(!curr.title || (!blocks.length && !isSys)){
         return json({error:"PUBLISH_VALIDATION_FAILED",message:"Không thể xuất bản trang thiếu tiêu đề hoặc chưa có khối nội dung nào."},400);
       }
       await env.DB.prepare("UPDATE cms_pages SET status='published',published_by=?,published_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-        .bind(user.id,id).run();
+        .bind(validActorId,id).run();
       await audit(env,request,user,"Xuất bản trang CMS","cms_page",id,{website_id:curr.website_id,slug:curr.slug});
       invalidatePublicCache(url,["/api/public/pages","/api/config"],ctx);
       return json({ok:true,status:"published"});
@@ -2602,7 +2850,7 @@ export async function adminRoute(request,env,url,ctx){
   if(p==="/api/admin/cms/templates"&&request.method==="GET"){
     if(!hasAnyPermission(user,["cms.view","cms.edit","cms.template_manage"])) return json({error:"FORBIDDEN"},403);
     const rs=await env.DB.prepare("SELECT * FROM cms_templates ORDER BY name").all();
-    return json({items:(rs.results||[]).map(t=>({...t,blocks:JSON.parse(t.blocks_json||"[]")}))});
+    return json({items:(rs.results||[]).map(t=>({...t,blocks:parseBodyJson(t,"blocks_json",[])}))});
   }
   if(p==="/api/admin/cms/templates"&&request.method==="POST"){
     if(!hasAnyPermission(user,["cms.template_manage","cms.publish"])) return json({error:"FORBIDDEN"},403);

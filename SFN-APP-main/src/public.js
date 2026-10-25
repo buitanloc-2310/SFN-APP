@@ -8,15 +8,7 @@ import {sendTemplatedEmail, answersToEmail} from "./email.js";
 import {recalculateCampaignTotals, runScheduledCmsPublishing} from "./admin.js";
 import {resolveOperationalState, getSettingsMap} from "./index.js";
 
-export const LOOKUP_DATA_POLICY_VI =
-  "Hệ thống chỉ cung cấp các thông tin được phép công khai theo chính sách dữ liệu của Sky First Network. Thông tin cá nhân và dữ liệu nội bộ không thuộc phạm vi công khai phải được bảo vệ, không trả về trong phản hồi tra cứu hoặc hiển thị trên giao diện người dùng.";
-export const LOOKUP_TIMESTAMP_NOTICE_VI =
-  "Kết quả tra cứu phản ánh trạng thái của bản ghi trong cơ sở dữ liệu Hệ thống Thông tin Số Sky First tại thời điểm thực hiện truy vấn.";
-
-export const LOOKUP_DATA_POLICY_EN =
-  "The system only provides information permitted for public disclosure under Sky First Network's data policy. Personal information and non-public internal data are protected and never returned in lookup responses or displayed on the user interface.";
-export const LOOKUP_TIMESTAMP_NOTICE_EN =
-  "Lookup results reflect the status of the record in the Sky First Digital Information System database at the time of the query.";
+// Lookup privacy and security controls are enforced server-side (Phase VIII)
 
 async function getSetting(env,key,fallback=null){
   try{
@@ -369,8 +361,21 @@ async function lookupCredentialsByContact(env, {email = "", phone = ""}) {
   const cleanPhone = String(phone || "").replace(/[^\d+]/g, "");
   if (!cleanEmail && cleanPhone.length < 8) return [];
 
+  const cols = await tableColumns(env, "certificates");
   let rows = [];
-  if (cleanEmail) {
+  if (cleanEmail && cleanPhone.length >= 8) {
+    if (cols.has("phone")) {
+      const rs = await env.DB.prepare(
+        "SELECT * FROM certificates WHERE lower(email)=lower(?) AND (replace(replace(COALESCE(phone,''),' ',''),'-','')=? OR metadata_json LIKE ?) ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 25"
+      ).bind(cleanEmail, cleanPhone, `%${cleanPhone}%`).all();
+      rows = rs.results || [];
+    } else {
+      const rs = await env.DB.prepare(
+        "SELECT * FROM certificates WHERE lower(email)=lower(?) AND metadata_json LIKE ? ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 25"
+      ).bind(cleanEmail, `%${cleanPhone}%`).all();
+      rows = rs.results || [];
+    }
+  } else if (cleanEmail) {
     const rs = await env.DB.prepare(
       "SELECT * FROM certificates WHERE lower(email)=lower(?) ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 25"
     )
@@ -378,12 +383,21 @@ async function lookupCredentialsByContact(env, {email = "", phone = ""}) {
       .all();
     rows = rs.results || [];
   } else if (cleanPhone) {
-    const rs = await env.DB.prepare(
-      "SELECT * FROM certificates WHERE metadata_json LIKE ? ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 25"
-    )
-      .bind(`%${cleanPhone}%`)
-      .all();
-    rows = rs.results || [];
+    if (cols.has("phone")) {
+      const rs = await env.DB.prepare(
+        "SELECT * FROM certificates WHERE replace(replace(COALESCE(phone,''),' ',''),'-','')=? OR metadata_json LIKE ? ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 25"
+      )
+        .bind(cleanPhone, `%${cleanPhone}%`)
+        .all();
+      rows = rs.results || [];
+    } else {
+      const rs = await env.DB.prepare(
+        "SELECT * FROM certificates WHERE metadata_json LIKE ? ORDER BY COALESCE(issued_at,created_at) DESC LIMIT 25"
+      )
+        .bind(`%${cleanPhone}%`)
+        .all();
+      rows = rs.results || [];
+    }
   }
 
   const publicItems = [];
@@ -774,7 +788,7 @@ export async function publicRoute(request,env,url,ctx){
       labels:{...homeStatsDefaults.labels,...(storedHomeStats?.labels||{})},
       labels_en:{...homeStatsDefaults.labels_en,...(storedHomeStats?.labels_en||{})}
     };
-    let d1Stats=null;
+    let d1Stats={sponsorship_state:"query_error",sponsorship:null,error:true};
     try{
       if(env.DB){
         const hasSponsorship=await tableExists(env,"sponsorship_campaigns");
@@ -790,19 +804,28 @@ export async function publicRoute(request,env,url,ctx){
         const counts=await env.DB.batch(queries);
         const spRow=hasSponsorship?(counts[4]?.results?.[0]||{}):{c:0,pledged:0,received:0,disbursed:0};
         const spCampaignCount=Number(spRow.c||0);
+        const spReceived=Number(spRow.received||0);
+        const spState=!hasSponsorship||spCampaignCount===0
+          ? "no_data"
+          : (spReceived>0 ? "has_positive_received" : "zero_received");
         d1Stats={
           programs:Number(counts[0]?.results?.[0]?.n||0),
           members:Number(counts[1]?.results?.[0]?.n||0),
           certificates:Number(counts[2]?.results?.[0]?.n||0),
           partners:Number(counts[3]?.results?.[0]?.n||0),
-          sponsorship:spCampaignCount>0?Number(spRow.received||0):null,
+          sponsorship:spCampaignCount>0?spReceived:null,
+          sponsorship_state:spState,
           sponsorship_pledged:spCampaignCount>0?Number(spRow.pledged||0):null,
           sponsorship_disbursed:spCampaignCount>0?Number(spRow.disbursed||0):null,
           sponsorship_campaigns:spCampaignCount,
+          error:false,
           updated_at:new Date().toISOString()
         };
       }
-    }catch(err){console.error("HOME_STATS_D1_FALLBACK",err)}
+    }catch(err){
+      console.error("HOME_STATS_D1_FALLBACK",err);
+      d1Stats={sponsorship_state:"query_error",sponsorship:null,error:true};
+    }
 
     const opState = await resolveOperationalState(env, siteId, smap);
     const defaultDesignSystem = {
@@ -883,12 +906,8 @@ export async function publicRoute(request,env,url,ctx){
       portal_exam_url:getCfg("portal_exam_url","https://exam.skyfirst.io.vn"),
       footer_copyright:getCfg("footer_copyright","© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền."),
       footer_copyright_en:getCfg("footer_copyright_en","© 2026 Sky First Digital Information System. All rights reserved."),
-      footer_citation_notice:getCfg("footer_citation_notice","Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân."),
-      footer_citation_notice_en:getCfg("footer_citation_notice_en","All cited information must clearly state the source and link to the original content where possible; content must not be distorted and must comply with copyright, intellectual property, and personal data protection regulations."),
-      lookup_data_policy_notice:LOOKUP_DATA_POLICY_VI,
-      lookup_data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
-      lookup_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
-      lookup_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN,
+      footer_citation_notice:getCfg("footer_citation_notice","Mọi nội dung trích dẫn phải bảo đảm tính chính xác, trung thực và đầy đủ về ngữ cảnh; ghi rõ nguồn tham khảo và đính kèm liên kết đến tài liệu gốc khi có thể. Việc sử dụng, trích dẫn và chia sẻ thông tin phải tuân thủ quy định về bản quyền, quyền sở hữu trí tuệ và bảo vệ dữ liệu cá nhân."),
+      footer_citation_notice_en:getCfg("footer_citation_notice_en","All cited content must ensure accuracy, truthfulness, and full context; clearly state reference sources and attach links to original documents when possible. Use, citation, and sharing of information must comply with copyright, intellectual property, and personal data protection regulations."),
       i18n_overrides:getCfg("i18n_overrides",{}),
       napas_banks:NAPAS_BANKS,
       modules:mods.results||[],
@@ -932,7 +951,7 @@ export async function publicRoute(request,env,url,ctx){
       {type:"page",title:"Hỗ trợ & Liên hệ",ref:"/ho-tro",description:"Trung tâm giải đáp thắc mắc và hỗ trợ kỹ thuật Sky First"}
     ].filter(x=>(x.title+' '+x.description).toLowerCase().includes(q.toLowerCase()));
     const items=[...pages,...spRes,...cmsRes,...(news.results||[]),...(events.results||[]),...(programs.results||[]),...(units.results||[]),...(forms.results||[]),...(docs.results||[])].slice(0,40);
-    if(/^(SFN-(GCN|GXN|BK)-\d{5,8}|\d{8}|\d{3}-(GCN|GXN|BK)-SFN\/\d{4})$/i.test(q)){
+    if(/^(SFN-[A-Z0-9]{2,6}-\d{5,8}|\d{8}|\d{3}-[A-Z0-9]{2,6}-SFN\/\d{4})$/i.test(q)){
       const c=await lookupCredential(env,q); if(c) items.unshift({type:"credential",title:c.code,ref:c.code,description:`${c.type} · ${c.status_text}`,date:c.issued_at});
     }
     return json({items,query:q},200,publicCacheHeaders(60));
@@ -975,80 +994,97 @@ export async function publicRoute(request,env,url,ctx){
   }
 
   if(p==="/api/public/sponsorship"&&request.method==="GET"){
-    if(!(await tableExists(env,"sponsorship_campaigns"))){
+    if(!env.DB){
       return json({
-        summary:{campaigns_count:0,target_amount:0,pledged_amount:0,received_amount:0,disbursed_amount:0,remaining_amount:0,pending_amount:0,currency:"VND",has_data:false,updated_at:null},
-        five_stats:[
-          {key:"target_amount",label_vi:"Mục tiêu huy động",label_en:"Target Amount",amount:0,currency:"VND"},
-          {key:"pledged_amount",label_vi:"Cam kết tài trợ",label_en:"Pledged Amount",amount:0,currency:"VND"},
-          {key:"received_amount",label_vi:"Số tiền thực nhận (đã đối soát)",label_en:"Verified Received Amount",amount:0,currency:"VND"},
-          {key:"disbursed_amount",label_vi:"Đã giải ngân (có chứng từ)",label_en:"Verified Disbursed Amount",amount:0,currency:"VND"},
-          {key:"remaining_amount",label_vi:"Số dư thực tế",label_en:"Remaining Balance",amount:0,currency:"VND",is_overspent:false}
-        ],
-        transparency_sections:{campaigns_overview:[],verified_ledger:[],financial_reports:[]},
-        campaigns:[],
-        transactions:[],
-        reports:[]
-      },200,publicCacheHeaders(120));
+        error:"SPONSORSHIP_QUERY_ERROR",
+        state:"query_error",
+        message:"Không thể xác định tổng tiền tài trợ thực nhận do lỗi kết nối cơ sở dữ liệu.",
+        summary:{state:"query_error",has_data:false,error:true}
+      },503,{"Cache-Control":"no-store"});
     }
-    const spCols=await tableColumns(env,"sponsorship_campaigns");
-    const extraCols=["bank_name","bank_bin","bank_account_no","bank_account_name","pending_amount","refunded_amount","adjusted_amount"].filter(c=>spCols.has(c));
-    const selectSql=`SELECT id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,updated_at${extraCols.length?","+extraCols.join(","):""} FROM sponsorship_campaigns WHERE visibility='public' AND status IN ('active','completed','paused','closed') ORDER BY COALESCE(start_at,created_at) DESC LIMIT 100`;
-    const txCols=await tableColumns(env,"sponsorship_transactions");
-    const txExtra=["payment_state","expected_amount","reference_code","reconciliation_note"].filter(c=>txCols.has(c));
-    const [campRs,repRs,txRs]=await env.DB.batch([
-      env.DB.prepare(selectSql),
-      env.DB.prepare("SELECT r.id,r.campaign_id,r.title,r.report_period,r.file_id,r.summary,r.published_at,c.code AS campaign_code,c.title AS campaign_title FROM sponsorship_reports r JOIN sponsorship_campaigns c ON c.id=r.campaign_id WHERE r.status='published' AND c.visibility='public' ORDER BY COALESCE(r.published_at,r.created_at) DESC LIMIT 100"),
-      env.DB.prepare(`SELECT t.tx_code,t.campaign_id,t.tx_type,t.amount,t.currency,t.public_party_label,t.purpose,t.voucher_file_id,t.occurred_at,t.verified_at,c.code AS campaign_code,c.title AS campaign_title${txExtra.length?","+txExtra.map(col=>"t."+col).join(","):""} FROM sponsorship_transactions t JOIN sponsorship_campaigns c ON c.id=t.campaign_id WHERE c.visibility='public' AND t.verification_status='verified' AND t.is_public=1 ORDER BY t.occurred_at DESC LIMIT 200`)
-    ]);
-    // Section VII.4: NEVER clamp negative balance to 0! Remaining = Received - Disbursed (exact formula)
-    const campaigns=(campRs.results||[]).map(c=>{
-      const received=Number(c.received_amount||0);
-      const disbursed=Number(c.disbursed_amount||0);
-      const remaining=received-disbursed;
-      return {
-        ...c,
-        target_amount:Number(c.target_amount||0),
-        pledged_amount:Number(c.pledged_amount||0),
-        received_amount:received,
-        disbursed_amount:disbursed,
-        pending_amount:Number(c.pending_amount||0),
-        refunded_amount:Number(c.refunded_amount||0),
-        adjusted_amount:Number(c.adjusted_amount||0),
-        remaining_amount:remaining,
-        is_overspent:remaining<0
-      };
-    });
-    const activeForSum=campaigns.filter(c=>["active","completed"].includes(c.status));
-    const target_amount=activeForSum.reduce((s,c)=>s+c.target_amount,0);
-    const pledged_amount=activeForSum.reduce((s,c)=>s+c.pledged_amount,0);
-    const received_amount=activeForSum.reduce((s,c)=>s+c.received_amount,0);
-    const disbursed_amount=activeForSum.reduce((s,c)=>s+c.disbursed_amount,0);
-    const pending_amount=activeForSum.reduce((s,c)=>s+c.pending_amount,0);
-    const refunded_amount=activeForSum.reduce((s,c)=>s+c.refunded_amount,0);
-    const adjusted_amount=activeForSum.reduce((s,c)=>s+c.adjusted_amount,0);
-    const remaining_amount=received_amount-disbursed_amount;
-    const latestUpdate=campaigns.reduce((m,c)=>(!m||String(c.updated_at)>m)?String(c.updated_at):m,null);
-    const verifiedLedger = txRs.results || [];
-    const reportsList = repRs.results || [];
-    return json({
-      summary:{
-        campaigns_count:campaigns.length,
-        active_campaigns_count:activeForSum.length,
-        target_amount,
-        pledged_amount,
-        received_amount,
-        disbursed_amount,
-        pending_amount,
-        refunded_amount,
-        adjusted_amount,
-        remaining_amount,
-        is_overspent:remaining_amount<0,
-        balance_formula:"remaining_amount = received_amount - disbursed_amount",
-        currency:"VND",
-        has_data:campaigns.length>0,
-        updated_at:latestUpdate
-      },
+    try{
+      // Probe DB connectivity explicitly so a broken DB connection is never mistaken for "no_data"
+      await env.DB.prepare("SELECT 1 AS ok").first();
+      if(!(await tableExists(env,"sponsorship_campaigns"))){
+        return json({
+          state:"no_data",
+          summary:{state:"no_data",campaigns_count:0,target_amount:0,pledged_amount:0,received_amount:0,disbursed_amount:0,remaining_amount:0,pending_amount:0,currency:"VND",has_data:false,updated_at:null},
+          five_stats:[
+            {key:"target_amount",label_vi:"Mục tiêu huy động",label_en:"Target Amount",amount:0,currency:"VND"},
+            {key:"pledged_amount",label_vi:"Cam kết tài trợ",label_en:"Pledged Amount",amount:0,currency:"VND"},
+            {key:"received_amount",label_vi:"Số tiền thực nhận (đã đối soát)",label_en:"Verified Received Amount",amount:0,currency:"VND"},
+            {key:"disbursed_amount",label_vi:"Đã giải ngân (có chứng từ)",label_en:"Verified Disbursed Amount",amount:0,currency:"VND"},
+            {key:"remaining_amount",label_vi:"Số dư thực tế",label_en:"Remaining Balance",amount:0,currency:"VND",is_overspent:false}
+          ],
+          transparency_sections:{campaigns_overview:[],verified_ledger:[],financial_reports:[]},
+          campaigns:[],
+          transactions:[],
+          reports:[]
+        },200,publicCacheHeaders(120));
+      }
+      const spCols=await tableColumns(env,"sponsorship_campaigns");
+      const extraCols=["bank_name","bank_bin","bank_account_no","bank_account_name","pending_amount","refunded_amount","adjusted_amount"].filter(c=>spCols.has(c));
+      const selectSql=`SELECT id,code,website_id,title,summary,purpose,target_amount,pledged_amount,received_amount,disbursed_amount,currency,start_at,end_at,status,updated_at${extraCols.length?","+extraCols.join(","):""} FROM sponsorship_campaigns WHERE visibility='public' AND status IN ('active','completed','paused','closed') ORDER BY COALESCE(start_at,created_at) DESC LIMIT 100`;
+      const txCols=await tableColumns(env,"sponsorship_transactions");
+      const txExtra=["payment_state","expected_amount","reference_code","reconciliation_note"].filter(c=>txCols.has(c));
+      const [campRs,repRs,txRs]=await env.DB.batch([
+        env.DB.prepare(selectSql),
+        env.DB.prepare("SELECT r.id,r.campaign_id,r.title,r.report_period,r.file_id,r.summary,r.published_at,c.code AS campaign_code,c.title AS campaign_title FROM sponsorship_reports r JOIN sponsorship_campaigns c ON c.id=r.campaign_id WHERE r.status='published' AND c.visibility='public' ORDER BY COALESCE(r.published_at,r.created_at) DESC LIMIT 100"),
+        env.DB.prepare(`SELECT t.tx_code,t.campaign_id,t.tx_type,t.amount,t.currency,t.public_party_label,t.purpose,t.voucher_file_id,t.occurred_at,t.verified_at,c.code AS campaign_code,c.title AS campaign_title${txExtra.length?","+txExtra.map(col=>"t."+col).join(","):""} FROM sponsorship_transactions t JOIN sponsorship_campaigns c ON c.id=t.campaign_id WHERE c.visibility='public' AND t.verification_status='verified' AND t.is_public=1 ORDER BY t.occurred_at DESC LIMIT 200`)
+      ]);
+      // Section VII.4: NEVER clamp negative balance to 0! Remaining = Received - Disbursed (exact formula)
+      const campaigns=(campRs.results||[]).map(c=>{
+        const received=Number(c.received_amount||0);
+        const disbursed=Number(c.disbursed_amount||0);
+        const remaining=received-disbursed;
+        return {
+          ...c,
+          target_amount:Number(c.target_amount||0),
+          pledged_amount:Number(c.pledged_amount||0),
+          received_amount:received,
+          disbursed_amount:disbursed,
+          pending_amount:Number(c.pending_amount||0),
+          refunded_amount:Number(c.refunded_amount||0),
+          adjusted_amount:Number(c.adjusted_amount||0),
+          remaining_amount:remaining,
+          is_overspent:remaining<0
+        };
+      });
+      const activeForSum=campaigns.filter(c=>["active","completed"].includes(c.status));
+      const target_amount=activeForSum.reduce((s,c)=>s+c.target_amount,0);
+      const pledged_amount=activeForSum.reduce((s,c)=>s+c.pledged_amount,0);
+      const received_amount=activeForSum.reduce((s,c)=>s+c.received_amount,0);
+      const disbursed_amount=activeForSum.reduce((s,c)=>s+c.disbursed_amount,0);
+      const pending_amount=activeForSum.reduce((s,c)=>s+c.pending_amount,0);
+      const refunded_amount=activeForSum.reduce((s,c)=>s+c.refunded_amount,0);
+      const adjusted_amount=activeForSum.reduce((s,c)=>s+c.adjusted_amount,0);
+      const remaining_amount=received_amount-disbursed_amount;
+      const latestUpdate=campaigns.reduce((m,c)=>(!m||String(c.updated_at)>m)?String(c.updated_at):m,null);
+      const verifiedLedger = txRs.results || [];
+      const reportsList = repRs.results || [];
+      const spState = campaigns.length === 0
+        ? "no_data"
+        : (received_amount > 0 ? "has_positive_received" : "zero_received");
+      return json({
+        state:spState,
+        summary:{
+          state:spState,
+          campaigns_count:campaigns.length,
+          active_campaigns_count:activeForSum.length,
+          target_amount,
+          pledged_amount,
+          received_amount,
+          disbursed_amount,
+          pending_amount,
+          refunded_amount,
+          adjusted_amount,
+          remaining_amount,
+          is_overspent:remaining_amount<0,
+          balance_formula:"remaining_amount = received_amount - disbursed_amount",
+          currency:"VND",
+          has_data:campaigns.length>0,
+          updated_at:latestUpdate
+        },
       five_stats:[
         {key:"target_amount",label_vi:"Mục tiêu huy động",label_en:"Target Amount",amount:target_amount,currency:"VND"},
         {key:"pledged_amount",label_vi:"Cam kết tài trợ",label_en:"Pledged Amount",amount:pledged_amount,currency:"VND"},
@@ -1068,6 +1104,15 @@ export async function publicRoute(request,env,url,ctx){
       transactions:verifiedLedger,
       reports:reportsList
     },200,publicCacheHeaders(120));
+    }catch(err){
+      console.error("SPONSORSHIP_PUBLIC_QUERY_ERROR",err);
+      return json({
+        error:"SPONSORSHIP_QUERY_ERROR",
+        state:"query_error",
+        message:"Không thể xác định tổng tiền tài trợ thực nhận do lỗi truy vấn hoặc kết nối dữ liệu.",
+        summary:{state:"query_error",has_data:false,error:true}
+      },503,{"Cache-Control":"no-store"});
+    }
   }
 
   // Generate QR & Transfer Reference for a Public Sponsorship Campaign (Section VII.2)
@@ -1604,11 +1649,7 @@ export async function publicRoute(request,env,url,ctx){
     if(!code||!email){
       return json({
         error:"MISSING_FIELDS",
-        message:"Vui lòng nhập đầy đủ mã hồ sơ và email đã đăng ký.",
-        data_policy_notice:LOOKUP_DATA_POLICY_VI,
-        data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
-        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
-        query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
+        message:"Vui lòng nhập đầy đủ mã hồ sơ và email đã đăng ký."
       },400);
     }
 
@@ -1628,11 +1669,7 @@ export async function publicRoute(request,env,url,ctx){
     if(!row){
       return json({
         error:"NOT_FOUND",
-        message:"Không tìm thấy hồ sơ phù hợp với mã và email đã nhập.",
-        data_policy_notice:LOOKUP_DATA_POLICY_VI,
-        data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
-        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
-        query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
+        message:"Không tìm thấy hồ sơ phù hợp với mã và email đã nhập."
       },404);
     }
 
@@ -1648,11 +1685,7 @@ export async function publicRoute(request,env,url,ctx){
         status:row.status||"",submitted_at:row.created_at||"",updated_at:row.updated_at||"",
         next_action:row.next_action||"Theo dõi cập nhật từ Sky First.",result:row.result_summary||"",timeline
       },
-      queried_at:new Date().toISOString(),
-      data_policy_notice:LOOKUP_DATA_POLICY_VI,
-      data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
-      query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
-      query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
+      queried_at:new Date().toISOString()
     },200,{"Cache-Control":"private, no-store"});
   }
 
@@ -1665,7 +1698,7 @@ export async function publicRoute(request,env,url,ctx){
     if(!item)return json({error:"NOT_FOUND",message:"Không tìm thấy chứng nhận để tạo mã QR xác thực."},404,{"Cache-Control":"no-store"});
     const baseUrl=String(env.APP_URL||url.origin).replace(/\/+$/,"");
     const verifyUrl=`${baseUrl}/gcn/${encodeURIComponent(item.code)}`;
-    const dataUrl=buildLocalQrSvgDataUrl(verifyUrl,"SKY FIRST · XÁC THỰC");
+    const dataUrl=buildLocalQrSvgDataUrl(verifyUrl,"");
     const comma=dataUrl.indexOf(",");
     if(!dataUrl.startsWith("data:image/svg+xml;utf8,")||comma<0)return json({error:"QR_GENERATION_FAILED"},500,{"Cache-Control":"no-store"});
     const svg=decodeURIComponent(dataUrl.slice(comma+1));
@@ -1683,11 +1716,7 @@ export async function publicRoute(request,env,url,ctx){
     if(!code && !email && !phone){
       return json({
         error:"MISSING_FIELDS",
-        message:"Vui lòng nhập mã GCN/GXN/BK (hoặc email / số điện thoại đã đăng ký) cần xác thực.",
-        data_policy_notice:LOOKUP_DATA_POLICY_VI,
-        data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
-        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
-        query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
+        message:"Vui lòng nhập mã chứng nhận (hoặc email / số điện thoại đã đăng ký) cần xác thực."
       },400,{"Cache-Control":"no-store"});
     }
 
@@ -1696,21 +1725,13 @@ export async function publicRoute(request,env,url,ctx){
       if(!item){
         return json({
           error:"NOT_FOUND",
-          message:"Không tìm thấy thông tin xác thực phù hợp với mã đã nhập.",
-          data_policy_notice:LOOKUP_DATA_POLICY_VI,
-          data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
-          query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
-          query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
+          message:"Không tìm thấy thông tin xác thực phù hợp với mã đã nhập."
         },404,{"Cache-Control":"no-store"});
       }
       return json({
         item,
         verified:item.status==="issued",
-        queried_at:new Date().toISOString(),
-        data_policy_notice:LOOKUP_DATA_POLICY_VI,
-        data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
-        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
-        query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
+        queried_at:new Date().toISOString()
       },200,{"Cache-Control":"no-store"});
     }
 
@@ -1718,22 +1739,14 @@ export async function publicRoute(request,env,url,ctx){
     if(!items.length){
       return json({
         error:"NOT_FOUND",
-        message:"Không tìm thấy bản ghi chứng nhận công khai phù hợp với thông tin đã nhập.",
-        data_policy_notice:LOOKUP_DATA_POLICY_VI,
-        data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
-        query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
-        query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
+        message:"Không tìm thấy bản ghi chứng nhận công khai phù hợp với thông tin đã nhập."
       },404,{"Cache-Control":"no-store"});
     }
     return json({
       item:items[0],
       items,
       verified:items[0].status==="issued",
-      queried_at:new Date().toISOString(),
-      data_policy_notice:LOOKUP_DATA_POLICY_VI,
-      data_policy_notice_en:LOOKUP_DATA_POLICY_EN,
-      query_timestamp_notice:LOOKUP_TIMESTAMP_NOTICE_VI,
-      query_timestamp_notice_en:LOOKUP_TIMESTAMP_NOTICE_EN
+      queried_at:new Date().toISOString()
     },200,{"Cache-Control":"no-store"});
   }
 

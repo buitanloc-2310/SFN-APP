@@ -410,7 +410,7 @@ function renderLookup(){
       <div class="verify-head"><div><span class="eyebrow">Sky First</span><h1>Tra cứu & Xác thực</h1><p>Tra cứu tình trạng hồ sơ hoặc xác thực GCN/GXN do Sky First phát hành.</p></div><div class="verify-seal" aria-hidden="true">✓</div></div>
       <div class="verify-grid">
         <div class="verify-card record-card"><div class="verify-card-head"><span class="verify-icon">⌕</span><div><h2>Tra cứu hồ sơ</h2><p>Kiểm tra tình trạng hồ sơ và thông tin đăng ký của bạn.</p></div><span class="trust-pill">Nhanh chóng · Chính xác</span></div>
-          <form id="lookupRecord"><div class="field"><label>Mã hồ sơ</label><input name="code" required autocomplete="off" placeholder="Nhập mã hồ sơ (VD: SFN-TNV-2026-0001)"></div><div class="field"><label>Email đã đăng ký</label><input name="email" type="email" required autocomplete="email" placeholder="Nhập email bạn đã sử dụng khi đăng ký"></div><button class="primary verify-btn">⌕ &nbsp; Tra cứu hồ sơ →</button></form><div id="recordResult"></div>
+          <form id="lookupRecord"><div class="field"><label>Mã hồ sơ</label><input name="code" required autocomplete="off" placeholder="Nhập mã hồ sơ (VD: SFN-TV-2026-0001)"></div><div class="field"><label>Email đã đăng ký</label><input name="email" type="email" required autocomplete="email" placeholder="Nhập email bạn đã sử dụng khi đăng ký"></div><button class="primary verify-btn">⌕ &nbsp; Tra cứu hồ sơ →</button></form><div id="recordResult"></div>
         </div>
         <div class="verify-card cert-card"><div class="verify-card-head"><span class="verify-icon green">✓</span><div><h2>Xác thực GCN/GXN</h2><p>Kiểm tra tính hợp lệ của Giấy chứng nhận hoặc Giấy xác nhận.</p></div><span class="trust-pill green">Minh bạch · Chính thống</span></div>
           <form id="lookupCert"><div class="field"><label>Mã GCN/GXN</label><input name="code" required autocomplete="off" placeholder="Nhập mã GCN/GXN (VD: 001/GCN-SFN/2026)"></div><button class="primary verify-btn verify-green">✓ &nbsp; Xác thực →</button></form><div id="certResult"></div>
@@ -2035,133 +2035,150 @@ async function adminCertificates(main){
   const d=await api("/api/admin/certificates");
   state.admin.certificates=d.items||[];
 
-  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Giấy đã phát hành</h1><button class="primary" onclick="requestCertificate()">+ Phát hành giấy</button></div>
-  <div class="notice"><b>Quy trình chuẩn: Đề nghị → Thẩm định & Phê duyệt → Phát hành chính thức → Xác thực trực tuyến → Thu hồi / Thay thế.</b> Mã định danh chỉ được sinh khi Phát hành chính thức (dạng <code>SFN-GCN/GXN/BK-########</code>); các mã lịch sử được bảo toàn nguyên trạng.</div>
-  <div class="card table-scroll"><table><thead><tr><th>Mã chứng nhận</th><th>Người được ghi nhận</th><th>Nội dung ghi nhận</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>${state.admin.certificates.map(c=>`<tr><td><b>${E(c.code||"Chưa phát hành")}</b></td><td>${E(c.full_name)}<br><span class="small muted">${E(c.cert_type||"")}</span></td><td>${E(c.content)}</td><td><span class="status">${E(c.status)}</span></td><td><button class="secondary" onclick="credentialHistory('${E(c.id)}')">Lịch sử</button> ${c.status==="approved"?`<button class="primary" onclick="issueCert('${E(c.id)}')">Phát hành</button>`:""}${c.status==="issued"?` <button class="secondary" onclick="showCertQR('${E(c.code)}')">Mã QR</button> <button class="secondary" onclick="supersedeCert('${E(c.id)}')">Thay thế</button> <button class="danger" onclick="revokeCert('${E(c.id)}')">Thu hồi</button>`:""}</td></tr>`).join("")}</tbody></table></div>`;
+  main.innerHTML=`<div class="toolbar"><h1 style="margin-right:auto">Chứng nhận & Văn bản đã phát hành</h1><button class="primary" onclick="requestCertificate()">+ Tạo chứng nhận / văn bản</button></div>
+  <div class="notice"><b>Quy trình vòng đời 8 bước: Tạo bản ghi → Chỉnh sửa → Phê duyệt → Phát hành chính thức → Tra cứu / Xác thực QR → Thu hồi / Thay thế → Xem lịch sử kiểm toán.</b> Hỗ trợ nhiều loại tài liệu theo cấu hình (GCN, GXN, BK, Quyết định, Chứng chỉ, Thư khen...); bảo toàn dữ liệu lịch sử, chỉ cho phép xóa bản ghi chưa phát hành.</div>
+  <div class="card table-scroll"><table><thead><tr><th>Mã chứng nhận</th><th>Người được cấp & Liên hệ</th><th>Loại & Nội dung</th><th>Trạng thái</th><th>Thao tác vòng đời</th></tr></thead><tbody>${state.admin.certificates.map(c=>`<tr><td><b>${E(c.code||"Chưa phát hành")}</b>${c.legacy_code?`<br><small class="muted">Mã cũ: ${E(c.legacy_code)}</small>`:""}</td><td><b>${E(c.full_name)}</b><br><span class="small muted">${E(c.email||"—")}${c.phone?` · ${E(c.phone)}`:""}</span></td><td><span class="pill">${E(c.cert_type||"")}</span><div class="small" style="margin-top:4px">${E(c.content)}</div></td><td><span class="status">${E(c.status)}</span></td><td><button class="secondary" onclick="credentialHistory('${E(c.id)}')">Lịch sử</button> ${["draft","pending_approval","approved","issued"].includes(c.status)?`<button class="secondary" onclick="editCertModal('${E(c.id)}')">Sửa</button>`:""} ${["draft","pending_approval"].includes(c.status)?`<button class="primary" onclick="approveCert('${E(c.id)}')">Phê duyệt</button> <button class="danger" onclick="deleteCert('${E(c.id)}')">Xóa</button>`:""} ${c.status==="approved"?`<button class="primary" onclick="issueCert('${E(c.id)}')">Phát hành</button> <button class="danger" onclick="deleteCert('${E(c.id)}')">Xóa</button>`:""}${c.status==="issued"?` <button class="secondary" onclick="showCertQR('${E(c.code)}')">Mã QR</button> <button class="secondary" onclick="supersedeCert('${E(c.id)}')">Thay thế</button> <button class="danger" onclick="revokeCert('${E(c.id)}')">Thu hồi</button>`:""}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 window.requestCertificate=()=>{
   modal(`
     <button class="ghost" onclick="closeModal()">✕ Đóng</button>
-
-    <h2>Chuẩn bị GCN / GXN / BK</h2>
-
-    <p class="muted">
-      Thông tin dưới đây là dữ liệu chính thức dùng cho quy trình
-      phê duyệt, phát hành và tra cứu GCN/GXN.
-    </p>
-
+    <h2>Tạo Chứng nhận / Văn bản mới</h2>
+    <p class="muted">Hỗ trợ nhiều loại tài liệu theo cấu hình (GCN, GXN, BK, Quyết định, Chứng chỉ, Thư khen hoặc loại tùy chỉnh).</p>
     <form id="certificateRequestForm">
-
+      <div class="row2">
+        <div class="field"><label>Họ và tên người được cấp *</label><input name="full_name" required></div>
+        <div class="field"><label>Email</label><input name="email" type="email" placeholder="name@example.com"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Số điện thoại</label><input name="phone" type="tel" placeholder="09xxxxxxxx"></div>
+        <div class="field"><label>Đơn vị phát hành *</label><input name="unit_name" required value="Sky First" placeholder="Ví dụ: Câu lạc bộ Tiếng Anh The Sky First"></div>
+      </div>
       <div class="row2">
         <div class="field">
-          <label>Họ và tên người được cấp *</label>
-          <input name="full_name" required>
+          <label>Loại tài liệu / chứng nhận *</label>
+          <input name="cert_type" list="certTypePresets" required value="Giấy chứng nhận" placeholder="Chọn hoặc nhập loại văn bản">
+          <datalist id="certTypePresets">
+            <option value="Giấy chứng nhận"></option>
+            <option value="Giấy xác nhận"></option>
+            <option value="Bằng khen"></option>
+            <option value="Quyết định công nhận"></option>
+            <option value="Chứng chỉ hoàn thành"></option>
+            <option value="Thư khen / Ghi nhận"></option>
+          </datalist>
         </div>
-
-        <div class="field">
-          <label>Email</label>
-          <input name="email" type="email">
-        </div>
+        <div class="field"><label>Tiền tố mã tùy chọn (VD: GCN, GXN, BK, QD, CC)</label><input name="prefix" placeholder="Tự động suy luận nếu để trống"></div>
       </div>
-
       <div class="row2">
-        <div class="field">
-          <label>Loại *</label>
-          <select name="cert_type" required>
-            <option value="Giấy chứng nhận">Giấy chứng nhận</option>
-            <option value="Giấy xác nhận">Giấy xác nhận</option>
-            <option value="Bằng khen">Bằng khen</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Đơn vị ghi nhận *</label>
-          <input
-            name="unit_name"
-            required
-            placeholder="Ví dụ: Câu lạc bộ Tiếng Anh The Sky First"
-          >
-        </div>
+        <div class="field"><label>Chương trình / Hoạt động</label><input name="program" placeholder="Tên chương trình, hoạt động, sự kiện hoặc lớp học"></div>
+        <div class="field"><label>Vai trò / Tư cách tham gia</label><input name="role" placeholder="Ví dụ: Tình nguyện viên, Học viên..."></div>
       </div>
-
-      <div class="field">
-        <label>Chương trình / Hoạt động</label>
-        <input
-          name="program"
-          placeholder="Tên chương trình, hoạt động, sự kiện hoặc lớp học"
-        >
-      </div>
-
-      <div class="field">
-        <label>Vai trò / Tư cách tham gia</label>
-        <input
-          name="role"
-          placeholder="Ví dụ: Tình nguyện viên, Thành viên Ban Tổ chức..."
-        >
-      </div>
-
-      <div class="field">
-        <label>Nội dung ghi nhận *</label>
-        <textarea
-          name="content"
-          required
-          placeholder="Nội dung chính thức được xác nhận hoặc chứng nhận"
-        ></textarea>
-      </div>
-
+      <div class="field"><label>Nội dung ghi nhận *</label><textarea name="content" required placeholder="Nội dung chính thức được xác nhận hoặc chứng nhận"></textarea></div>
       <div class="actions">
-        <button class="primary" type="submit">
-          Gửi đề nghị cấp
-        </button>
-
-        <button class="secondary" type="button" onclick="closeModal()">
-          Hủy
-        </button>
+        <button class="primary" type="submit">Tạo bản ghi</button>
+        <button class="secondary" type="button" onclick="closeModal()">Hủy</button>
       </div>
-
     </form>
   `);
 
   document.getElementById("certificateRequestForm").onsubmit=async e=>{
     e.preventDefault();
-
     const form=e.target;
     const f=new FormData(form);
     const button=form.querySelector('button[type="submit"]');
-
     const payload={
       full_name:String(f.get("full_name")||"").trim(),
       email:String(f.get("email")||"").trim(),
+      phone:String(f.get("phone")||"").trim(),
       cert_type:String(f.get("cert_type")||"").trim(),
+      prefix:String(f.get("prefix")||"").trim(),
       content:String(f.get("content")||"").trim(),
-
       metadata:{
         unit_name:String(f.get("unit_name")||"").trim(),
         program:String(f.get("program")||"").trim(),
         role:String(f.get("role")||"").trim()
       }
     };
-
     button.disabled=true;
-    button.textContent="Đang gửi…";
-
+    button.textContent="Đang lưu…";
     try{
-      await api("/api/admin/certificates",{
-        method:"POST",
-        body:payload
-      });
-
+      await api("/api/admin/certificates",{method:"POST",body:payload});
       closeModal();
-      toast("Đã tạo đề nghị cấp chứng nhận ở trạng thái chờ duyệt.");
+      toast("Đã tạo bản ghi chứng nhận ở trạng thái chờ duyệt.");
       adminCertificates(document.getElementById("adminMain"));
-
     }catch(err){
       toast(errorText(err),"bad");
       button.disabled=false;
-      button.textContent="Gửi đề nghị cấp";
+      button.textContent="Tạo bản ghi";
     }
   };
+};
+
+window.editCertModal=async idc=>{
+  const c=(state.admin.certificates||[]).find(x=>String(x.id)===String(idc));
+  if(!c){toast("Không tìm thấy bản ghi.","bad");return;}
+  let meta={};try{meta=JSON.parse(c.metadata_json||"{}")}catch{}
+  const isIssued=c.status==="issued";
+  modal(`
+    <button class="ghost" onclick="closeModal()">✕ Đóng</button>
+    <h2>Chỉnh sửa Chứng nhận / Văn bản</h2>
+    ${isIssued?`<div class="notice warn">Bản ghi này đã phát hành (mã <b>${E(c.code)}</b>). Chỉ được phép cập nhật thông tin liên hệ (Email, SĐT) và siêu dữ liệu bổ sung; nếu cần đổi tên người nhận hoặc nội dung cốt lõi, hãy dùng chức năng <b>Thay thế</b>.</div>`:""}
+    <form id="certEditForm">
+      <div class="row2">
+        <div class="field"><label>Họ và tên người được cấp *</label><input name="full_name" value="${E(c.full_name||"")}" ${isIssued?"readonly":""} required></div>
+        <div class="field"><label>Email</label><input name="email" type="email" value="${E(c.email||"")}"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Số điện thoại</label><input name="phone" type="tel" value="${E(c.phone||meta.phone||"")}"></div>
+        <div class="field"><label>Loại tài liệu *</label><input name="cert_type" value="${E(c.cert_type||"")}" ${isIssued?"readonly":""} required></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Đơn vị phát hành</label><input name="unit_name" value="${E(meta.unit_name||"Sky First")}"></div>
+        <div class="field"><label>Chương trình / Hoạt động</label><input name="program" value="${E(meta.program||"")}"></div>
+      </div>
+      <div class="field"><label>Nội dung ghi nhận *</label><textarea name="content" ${isIssued?"readonly":""} required>${E(c.content||"")}</textarea></div>
+      <div class="actions">
+        <button class="primary" type="submit">Lưu thay đổi</button>
+        <button class="secondary" type="button" onclick="closeModal()">Hủy</button>
+      </div>
+    </form>
+  `);
+  document.getElementById("certEditForm").onsubmit=async e=>{
+    e.preventDefault();
+    const f=new FormData(e.target);
+    try{
+      await api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{
+        method:"PUT",
+        body:{
+          full_name:String(f.get("full_name")||"").trim(),
+          email:String(f.get("email")||"").trim(),
+          phone:String(f.get("phone")||"").trim(),
+          cert_type:String(f.get("cert_type")||"").trim(),
+          content:String(f.get("content")||"").trim(),
+          metadata:{
+            unit_name:String(f.get("unit_name")||"").trim(),
+            program:String(f.get("program")||"").trim()
+          }
+        }
+      });
+      closeModal();
+      toast("Đã cập nhật thông tin chứng nhận.");
+      adminCertificates(document.getElementById("adminMain"));
+    }catch(err){toast(errorText(err),"bad");}
+  };
+};
+
+window.approveCert=idc=>api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{method:"PATCH",body:{action:"approve",note:"Đã thẩm định và phê duyệt nội dung"}}).then(()=>{
+  toast("Đã phê duyệt bản ghi chứng nhận.");
+  adminCertificates(document.getElementById("adminMain"));
+}).catch(e=>toast(errorText(e),"bad"));
+
+window.deleteCert=async idc=>{
+  if(!await adminConfirm("Chỉ cho phép xóa bản ghi chưa phát hành. Bạn có chắc chắn muốn xóa bản ghi này?",{title:"Xóa bản ghi chưa phát hành",confirmText:"Xóa bản ghi",danger:true}))return;
+  api(`/api/admin/certificates/${encodeURIComponent(idc)}`,{method:"DELETE"}).then(()=>{
+    toast("Đã xóa bản ghi chưa phát hành.");
+    adminCertificates(document.getElementById("adminMain"));
+  }).catch(e=>toast(errorText(e),"bad"));
 };
 
 window.issueCert=idc=>api(
@@ -2762,7 +2779,7 @@ window.manageDocumentLifecycle=docId=>{
           <option value="link_record">Gắn với mã hồ sơ / bản ghi liên quan</option>
         </select>
       </div>
-      <div class="field"><label>Mã hồ sơ liên quan / Mã tài liệu thay thế</label><input id="dlcRefCode" value="${E(meta.related_record_code||meta.replaced_by_code||"")}" placeholder="VD: SFN-TNV-2026-0001 hoặc TL-2026-02"></div>
+      <div class="field"><label>Mã hồ sơ liên quan / Mã tài liệu thay thế</label><input id="dlcRefCode" value="${E(meta.related_record_code||meta.replaced_by_code||"")}" placeholder="VD: SFN-TV-2026-0001 hoặc TL-2026-02"></div>
     </div>
     <div class="field"><label>Lý do / Ghi chú nhật ký *</label><input id="dlcReason" required placeholder="Nhập lý do thực hiện thao tác vòng đời..."></div>
     <button type="submit" class="primary">Thực hiện & Ghi lịch sử</button>
@@ -3612,7 +3629,7 @@ async function adminFooter(main){
       <div class="row2"><div class="field"><label>Email liên hệ</label><input id="ftEmail" value="${E(m.footer_email||"lienhe@skyfirst.io.vn")}"></div><div class="field"><label>Email hỗ trợ</label><input id="ftSupport" value="${E(m.footer_support_email||"support@skyfirst.io.vn")}"></div></div>
       <div class="row2"><div class="field"><label>Email Hệ thống Số</label><input id="ftPortalEmail" value="${E(m.footer_portal_email||"app@skyfirst.io.vn")}"></div><div class="field"><label>Điện thoại / Zalo</label><input id="ftHotline" value="${E(m.hotline||"0924 910 210")}"></div></div>
       <div class="field"><label>Dòng bản quyền (VI)</label><input id="ftCopyright" value="${E(m.footer_copyright||"© 2026 Hệ thống Thông tin Số Sky First. Bảo lưu mọi quyền.")}"></div>
-      <div class="field"><label>Thông điệp trích dẫn nguồn & bản quyền</label><textarea id="ftCitationNotice" rows="2">${E(m.footer_citation_notice||"Mọi thông tin trích dẫn phải ghi rõ nguồn và dẫn liên kết đến nội dung gốc khi có thể; không làm sai lệch nội dung và phải tuân thủ quy định về quyền tác giả, sở hữu trí tuệ và bảo vệ dữ liệu cá nhân.")}</textarea></div>
+      <div class="field"><label>Thông điệp trích dẫn nguồn & bản quyền</label><textarea id="ftCitationNotice" rows="2">${E(m.footer_citation_notice||"Mọi nội dung trích dẫn phải bảo đảm tính chính xác, trung thực và đầy đủ về ngữ cảnh; ghi rõ nguồn tham khảo và đính kèm liên kết đến tài liệu gốc khi có thể. Việc sử dụng, trích dẫn và chia sẻ thông tin phải tuân thủ quy định về bản quyền, quyền sở hữu trí tuệ và bảo vệ dữ liệu cá nhân.")}</textarea></div>
     </div>
     <div class="card">
       <h2>Liên kết 7 Website Hệ sinh thái Sky First</h2>

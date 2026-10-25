@@ -12,7 +12,7 @@ if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
 
 // 1. Initialize SQLite database with all migrations 0001..0010
 const migSet = new Set(fs.readdirSync(path.join(root, 'migrations')).filter(f => f.endsWith('.sql')));
-for (const extra of ['0009_super_website_universal_email_and_cms.sql', '0010_forensic_security_and_financial_reconciliation.sql', '0011_v10_admin_cms_i18n_governance.sql']) {
+for (const extra of ['0009_super_website_universal_email_and_cms.sql', '0010_forensic_security_and_financial_reconciliation.sql', '0011_v10_admin_cms_i18n_governance.sql', '0012_audit_schema_sync_and_governance.sql', '0013_remove_homepage_technical_callout.sql', '0014_audit_remediation_and_content_sync.sql']) {
   if (fs.existsSync(path.join(root, 'migrations', extra))) migSet.add(extra);
 }
 const migrations = [...migSet].sort();
@@ -729,10 +729,10 @@ let mainCampId = '';
   const certLookup = await callWorker(`/api/public/credentials/${encodeURIComponent(activeCert.code)}`);
   assert(
     certLookup.status === 200 &&
-    certLookup.data.data_policy_notice === 'Hệ thống chỉ cung cấp các thông tin được phép công khai theo chính sách dữ liệu của Sky First Network. Thông tin cá nhân và dữ liệu nội bộ không thuộc phạm vi công khai phải được bảo vệ, không trả về trong phản hồi tra cứu hoặc hiển thị trên giao diện người dùng.' &&
-    certLookup.data.query_timestamp_notice === 'Kết quả tra cứu phản ánh trạng thái của bản ghi trong cơ sở dữ liệu Hệ thống Thông tin Số Sky First tại thời điểm thực hiện truy vấn.' &&
+    !('data_policy_notice' in certLookup.data) &&
+    !('query_timestamp_notice' in certLookup.data) &&
     Boolean(certLookup.data.queried_at),
-    'Public lookup returns exact required Sky First data privacy policy notice, timestamp notice, and queried_at'
+    'Public lookup omits removed data_policy_notice and query_timestamp_notice strings while preserving queried_at (Phase VIII)'
   );
 
   const byContact = await callWorker('/api/lookup/certificate?email=certowner@skyfirst.io.vn');
@@ -1575,6 +1575,322 @@ let mainCampId = '';
   // 30.7 Central Credential Registry table issued_document_codes records issued certificates (BUG-05)
   const regRows = await DB.prepare("SELECT * FROM issued_document_codes").all();
   assert(Array.isArray(regRows.results) && regRows.results.length >= 1, 'issued_document_codes table exists and records issued credential lookup codes');
+}
+
+
+// 31. Master Prompt V11 Comprehensive Audit & Regression Suite (Phases III, IV, V, VI, VII, VIII)
+{
+  // 31.1 Phase III: CMS 500 Fixes on duplicate, sys_programs, sys_forms, sys_credentials
+  for (const sysId of ['sys_programs', 'sys_forms', 'sys_credentials']) {
+    const getSys = await callWorker(`/api/admin/cms/pages/${sysId}`, {cookie: superAdminCookie});
+    assert(getSys.status === 200 && getSys.data.item?.id === sysId, `GET /api/admin/cms/pages/${sysId} succeeds (200)`);
+
+    // Update system page with empty blocks_json (for sys_forms / sys_credentials) and verify no 500
+    const putSys = await callWorker(`/api/admin/cms/pages/${sysId}`, {
+      method: 'PUT', cookie: superAdminCookie,
+      body: {
+        title: getSys.data.item.title,
+        slug: getSys.data.item.slug,
+        summary: getSys.data.item.summary,
+        blocks: getSys.data.item.blocks || []
+      }
+    });
+    assert(putSys.status === 200 && putSys.data.ok === true, `PUT /api/admin/cms/pages/${sysId} succeeds without 500 error`);
+
+    // Workflow publish on system page with empty blocks_json must succeed (200)
+    const wfSys = await callWorker(`/api/admin/cms/pages/${sysId}/workflow`, {
+      method: 'POST', cookie: superAdminCookie,
+      body: {action: 'publish', note: `Kiểm thử xuất bản ${sysId}`}
+    });
+    assert(wfSys.status === 200 && wfSys.data.status === 'published', `POST /api/admin/cms/pages/${sysId}/workflow (publish) succeeds even when blocks=[]`);
+
+    // Duplicate system page twice in a row to verify unique slug generation and non-system page_type on copy
+    const dup1 = await callWorker(`/api/admin/cms/pages/${sysId}/duplicate`, {method: 'POST', cookie: superAdminCookie});
+    const dup2 = await callWorker(`/api/admin/cms/pages/${sysId}/duplicate`, {method: 'POST', cookie: superAdminCookie});
+    assert(
+      dup1.status === 201 && dup2.status === 201 && dup1.data.slug !== dup2.data.slug,
+      `POST /api/admin/cms/pages/${sysId}/duplicate succeeds repeatedly with unique slugs (${dup1.data.slug}, ${dup2.data.slug})`
+    );
+  }
+
+  // Slug collision on PUT returns controlled 409 SLUG_EXISTS instead of 500 SQLite constraint crash
+  const customPagesRes = await callWorker('/api/admin/cms/pages', {cookie: superAdminCookie});
+  const customPage = customPagesRes.data.items.find(p => p.page_type !== 'system' && p.website_id === 'app');
+  const slugConflict = await callWorker(`/api/admin/cms/pages/${encodeURIComponent(customPage.id)}`, {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {title: customPage.title, slug: 'system-programs'}
+  });
+  assert(slugConflict.status === 409 && slugConflict.data.error === 'SLUG_EXISTS', 'PUT /api/admin/cms/pages/:id returns 409 SLUG_EXISTS on duplicate slug instead of 500');
+
+  // Negative & RBAC tests on duplicate / sys_programs
+  const dupNotFound = await callWorker('/api/admin/cms/pages/non_existent_page_id/duplicate', {method: 'POST', cookie: superAdminCookie});
+  const dupUnauth = await callWorker('/api/admin/cms/pages/sys_programs/duplicate', {method: 'POST'});
+  const haRelogin = await callWorker('/api/auth/login', {method: 'POST', body: {email: 'handler@skyfirst.io.vn', password: 'HandlerNew!2026', portal: 'admin'}});
+  const activeHandlerCookie = (haRelogin.headers.get('set-cookie') || '').split(';')[0];
+  const dupForbidden = await callWorker('/api/admin/cms/pages/sys_programs/duplicate', {method: 'POST', cookie: activeHandlerCookie});
+  assert(
+    dupNotFound.status === 404 && dupUnauth.status === 401 && dupForbidden.status === 403,
+    'CMS duplicate endpoint enforces 401 unauthenticated, 403 unauthorized role, and 404 non-existent ID'
+  );
+
+  // 31.2 Phase IV: Sponsorship 4 States (has_positive_received, zero_received, no_data, query_error)
+  // First restore normal positive balance on mainCampId so received > 0
+  const posSp = await callWorker('/api/public/sponsorship');
+  assert(
+    posSp.status === 200 && posSp.data.state === 'has_positive_received' && posSp.data.summary.received_amount > 0,
+    'Sponsorship state 1 (has_positive_received): verified received_amount > 0'
+  );
+
+  // Test zero_received state: set all campaigns todraft except a campaign with 0 received_amount (only pledged/pending)
+  await DB.prepare("UPDATE sponsorship_campaigns SET visibility='internal' WHERE id=?").bind(mainCampId).run();
+  await DB.prepare("UPDATE sponsorship_campaigns SET received_amount=0, pledged_amount=5000000, visibility='public', status='active' WHERE code='SFN-NOBANK-2026'").run();
+  const zeroSp = await callWorker('/api/public/sponsorship');
+  const zeroCfg = await callWorker('/api/config');
+  assert(
+    zeroSp.status === 200 &&
+    zeroSp.data.state === 'zero_received' &&
+    zeroSp.data.summary.has_data === true &&
+    zeroSp.data.summary.received_amount === 0 &&
+    zeroCfg.data.home_stats?.d1_values?.sponsorship === 0 &&
+    zeroCfg.data.home_stats?.d1_values?.sponsorship_state === 'zero_received',
+    'Sponsorship state 2 (zero_received): valid public campaign with 0 verified received is distinguished from no_data'
+  );
+
+  // Test no_data state: hide all public campaigns
+  await DB.prepare("UPDATE sponsorship_campaigns SET visibility='internal'").run();
+  const noDataSp = await callWorker('/api/public/sponsorship');
+  const noDataCfg = await callWorker('/api/config');
+  assert(
+    noDataSp.status === 200 &&
+    noDataSp.data.state === 'no_data' &&
+    noDataSp.data.summary.has_data === false &&
+    noDataCfg.data.home_stats?.d1_values?.sponsorship === null &&
+    noDataCfg.data.home_stats?.d1_values?.sponsorship_state === 'no_data',
+    'Sponsorship state 3 (no_data): when no public campaigns exist, returns state=no_data and null homepage sponsorship'
+  );
+
+  // Test query_error state: simulate DB failure and verify 503 SPONSORSHIP_QUERY_ERROR (never fake 0 or no_data)
+  const savedDb = env.DB;
+  env.DB = {
+    prepare() {
+      return {
+        bind() { return this; },
+        async all() { throw new Error('Simulated D1 connection failure'); },
+        async first() { throw new Error('Simulated D1 connection failure'); },
+        async run() { throw new Error('Simulated D1 connection failure'); }
+      };
+    },
+    async batch() { throw new Error('Simulated D1 batch failure'); }
+  };
+  const errSp = await callWorker('/api/public/sponsorship');
+  const errCfg = await callWorker('/api/config');
+  env.DB = savedDb;
+  // Restore mainCampId visibility
+  await DB.prepare("UPDATE sponsorship_campaigns SET visibility='public' WHERE id=?").bind(mainCampId).run();
+  assert(
+    errSp.status === 503 &&
+    errSp.data.error === 'SPONSORSHIP_QUERY_ERROR' &&
+    errSp.data.state === 'query_error' &&
+    errSp.data.summary?.has_data === false &&
+    errCfg.data.home_stats?.d1_values?.sponsorship_state === 'query_error' &&
+    errCfg.data.home_stats?.d1_values?.error === true,
+    'Sponsorship state 4 (query_error): DB failure returns HTTP 503 SPONSORSHIP_QUERY_ERROR and never turns error into fake 0 or no_data'
+  );
+
+  // 31.3 Phase V: Certificate & Document Full 8-Step Lifecycle, Configurable Document Types, Phone Column & Legacy Code Compatibility
+  // Step 1: Create configurable document type (Quyết định công nhận -> QD) with phone number
+  const createQd = await callWorker('/api/admin/certificates', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {
+      full_name: 'Nguyễn Thị Quyết Định',
+      email: 'quyetdinh@skyfirst.io.vn',
+      phone: '0933445566',
+      cert_type: 'Quyết định công nhận',
+      prefix: 'QD',
+      content: 'Công nhận Ban Điều hành Dự án Cộng đồng 2026',
+      metadata: {unit_name: 'Sky First', program: 'Community Leadership 2026', role: 'Trưởng ban'}
+    }
+  });
+  assert(createQd.status === 200 && createQd.data.id && createQd.data.prefix === 'QD', 'Certificate Step 1 (Create): Created configurable document type (QD) with phone column');
+  const qdId = createQd.data.id;
+
+  // Step 2: Edit before issuance
+  const editQd = await callWorker(`/api/admin/certificates/${encodeURIComponent(qdId)}`, {
+    method: 'PUT', cookie: superAdminCookie,
+    body: {
+      full_name: 'Nguyễn Thị Quyết Định (Đã cập nhật)',
+      email: 'quyetdinh@skyfirst.io.vn',
+      phone: '0933445577',
+      content: 'Công nhận Ban Điều hành Dự án Cộng đồng Sky First 2026'
+    }
+  });
+  assert(editQd.status === 200 && editQd.data.ok === true, 'Certificate Step 2 (Edit): Updated recipient name, phone, and content before issuance');
+
+  // Step 3: Create a temporary draft certificate and delete it before issuance
+  const tempCert = await callWorker('/api/admin/certificates', {
+    method: 'POST', cookie: superAdminCookie,
+    body: {full_name: 'Bản Ghi Nháp Cần Xóa', cert_type: 'Giấy xác nhận', content: 'Nháp'}
+  });
+  const delDraft = await callWorker(`/api/admin/certificates/${encodeURIComponent(tempCert.data.id)}`, {
+    method: 'DELETE', cookie: superAdminCookie
+  });
+  assert(delDraft.status === 200 && delDraft.data.ok === true, 'Certificate Step 3a (Delete unissued): Unissued certificate can be deleted cleanly');
+
+  // Step 4: Approve via direct approve action
+  const approveQd = await callWorker(`/api/admin/certificates/${encodeURIComponent(qdId)}`, {
+    method: 'PATCH', cookie: reviewerCookie,
+    body: {action: 'approve', note: 'Phê duyệt Quyết định công nhận'}
+  });
+  assert(approveQd.status === 200 && approveQd.data.status === 'approved', 'Certificate Step 4 (Approve): Transitioned to approved status with approved_at');
+
+  // Step 5: Issue configurable document type -> generates SFN-QD-########
+  const issueQd = await callWorker(`/api/admin/certificates/${encodeURIComponent(qdId)}`, {
+    method: 'PATCH', cookie: superAdminCookie,
+    body: {action: 'issue'}
+  });
+  assert(issueQd.status === 200 && /^SFN-QD-\d{8}$/.test(issueQd.data.code), `Certificate Step 5 (Issue): Issued configurable document code ${issueQd.data.code}`);
+  const qdCode = issueQd.data.code;
+
+  // Attempt to delete an issued certificate -> must be blocked with 409 DELETE_ISSUED_FORBIDDEN
+  const delIssued = await callWorker(`/api/admin/certificates/${encodeURIComponent(qdId)}`, {
+    method: 'DELETE', cookie: superAdminCookie
+  });
+  assert(delIssued.status === 409 && delIssued.data.error === 'CANNOT_DELETE_ISSUED_CREDENTIAL', 'Certificate Step 3b (Delete guard): Issued certificate cannot be deleted (409 CANNOT_DELETE_ISSUED_CREDENTIAL)');
+
+  // Lookup by phone using structured phone column (even when formatted with spaces/dashes)
+  const lookByPhone = await callWorker('/api/lookup/certificate', {
+    method: 'POST',
+    body: {phone: '0933-445-577'}
+  });
+  assert(
+    lookByPhone.status === 200 &&
+    lookByPhone.data.item?.code === qdCode &&
+    lookByPhone.data.item?.type === 'Quyết định công nhận' &&
+    !JSON.stringify(lookByPhone.data).includes('0933445577') &&
+    !JSON.stringify(lookByPhone.data).includes('quyetdinh@skyfirst.io.vn'),
+    'Certificate Lookup by Phone: Queries structured phone column, returns configurable document type, and never leaks phone/email'
+  );
+
+  // Step 6 & 7: Supersede (Thay thế) -> creates replacement -> approve & issue replacement -> original becomes superseded
+  const supReq = await callWorker(`/api/admin/certificates/${encodeURIComponent(qdId)}`, {
+    method: 'PATCH', cookie: superAdminCookie,
+    body: {action: 'supersede', note: 'Cấp lại do điều chỉnh chức danh', content: 'Công nhận Trưởng Ban Điều hành Dự án Cộng đồng 2026'}
+  });
+  assert(supReq.status === 200 && supReq.data.replacement_id, 'Certificate Step 7a (Supersede request): Created replacement certificate record');
+  const repId = supReq.data.replacement_id;
+
+  await callWorker(`/api/admin/certificates/${encodeURIComponent(repId)}`, {
+    method: 'PATCH', cookie: reviewerCookie, body: {action: 'approve', note: 'Duyệt bản thay thế'}
+  });
+  const issueRep = await callWorker(`/api/admin/certificates/${encodeURIComponent(repId)}`, {
+    method: 'PATCH', cookie: superAdminCookie, body: {action: 'issue'}
+  });
+  const lookOldSuperseded = await callWorker(`/api/public/credentials/${encodeURIComponent(qdCode)}`);
+  const lookNewReplacement = await callWorker(`/api/public/credentials/${encodeURIComponent(issueRep.data.code)}`);
+  assert(
+    issueRep.status === 200 &&
+    lookOldSuperseded.status === 200 &&
+    lookOldSuperseded.data.item?.status === 'superseded' &&
+    lookOldSuperseded.data.item?.status_text === 'ĐÃ ĐƯỢC THAY THẾ' &&
+    lookOldSuperseded.data.item?.replacement_code === issueRep.data.code &&
+    lookNewReplacement.status === 200 &&
+    lookNewReplacement.data.item?.status === 'issued',
+    'Certificate Step 7b (Supersede completion): Issuing replacement transitions old record to ĐÃ ĐƯỢC THAY THẾ with link to replacement_code'
+  );
+
+  // Step 8: View History
+  const qdHist = await callWorker(`/api/admin/certificates/${encodeURIComponent(qdId)}/history`, {cookie: superAdminCookie});
+  assert(
+    qdHist.status === 200 &&
+    Array.isArray(qdHist.data.history) &&
+    qdHist.data.history.length >= 4,
+    'Certificate Step 8 (History): Returns chronological audit history of all lifecycle transitions'
+  );
+
+  // Legacy code compatibility check
+  await DB.prepare("INSERT INTO certificates(id,code,legacy_code,full_name,email,phone,cert_type,content,status,verification_token,issued_at) VALUES('cert_legacy_2025','015-GCN-SFN/2025','015-GCN-SFN/2025','Trần Văn Mã Cũ','macu@skyfirst.io.vn','0909111222','Giấy chứng nhận','Hoàn thành khóa học năm 2025','issued','vtok_legacy_2025',CURRENT_TIMESTAMP)").run();
+  const legacyLookup = await callWorker(`/api/public/credentials/${encodeURIComponent('015-GCN-SFN/2025')}`);
+  assert(
+    legacyLookup.status === 200 &&
+    legacyLookup.data.verified === true &&
+    legacyLookup.data.item?.code === '015-GCN-SFN/2025',
+    'Legacy Certificate Code Compatibility: Lookup by legacy code 015-GCN-SFN/2025 succeeds alongside 8-digit random codes'
+  );
+
+  // 31.4 Phase VI: QR Code Verification (Zero "SKY FIRST · XÁC THỰC" text, Zero PII)
+  const qrSvgRes = await callWorker(`/api/public/credentials/${encodeURIComponent(issueRep.data.code)}/qr.svg`);
+  const qrSvgText = String(qrSvgRes.data || '');
+  assert(
+    qrSvgRes.status === 200 &&
+    qrSvgText.startsWith('<svg ') &&
+    !qrSvgText.includes('SKY FIRST · XÁC THỰC') &&
+    !qrSvgText.includes('VIETQR SKY FIRST') &&
+    !qrSvgText.includes('<text ') &&
+    !qrSvgText.includes('quyetdinh@skyfirst.io.vn') &&
+    !qrSvgText.includes('0933445577'),
+    'Phase VI QR Code: SVG contains no "SKY FIRST · XÁC THỰC" text, no replacement caption, and zero personal data'
+  );
+
+  // 31.5 Phase VII & VIII: Exact Verbatim UI Copy & Policy Removal Verification
+  const cfgCheckFinal = await callWorker('/api/config?lang=vi');
+  const sysPagesFinal = cfgCheckFinal.data.cms_system_pages || {};
+  const aboutBlocksJson = JSON.stringify(sysPagesFinal['/gioi-thieu']?.blocks || []);
+  const spBlocksJson = JSON.stringify(sysPagesFinal['/tai-tro']?.blocks || []);
+  const supBlocksJson = JSON.stringify(sysPagesFinal['/ho-tro']?.blocks || []);
+  const portalJsText = fs.readFileSync(path.join(root, 'public/digital-portal.js'), 'utf8');
+  const indexHtmlText = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
+
+  assert(
+    aboutBlocksJson.includes('Quản lý thống nhất cấu hình, nội dung, ngôn ngữ hiển thị (Tiếng Việt/Tiếng Anh), biểu mẫu và quy trình phê duyệt trên cùng một hệ thống.') &&
+    aboutBlocksJson.includes('Hỗ trợ tra cứu chứng nhận, theo dõi tiến trình xử lý hồ sơ và công khai thông tin đối soát tài trợ theo dữ liệu đã xác minh.') &&
+    !aboutBlocksJson.includes('Quản trị Tập trung (Admin-Driven)') &&
+    !aboutBlocksJson.includes('Xác thực Minh bạch'),
+    'Phase VII (7.1 & 7.2): /gioi-thieu CMS blocks match exact required Vietnamese copy'
+  );
+
+  assert(
+    supBlocksJson.includes('Truy cập trang Tra cứu Hồ sơ và nhập Mã hồ sơ kèm địa chỉ Email đã đăng ký.') &&
+    supBlocksJson.includes('Truy cập trang Xác thực Chứng nhận và nhập mã chứng nhận hoặc tra cứu bằng Email/Số điện thoại.') &&
+    !supBlocksJson.includes('(/ho-so)') &&
+    !supBlocksJson.includes('SFN-TNV-2026-0001') &&
+    !supBlocksJson.includes('(/gcn)') &&
+    !supBlocksJson.includes('SFN-GCN-########'),
+    'Phase VII (7.3 & 7.4): /ho-tro FAQ items match exact required Vietnamese copy and omit forbidden path/code examples'
+  );
+
+  assert(
+    spBlocksJson.includes('Nguyên tắc đối soát tài chính') &&
+    spBlocksJson.includes('Mọi khoản chuyển khoản qua mã QR chỉ được ghi nhận vào số tiền thực nhận sau khi xác minh giao dịch thành công.') &&
+    portalJsText.includes('Tách biệt tiền cam kết và tiền thực nhận') &&
+    portalJsText.includes('Theo dõi và công bố riêng số tiền cam kết và số tiền thực nhận, không cộng gộp hai khoản.') &&
+    portalJsText.includes('Đối soát trước khi công bố') &&
+    portalJsText.includes('Các khoản thu, chi và chứng từ tài chính phải được người có thẩm quyền xác minh trước khi công khai.') &&
+    portalJsText.includes('Bảo vệ thông tin nhà tài trợ') &&
+    portalJsText.includes('Bảo mật số tài khoản, số định danh và thông tin liên hệ riêng tư của nhà tài trợ.') &&
+    portalJsText.includes('Hiện chưa có chương trình vận động tài trợ hoặc báo cáo tài chính được phê duyệt công bố. Không hiển thị số liệu giả lập, không gộp tiền cam kết với tiền thực nhận và chỉ công bố số liệu sau khi hoàn tất đối soát.'),
+    'Phase IV (4.3–4.7): Sponsorship principles and empty-state notices match exact required verbatim copy'
+  );
+
+  assert(
+    portalJsText.includes('Trạng thái chứng nhận') &&
+    portalJsText.includes('Phân biệt rõ chứng nhận đang có hiệu lực, hết hiệu lực, đã bị thu hồi hoặc đã được thay thế bằng mã mới.') &&
+    portalJsText.includes('Tương thích mã cũ và mới') &&
+    portalJsText.includes('Hỗ trợ đồng thời mã định danh ngẫu nhiên gồm 8 chữ số và các mã chứng nhận đã phát hành trước đây.') &&
+    portalJsText.includes('Theo dõi tiến trình xử lý hồ sơ đã gửi và cập nhật trạng thái xử lý theo thông tin hiện có trên hệ thống.'),
+    'Phase V (5.5–5.6) & Phase VII (7.5): Credential and Case Lookup descriptions match exact required verbatim copy'
+  );
+
+  const exactCitation = 'Mọi nội dung trích dẫn phải bảo đảm tính chính xác, trung thực và đầy đủ về ngữ cảnh; ghi rõ nguồn tham khảo và đính kèm liên kết đến tài liệu gốc khi có thể. Việc sử dụng, trích dẫn và chia sẻ thông tin phải tuân thủ quy định về bản quyền, quyền sở hữu trí tuệ và bảo vệ dữ liệu cá nhân.';
+  assert(
+    cfgCheckFinal.data.footer_citation_notice === exactCitation &&
+    portalJsText.includes(exactCitation) &&
+    indexHtmlText.includes(exactCitation) &&
+    !('lookup_data_policy_notice' in cfgCheckFinal.data) &&
+    !('lookup_timestamp_notice' in cfgCheckFinal.data) &&
+    !portalJsText.includes('Chính sách dữ liệu tra cứu:') &&
+    !portalJsText.includes('Kết quả tra cứu phản ánh trạng thái của bản ghi trong cơ sở dữ liệu Hệ thống Thông tin Số Sky First tại thời điểm thực hiện truy vấn.'),
+    'Phase VII (7.6) & Phase VIII (8.1–8.3): Footer citation notice updated and lookup policy/timestamp strings completely removed from UI & API'
+  );
 }
 
 console.log(`\n========================================`);
