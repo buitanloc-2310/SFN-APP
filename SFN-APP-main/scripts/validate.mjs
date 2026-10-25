@@ -19,7 +19,7 @@ const required=[
   'public/email-templates/fundraising-update.html',
   'migrations/0001_schema.sql','migrations/0002_seed.sql','migrations/0005_digital_information_infrastructure.sql',
   'migrations/0008_sky_first_digital_information_system.sql','migrations/0009_super_website_universal_email_and_cms.sql',
-  'migrations/0010_forensic_security_and_financial_reconciliation.sql','migrations/0011_v10_admin_cms_i18n_governance.sql','migrations/0012_audit_schema_sync_and_governance.sql','migrations/0013_remove_homepage_technical_callout.sql','migrations/0014_audit_remediation_and_content_sync.sql','public/assets/icon-192.png','public/assets/icon-512.png','public/assets/apple-touch-icon.png','public/assets/favicon-32.png','wrangler.jsonc'
+  'migrations/0010_forensic_security_and_financial_reconciliation.sql','migrations/0011_v10_admin_cms_i18n_governance.sql','migrations/0012_audit_schema_sync_and_governance.sql','migrations/0013_remove_homepage_technical_callout.sql','migrations/0014_audit_remediation_and_content_sync.sql','migrations/0015_email_logo_https.sql','public/assets/icon-192.png','public/assets/icon-512.png','public/assets/apple-touch-icon.png','public/assets/favicon-32.png','wrangler.jsonc'
 ];
 let ok=true;
 for(const f of required){
@@ -44,6 +44,10 @@ if(!indexHtml.includes('Hệ thống Thông tin Số Sky First') || !indexHtml.i
   ok=false;
 }
 const universalHtml=fs.readFileSync(path.join(root,'public/email-templates/email_universal_auto.html'),'utf8');
+if(/src=["']data:image\/[^;]+;base64,/i.test(universalHtml) || !universalHtml.includes('https://app.skyfirst.io.vn/assets/sfn-logo-tight.png')){
+  console.error('EMAIL BRAND LOGO CHECK FAILED: universal template must use the public HTTPS logo');
+  ok=false;
+}
 for(const token of ['{{PREHEADER}}','{{EMAIL_CATEGORY}}','{{EMAIL_HEADING}}','{{RECIPIENT_NAME}}','{{INTRO_TEXT}}','{{REQUEST_ID}}','{{REGISTRATION_TYPE}}','{{SUBMITTED_AT}}','{{STATUS}}','{{ADDITIONAL_INFO}}','{{BODY_HTML}}','{{NEXT_STEPS}}','{{ACTION_URL}}','{{ACTION_LABEL}}']){
   if(!universalHtml.includes(token)){
     console.error('MISSING UNIVERSAL EMAIL TOKEN in email_universal_auto.html:',token);

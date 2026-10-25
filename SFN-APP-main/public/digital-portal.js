@@ -520,6 +520,39 @@ async function home(app){
     }
     return new Intl.NumberFormat("vi-VN",{maximumFractionDigits:0}).format(num);
   };
+  const statElements=[...document.querySelectorAll("[data-stat]")];
+  const animateStatValue=(el,target,key,index=0)=>{
+    const finalText=fmtStat(target,key);
+    const reduceMotion=window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const durationMs=Math.max(250,Math.min(30000,Number(statSettings.duration_ms)||1200));
+    const cycles=Math.max(1,Math.min(100,Math.floor(Number(statSettings.cycles)||1)));
+    if(reduceMotion||target<=0||typeof window.requestAnimationFrame!=="function"){
+      el.textContent=finalText;
+      return;
+    }
+    el.classList.add("is-counting");
+    let cycle=0;
+    const playCycle=()=>{
+      if(!el.isConnected){el.classList.remove("is-counting");return;}
+      cycle+=1;
+      let startedAt=null;
+      el.textContent=fmtStat(0,key);
+      const frame=now=>{
+        if(!el.isConnected){el.classList.remove("is-counting");return;}
+        if(startedAt===null)startedAt=now;
+        const progress=Math.max(0,Math.min(1,(now-startedAt)/durationMs));
+        const eased=1-Math.pow(1-progress,3);
+        const current=progress>=1?target:Math.min(target,Math.round(target*eased));
+        el.textContent=fmtStat(current,key);
+        if(progress<1){window.requestAnimationFrame(frame);return;}
+        if(cycle<cycles){window.setTimeout(playCycle,120);return;}
+        el.textContent=finalText;
+        el.classList.remove("is-counting");
+      };
+      window.requestAnimationFrame(frame);
+    };
+    window.setTimeout(playCycle,Math.max(0,index)*95);
+  };
   const runStat=el=>{
     const key=el.dataset.stat;
     let rawValue=statSettings.values?.[key];
@@ -546,8 +579,8 @@ async function home(app){
         el.setAttribute("data-stat-state","zero_received");
         return;
       }
-      el.textContent=fmtStat(Number(rawValue),"sponsorship");
       el.setAttribute("data-stat-state","has_positive_received");
+      animateStatValue(el,Number(rawValue),"sponsorship",statElements.indexOf(el));
       return;
     }
     if(config.status!=="fulfilled"||statConfig.d1_values?.error){
@@ -562,9 +595,9 @@ async function home(app){
     }
     const target=Number(rawValue);
     el.removeAttribute("data-stat-state");
-    el.textContent=fmtStat(target,key);
+    animateStatValue(el,target,key,statElements.indexOf(el));
   };
-  document.querySelectorAll("[data-stat]").forEach(runStat);
+  statElements.forEach(runStat);
   document.getElementById('homeSearchBtn')?.addEventListener('click',()=>openSearch(document.getElementById('homeSearch')?.value||''));
   document.getElementById('homeSearch')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();openSearch(e.currentTarget.value)}});
   event('route_view',{category:'home'});

@@ -16,7 +16,7 @@ function needsAppBundle({path,route}){
 async function loadAppBundle(){
   if(appBundleLoaded)return;
   appBundleLoaded=true;
-  await import('/app.js?v=20261024-home-clean-v1');
+  await import('/app.js?v=20261025-home-stat-email-logo-fix-v1');
 }
 
 async function renderPublic(){
@@ -43,15 +43,15 @@ window.addEventListener('popstate',()=>{if(!appBundleLoaded)renderPublic()});
 renderPublic();
 
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/sw.js?v=20261024-home-clean-v1',{updateViaCache:'none'}).then(reg=>{
+  navigator.serviceWorker.register('/sw.js?v=20261025-home-stat-email-logo-fix-v1',{updateViaCache:'none'}).then(reg=>{
     reg.update().catch(()=>{});
   }).catch(()=>{});
   let hadController=!!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
     if(!hadController){hadController=true;return;}
     try{
-      if(sessionStorage.getItem('sfn_sw_reloaded_home_clean_v1')==='1')return;
-      sessionStorage.setItem('sfn_sw_reloaded_home_clean_v1','1');
+      if(sessionStorage.getItem('sfn_sw_reloaded_home_stat_email_logo_fix_v1')==='1')return;
+      sessionStorage.setItem('sfn_sw_reloaded_home_stat_email_logo_fix_v1','1');
     }catch{}
     location.reload();
   });

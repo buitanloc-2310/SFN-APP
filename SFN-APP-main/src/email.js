@@ -1,5 +1,16 @@
 import {renderTemplate, escapeHtml, extractTemplateVariables} from "./utils.js";
 
+const EMAIL_BRAND_LOGO_URL = "https://app.skyfirst.io.vn/assets/sfn-logo-tight.png";
+
+// Some email clients (including Gmail) reject data: images in HTML email.
+// Replace only the embedded Sky First brand mark; keep other user-provided images untouched.
+function normalizeEmailBrandLogo(html = "") {
+  return String(html || "").replace(
+    /(<img\b(?=[^>]*\balt=["']Sky First[^"']*["'])[^>]*?\bsrc=["'])data:image\/[^;]+;base64,[^"']*(["'])/gi,
+    `$1${EMAIL_BRAND_LOGO_URL}$2`
+  );
+}
+
 const ALLOWED_ATTACHMENT_MIMES = new Set([
   "application/pdf",
   "image/png",
@@ -631,10 +642,10 @@ export function renderEmailContent(row, vars = {}) {
   const subject = renderTemplate(row?.subject_template || "Thông báo từ Hệ thống Thông tin Số Sky First", safeVars, {
     htmlEscape: false
   });
-  const html = renderTemplate(row?.html_template || "", safeVars, {
+  const html = normalizeEmailBrandLogo(renderTemplate(row?.html_template || "", safeVars, {
     htmlEscape: true,
     rawKeys
-  });
+  }));
 
   let textOut = renderTemplate(row?.text_template || "", safeVars, {htmlEscape: false});
   if (!textOut.trim()) {

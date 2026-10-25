@@ -5,6 +5,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import worker from '../src/index.js';
 import {pbkdf2, b64url, fromB64url} from '../src/utils.js';
+import {renderEmailContent} from '../src/email.js';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const dbPath = '/tmp/sfn_e2e_test.db';
@@ -682,13 +683,25 @@ let mainCampId = '';
     const html = prev.data.preview?.html || '';
     assert(
       prev.status === 200 &&
-      html.includes('data:image/png;base64,') &&
+      html.includes('https://app.skyfirst.io.vn/assets/sfn-logo-tight.png') && !html.includes('data:image/png;base64,') &&
       html.includes('Nguyễn Văn Kiểm Thử') &&
       html.includes('SFN-2026-9999') &&
       !/\{\{[A-Z0-9_]+\}\}/i.test(html),
-      `Template "${key}" renders email_universal_auto.html with embedded base64 logo and zero unreplaced {{...}} placeholders`
+      `Template "${key}" renders email_universal_auto.html with HTTPS logo and zero unreplaced {{...}} placeholders`
     );
   }
+
+  const runtimeLogoCheck = renderEmailContent({
+    key: 'submission_confirmation',
+    subject_template: 'Email logo test',
+    html_template: '<img src="data:image/png;base64,QUJDRA==" width="205" alt="Sky First — Education & Community Development">',
+    text_template: ''
+  }, {REQUEST_ID: 'SFN-TEST-0001'});
+  assert(
+    runtimeLogoCheck.html.includes('https://app.skyfirst.io.vn/assets/sfn-logo-tight.png') &&
+    !runtimeLogoCheck.html.includes('data:image/png;base64,'),
+    'Runtime email rendering replaces legacy embedded Sky First logo with HTTPS asset'
+  );
 }
 
 // 14. Admin-Assisted Password Reset (/api/auth/forgot), Backdoor Elimination & Auth Audit Logging

@@ -1,9 +1,9 @@
 /* Hệ thống Thông tin Số Sky First — service worker */
-const CACHE='sfn-digital-shell-2026-10-24-home-clean-v1';
+const CACHE='sfn-digital-shell-2026-10-25-home-stat-email-logo-fix-v1';
 const SHELL=[
   '/','/index.html',
-  '/styles.css?v=20261024-home-clean-v1','/digital.css?v=20261024-home-clean-v1',
-  '/digital-portal.js?v=20261024-home-clean-v1','/bootstrap.js?v=20261024-home-clean-v1',
+  '/styles.css?v=20261025-home-stat-email-logo-fix-v1','/digital.css?v=20261025-home-stat-email-logo-fix-v1',
+  '/digital-portal.js?v=20261025-home-stat-email-logo-fix-v1','/bootstrap.js?v=20261025-home-stat-email-logo-fix-v1',
   '/manifest.webmanifest',
   '/assets/sfn-logo-tight.png','/assets/sfn-logo.png',
   '/assets/favicon-32.png','/assets/apple-touch-icon.png','/assets/icon-192.png','/assets/icon-512.png'
